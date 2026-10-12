@@ -69,7 +69,8 @@ export const REACTION_GROUPS = [
 ];
 export const REACTION_EMOJIS = REACTION_GROUPS.flat();
 export const DEFAULT_AVATAR_EMOJI = '🙂';
-export const COLOR_PALETTE = ['#ff6b6b', '#ffa94d', '#ffd43b', '#69db7c', '#38d9a9', '#4dabf7', '#9775fa', '#f783ac'];
+// 닉네임 색/프사 배경 팔레트: 어두운 배경에서 잘 읽히는 파스텔톤
+export const COLOR_PALETTE = ['#ff9aa8', '#ffb98a', '#ffe08f', '#9be3a8', '#8fe0cf', '#8cc8ff', '#b7a8ff', '#ffa8d1'];
 const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 const CONTROL_RE = /[\p{C}\u2028\u2029]/u; // 제어/서식 문자(줄바꿈, 제로폭 문자 등)
 

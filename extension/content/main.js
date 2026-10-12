@@ -407,6 +407,10 @@
           }
         }
         break;
+      case CMD.HISTORY:
+        chat?.show();
+        chat?.loadHistory(m.chat ?? []);
+        break;
       case CMD.CHAT:
         chat?.addMessage(m.msg);
         break;
