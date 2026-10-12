@@ -1,7 +1,15 @@
 import { randomInt } from 'node:crypto';
 import { S2C, ERR, VIDEO_ACTION_SYNC, DEFAULT_COLORS, DEFAULT_AVATAR_EMOJI } from './protocol.js';
 
-const AD_ROLLBACK_MS = 4000; // 광고 보고 직전 이 시간 안의 본인 이벤트는 광고 전환 중 생긴 것으로 보고 되돌린다
+const AD_ROLLBACK_MS = 6000; // 광고 보고 직전 이 시간 안의 본인 이벤트는 광고 전환 중 생긴 것으로 보고 되돌린다
+
+// 같은 사람이 짧은 시간에 이어서 보낸 이벤트 묶음(seek 0 -> play 0 처럼)은 "묶음이 시작되기 전" 상태를 남겨 둔다.
+const SNAPSHOT_BURST_MS = 2000;
+function keepSnapshot(room, userId, at) {
+  const prev = room.prevVideo;
+  if (prev && prev.by === userId && at - prev.at < SNAPSHOT_BURST_MS) return;
+  room.prevVideo = { video: { ...room.video }, by: userId, at };
+}
 
 // 헷갈리는 문자(0/O, 1/I)를 뺀 영숫자
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -95,7 +103,7 @@ export class RoomManager {
     // 재생/일시정지는 사용자의 직접 조작이 우선이라 자동 재개하지 않는다.
     // 시크는 재생 여부를 바꾸지 않는다(버퍼링 중인 사람의 시크는 데이터가 도착한 뒤에야 보고되기도 함).
     if (msg.action !== 'seek') room.autoPaused = false;
-    room.prevVideo = { video: { ...room.video }, by: p.id, at }; // 직후에 광고였다고 보고되면 되돌리기 위해
+    keepSnapshot(room, p.id, at); // 직후에 광고였다고 보고되면 되돌리기 위해
     room.video = {
       playing: msg.action === 'seek' ? room.video.playing : msg.action === 'play',
       time: msg.time,
@@ -177,7 +185,7 @@ export class RoomManager {
     if (!room.video.playing || room.autoPaused || now < room.video.updatedAt) return;
     if (now - room.lastSyncAt < 2000) return;
     room.lastSyncAt = now;
-    room.prevVideo = { video: { ...room.video }, by: p.id, at: now };
+    keepSnapshot(room, p.id, now);
     room.video = { playing: true, time: msg.time, updatedAt: now };
     this.#broadcast(
       room,

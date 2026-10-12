@@ -69,7 +69,7 @@
   } catch {}
 
   function setAdNotice(on) {
-    if (isTop) ui.showAd(on ? '광고 시청 중이에요. 끝나면 다 같이 이어서 재생해요' : null);
+    if (isTop) ui.showAd(on ? '광고 시청 중이에요. 끝나면 다 같이 이어서 재생해요.' : null);
   }
 
   // 광고: 내 영상은 방과 따로 두고, 방에는 "광고 중이니 기다려 달라"고 알린다(다른 사람 영상도 멈추고, 광고가 끝나면 함께 다시 재생)
@@ -347,20 +347,27 @@
   }, 500);
   const suspiciousJump = () => !!video && video.currentTime < 5 && lastStableTime - video.currentTime > 30;
   let holdUntil = 0;
+  const HOLD_MS = 3000;
 
   function onLocal(action, silent = false, held = false) {
     if (inAd || Date.now() < adGraceUntil) return; // 광고 중의 조작은 방에 보내지도, 방 상태로 되돌리지도 않는다
     if (!held && suspiciousJump()) {
       if (Date.now() < holdUntil) return; // 보류 중에 이어 오는 이벤트는 보류가 끝날 때 현재 상태로 한 번에 보낸다
-      holdUntil = Date.now() + 1500;
-      evalAd();
-      setTimeout(() => {
+      holdUntil = Date.now() + HOLD_MS;
+      // 광고 표시가 늦게 뜰 수 있으니 보류하는 동안 계속 확인한다. 광고로 판명되면 즉시 폐기.
+      const poll = setInterval(() => {
         evalAd();
-        if (inAd || !video) return log('광고 전환 중의 이벤트 폐기');
-        lastStableTime = video.currentTime; // 진짜로 처음으로 돌아간 것이면 그대로 방에 알린다
+        if (inAd || !video) {
+          clearInterval(poll);
+          holdUntil = 0;
+          return log('광고 전환 중의 이벤트 폐기');
+        }
+        if (Date.now() < holdUntil) return;
+        clearInterval(poll);
+        lastStableTime = video.currentTime; // 끝까지 광고가 아니면 진짜로 처음으로 돌아간 것이니 그대로 방에 알린다
         onLocal('seek', silent, true);
         onLocal(video.paused ? 'pause' : 'play', silent, true);
-      }, 1500);
+      }, 300);
       return;
     }
     // 소스가 바뀌는 중(메타데이터 전, duration NaN): 광고로 바뀌는 순간의 play(0초) 같은 이벤트가 방 전체를 되감지 않도록 무시
@@ -492,7 +499,7 @@
           const bufs = state.waitingIds.filter((id) => !(state.adIds ?? []).includes(id)).map(nameOf);
           const names = [...ads, ...bufs];
           ui.showWaiting(
-            ads.length ? `${ads.join(', ')} 님이 광고 시청 중이에요. 끝나면 같이 재생해요` : bufs.length ? `${bufs.join(', ')} 님이 버퍼링 중이에요. 기다리는 중…` : null,
+            ads.length ? `${ads.join(', ')} 님이 광고 시청 중이에요. 끝나면 같이 재생해요.` : bufs.length ? `${bufs.join(', ')} 님이 버퍼링 중이에요. 기다리는 중…` : null,
           );
           if (!names.length && state.video.playing && state.video.updatedAt > serverNow()) {
             ui.toast('모두 준비됐어요. 곧 함께 재생해요');
