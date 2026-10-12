@@ -673,3 +673,22 @@ test('광고 보고: 진짜로 0초 근처로 간 것이 아니면(가까운 위
   a.close();
   b.close();
 });
+
+test('광고: 0초 이동 + 0초 재생이 연달아 전해진 뒤 광고 보고가 와도 처음 상태로 되돌려진다', async () => {
+  const { a, code } = await makeRoom();
+  const { c: b } = await joinRoom(code);
+  a.send({ type: 'video', action: 'play', time: 100, sentAt: 1 });
+  await b.next('video');
+  b.send({ type: 'video', action: 'seek', time: 0, sentAt: 2 });
+  await a.next('video');
+  b.send({ type: 'video', action: 'play', time: 0, sentAt: 3 });
+  await a.next('video');
+  b.send({ type: 'buffering', isBuffering: true, reason: 'ad' });
+  const s = await a.next('buffer_state');
+  assert.ok(s.video.time >= 100 && s.video.time < 106, `time=${s.video.time}`);
+  b.send({ type: 'buffering', isBuffering: false });
+  const resumed = await a.next('buffer_state');
+  assert.ok(resumed.video.playing && resumed.video.time >= 100, JSON.stringify(resumed.video));
+  a.close();
+  b.close();
+});
