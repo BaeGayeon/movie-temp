@@ -112,12 +112,12 @@ const CSS = `
   /* ---- 리액션: --size 이모지 크기(영상 폭에 비례), --rise 떠오르는 높이, --dx 좌우 흔들림 ----
      떠오르는 도중에 크기가 출렁이면 버벅이는 것처럼 보여서, 나타날 때만 아주 짧게(약 0.1초) 커지고 곧바로 떠오른다. */
   .floats { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
-  .float { position: absolute; display: flex; flex-direction: column; align-items: center; animation: rise 2.4s cubic-bezier(.2,.6,.3,1) forwards; }
+  .float { position: absolute; display: flex; flex-direction: column; align-items: center; animation: rise 4.6s cubic-bezier(.25,.4,.4,1) forwards; }
   .float .e { font-size: var(--size, 44px); line-height: 1.1; filter: drop-shadow(0 2px 4px rgba(0,0,0,.4)); }
   .float .n { font-size: var(--nsize, 11px); font-weight: 600; color: var(--ink); background: var(--surface); border-radius: 999px; padding: 0 8px; white-space: nowrap; opacity: .85; }
   @keyframes rise { 0% { transform: translate(0, 0) scale(.88); opacity: 0; }
     4% { transform: translate(0, 0) scale(1); opacity: .8; }
-    75% { opacity: .8; }
+    70% { opacity: .8; }
     100% { transform: translate(var(--dx, 0px), calc(var(--rise, 300px) * -1)) scale(1); opacity: 0; } }
 ` + EMOJI_PICKER_CSS;
 
@@ -140,6 +140,7 @@ const DEFAULT_PREFS = {
 const MIN_W = 220;
 const MIN_H = 200;
 const MAX_MESSAGES = 200;
+const PAUSE_SEEK_MERGE_MS = 10_000; // 정지 직후의 이동(시크바 드래그)을 합치는 시간
 const EVENT_MERGE_MS = 1500; // 같은 사람의 연속 이벤트(사이트가 시크할 때 pause→seek→play 를 내보냄)를 합치는 시간
 const MAX_FLOATS = 30;
 const TYPING_IDLE_MS = 3000;
@@ -635,7 +636,9 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
   function renderEvent(m) {
     list.querySelector('.empty')?.remove();
     const prev = lastEvent.get(m.userId);
-    const fresh = prev && m.sentAt - prev.at < EVENT_MERGE_MS;
+    // 시크바를 끌면 pause 가 먼저 오고 놓는 순간 seek 가 오므로, 정지 → 이동은 끄는 시간까지 넉넉히 합친다
+    const limit = prev?.entry.action === 'pause' && m.action === 'seek' ? PAUSE_SEEK_MERGE_MS : EVENT_MERGE_MS;
+    const fresh = prev && m.sentAt - prev.at < limit;
     // 사이트마다 시크할 때 pause → seek → play 또는 play → seek 를 내보낸다. 같은 사람의 연속 이벤트를 한 줄로 합친다:
     //  - 정지 + 이동 = 이동 / 이동 + 재생(또는 재생 + 이동) = "이동해서 재생" / 같은 종류가 연달아 오면 마지막 값으로 갱신
     if (fresh) {
@@ -974,12 +977,12 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
       f.style.setProperty('--size', `${size.toFixed(1)}px`);
       f.style.setProperty('--nsize', `${clamp(size * 0.28, 9, 14).toFixed(1)}px`);
       f.style.setProperty('--rise', `${(h * 0.62).toFixed(0)}px`);
-      f.style.setProperty('--dx', `${((Math.random() - 0.5) * size * 2.5).toFixed(0)}px`);
+      f.style.setProperty('--dx', `${((Math.random() - 0.5) * size * 1.2).toFixed(0)}px`); // 옆으로는 살짝만(너무 흔들리면 촐싹거려 보인다)
       f.style.left = `${(left + size * 0.4 + Math.random() * Math.max(0, w - size * 2.4)).toFixed(0)}px`;
       f.style.top = `${(top + h * 0.78 - size).toFixed(0)}px`;
       f.append(el('span', 'e', emoji), el('span', 'n', profileOf(userId).name));
       floats.append(f);
-      setTimeout(() => f.remove(), 2500); // 애니메이션(2.4초)이 끝난 뒤 정리
+      setTimeout(() => f.remove(), 4700); // 애니메이션(4.6초)이 끝난 뒤 정리
     },
   };
 }
