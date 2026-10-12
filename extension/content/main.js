@@ -20,8 +20,10 @@
   const AD_EVENTS = ['durationchange', 'loadedmetadata', 'emptied']; // 같은 <video> 에서 광고 <-> 본편이 바뀌는 신호
 
   const isTop = window === window.top;
-  // 재생 위치(초): 어댑터가 더 정확한 값을 줄 수 있으면(넷플릭스 플레이어 API) 그 값을, 아니면 <video>.currentTime
-  const pos = () => (adapter.position ? adapter.position(video) : video.currentTime);
+  // 재생 위치(초) = <video>.currentTime + timeOffset. 넷플릭스는 광고가 지나가면 시간축이 광고 때 시간에 이어져서(예: 실제 43:30 인데 0:33)
+  // 광고가 끝날 때 광고 직전의 본편 위치에 맞춰 timeOffset 을 다시 잡는다(adapter.shiftsAfterAd). 다른 사이트는 항상 0.
+  let timeOffset = 0;
+  const pos = () => video.currentTime + timeOffset;
   // 진단용 기록: 최근 동작을 링 버퍼에 남겨 두고, 팝업의 "진단 정보 복사"로 꺼낼 수 있다(재생 위치/광고/주고받은 이벤트가 어긋나는 문제를 볼 때 쓴다).
   const diag = [];
   const note = (...a) => {
@@ -35,7 +37,10 @@
     console.log('[bmt]', isTop ? 'top' : 'iframe', ...a); // 진단용 로그
   };
   // 호스트별 어댑터: 넷플릭스는 <video> 를 직접 조작하면 오류(M7375)가 나서 전용 어댑터를 쓴다
-  const adapter = /(^|\.)netflix\.com$/.test(location.hostname) ? createNetflixAdapter() : createDefaultAdapter();
+  const adapter =
+    /(^|\.)netflix\.com$/.test(location.hostname) || document.documentElement.getAttribute('data-bmt-adapter') === 'netflix' // 두 번째는 테스트 페이지용
+      ? createNetflixAdapter()
+      : createDefaultAdapter();
   const ui = createUI();
   // 채팅/리액션 UI 는 최상위 프레임에만 둔다
   const chat = isTop
@@ -110,7 +115,20 @@
         adReported = true;
         send({ cmd: CMD.BUFFERING, isBuffering: true, reason: 'ad' }); // 위치는 보내지 않는다(광고 위치는 의미 없음)
       }
-    } else if (adReported) {
+    } else if (adapter.shiftsAfterAd && video) {
+      // 광고가 끝났다: 본편이 이어지는 위치(광고 직전 위치)와 지금 영상 시간축의 차이를 보정값으로 잡는다(5초 넘게 어긋났을 때만)
+      const shift = lastStableTime - pos();
+      if (Math.abs(shift) > 5) {
+        timeOffset += shift;
+        log('광고 뒤 시간축 보정', { offset: +timeOffset.toFixed(1), shift: +shift.toFixed(1) });
+      }
+      resumeAfterAd();
+    } else {
+      resumeAfterAd();
+    }
+  }
+  function resumeAfterAd() {
+    if (adReported) {
       adReported = false;
       send({ cmd: CMD.BUFFERING, isBuffering: false }); // 모두 준비되면 서버가 같은 시각에 함께 재생시킨다
       applyRoomVideo(); // 재개 신호가 올 때까지 방 상태(정지)에 맞춰 둔다
@@ -206,8 +224,8 @@
   function seekTo(t) {
     if (!video || Math.abs(pos() - t) < SEEK_THRESHOLD) return;
     expect('seeked');
-    note('seekTo', +t.toFixed(1), 'from pos', +pos().toFixed(1));
-    adapter.seek(video, t);
+    note('seekTo', +t.toFixed(1), 'from pos', +pos().toFixed(1), 'offset', +timeOffset.toFixed(1));
+    adapter.seek(video, t - timeOffset); // 어댑터/플레이어에는 영상 자체의 시간축 값으로
     if (adapter.settleMs) {
       // 이동 뒤 재생/정지가 어긋나 있으면(어댑터의 명령이 비동기라 상태 확인이 엇갈린 경우) 방 상태로 다시 맞춘다. 위치는 건드리지 않는다.
       clearTimeout(settleTimer);
@@ -444,6 +462,7 @@
       send({ cmd: CMD.BUFFERING, isBuffering: false }); // 영상이 사라지면(페이지 이동 등) 기다리지 않도록
     }
     bufferingReported = false;
+    timeOffset = 0;
     clearTimeout(startTimer);
     ui.hideClickPrompt();
   }

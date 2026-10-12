@@ -28,11 +28,6 @@ function adOnScreen() {
 export function createNetflixAdapter() {
   const base = createDefaultAdapter();
   let seq = 0;
-  let apiPos = null; // { sec, at } — 다리가 알려준 실제 재생 위치
-  setInterval(async () => {
-    const r = await ask('time');
-    if (r.ok) apiPos = { sec: r.ms / 1000, at: Date.now() };
-  }, 250);
   // 넷플릭스 API 는 비동기라서 play()/pause() 직후에도 video.paused 가 바로 바뀌지 않는다.
   // 시크할 때 사이트가 pause -> seek -> play 를 연달아 보내므로, 방금 내린 명령을 "의도한 상태"로 잠깐 기억해 둔다.
   let intent = null; // { paused, until }
@@ -62,7 +57,37 @@ export function createNetflixAdapter() {
 
     // 진단 기록용: 어댑터가 아는 값
     debug() {
-      return { apiPos: apiPos && { sec: +apiPos.sec.toFixed(1), ageMs: Date.now() - apiPos.at }, adOnScreen: lastScan.ad };
+      return { adOnScreen: lastScan.ad };
+    },
+
+    isAd(video) {
+      return base.isAd(video) || adOnScreen();
+    },
+
+    // 이동/재생 명령이 반영될 때까지 걸리는 시간(ms) 뒤에 방 상태(재생/정지)를 다시 확인한다
+    settleMs: 900,
+
+    isPaused(video) {
+      return intent && Date.now() < intent.until ? intent.paused : video.paused;
+    },
+
+    async play(video) {
+      remember(false);
+      if (!(await ask('play')).ok) await video.play();
+    },
+
+    pause(video) {
+      remember(true);
+      ask('pause').then((r) => r.ok || video.pause());
+    },
+
+    // 광고가 지나가면 넷플릭스는 <video> 시간축(과 플레이어 API 의 위치)을 광고 때 시간에 이어서 쓴다.
+    // 실제로는 43:30 인데 0:33 으로 나오는 식이라, main.js 가 광고가 끝날 때 본편 위치(광고 직전 위치)에 맞춰 보정값을 다시 잡는다.
+    shiftsAfterAd: true,
+
+    // 진단 기록용: 어댑터가 아는 값
+    debug() {
+      return { adOnScreen: lastScan.ad };
     },
 
     isAd(video) {
@@ -95,10 +120,7 @@ export function createNetflixAdapter() {
 
     // 이동은 반드시 넷플릭스 API 로. 다리가 없으면 아무것도 하지 않는다(직접 currentTime 을 바꾸면 오류 화면이 뜬다).
     seek(_video, t) {
-      apiPos = { sec: t, at: Date.now() }; // 이동 직후 위치를 바로 반영(다음 조회까지 이전 위치로 판단하지 않도록)
-      ask('seek', t * 1000).then((r) => {
-        if (!r.ok) apiPos = null; // 이동에 실패했으면 낙관적 값을 버린다
-      });
+      ask('seek', t * 1000);
     },
   };
 }
