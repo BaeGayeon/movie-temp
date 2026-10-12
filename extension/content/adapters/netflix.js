@@ -60,6 +60,11 @@ export function createNetflixAdapter() {
     ...base,
     name: 'netflix',
 
+    // 진단 기록용: 어댑터가 아는 값
+    debug() {
+      return { apiPos: apiPos && { sec: +apiPos.sec.toFixed(1), ageMs: Date.now() - apiPos.at }, adOnScreen: lastScan.ad };
+    },
+
     isAd(video) {
       return base.isAd(video) || adOnScreen();
     },
