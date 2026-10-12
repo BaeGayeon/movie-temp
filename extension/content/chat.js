@@ -296,28 +296,12 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     if (fitMode === 'transform') window.addEventListener('scroll', onScrollWhileScaled, { passive: true });
   }
 
-  // "폭만 줄이기"는 영상이 vw 단위로 화면 전체에 깔린 사이트에서는 영상이 줄지 않고 채팅 밑에 깔린다.
-  // 그런 경우에만 자동으로 전체 축소로 바꾼다(저장된 설정은 그대로).
-  let autoScale = false;
-  let fitTimer = null;
-  function checkFit(inset) {
-    clearTimeout(fitTimer);
-    fitTimer = setTimeout(() => {
-      const area = getReactionArea?.();
-      if (!area || !isDock() || prefs.collapsed || prefs.hidden || autoScale || prefs.dockFit !== 'width') return;
-      if (area.left + area.width > window.innerWidth - inset + 8) {
-        autoScale = true;
-        applyPrefs();
-      }
-    }, 500);
-  }
-
   const isDock = () => prefs.mode === 'dock';
   // 창 모드는 버튼 하나로 3단 순환: 떠 있는 창 -> 오른쪽에 붙이기(화면 전체 축소) -> 오른쪽에 붙이기(폭만 줄이기) -> 처음으로
   const modeState = () => (!isDock() ? 'float' : prefs.dockFit === 'scale' ? 'dock-scale' : 'dock-width');
   const MODE_UI = {
-    float: ['❐', '떠 있는 창 · 클릭하면 오른쪽에 붙여요(폭만 줄이기)'],
-    'dock-width': ['◫', '오른쪽에 붙임: 폭만 줄이기 · 클릭하면 화면 전체 축소로'],
+    float: ['❐', '떠 있는 창 · 클릭하면 오른쪽에 붙여요(폭만 줄이기: 화면 크기는 그대로, 페이지 폭만 줄어요)'],
+    'dock-width': ['◫', '오른쪽에 붙임: 폭만 줄이기 · 클릭하면 화면 전체 축소로(영상이 가려지면 이걸 써요)'],
     'dock-scale': ['◨', '오른쪽에 붙임: 화면 전체 축소 · 클릭하면 떠 있는 창으로'],
   };
   const NEXT_MODE = { float: ['dock', 'width'], 'dock-width': ['dock', 'scale'], 'dock-scale': ['float', 'width'] };
@@ -364,9 +348,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
         height: `${prefs.height}px`,
       });
     }
-    if (inset === 0) autoScale = false;
-    setPageInset(built && mount.host?.isConnected ? inset : 0, autoScale ? 'scale' : prefs.dockFit);
-    if (inset > 0 && prefs.dockFit === 'width' && !autoScale) checkFit(inset);
+    setPageInset(built && mount.host?.isConnected ? inset : 0, prefs.dockFit);
     if (!prefs.collapsed && !prefs.hidden) {
       unread = 0;
       renderBadge();
