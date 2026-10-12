@@ -30,6 +30,8 @@ const CSS = `
   .menu[hidden] { display: none; }
   .menu label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
   .menu input[type=range] { flex: 1; accent-color: #4f7cff; }
+  .menu select { flex: 1; font: inherit; color: #fff; background: rgba(255,255,255,.12); border: 0; border-radius: 6px; padding: 3px 4px; }
+  .menu select option { color: #000; }
   .menu .act { background: rgba(255,255,255,.12); border-radius: 8px; padding: 5px 8px; text-align: left; }
   .menu .act:hover { background: rgba(255,255,255,.22); }
 
@@ -89,6 +91,7 @@ const DEFAULT_PREFS = {
   width: 300,
   height: 420,
   dockWidth: 340,
+  dockFit: 'scale', // 붙이기 방식: 'scale' = 화면 전체 축소, 'width' = 폭만 줄이기
   x: null, // 떠 있는 창 위치(null 이면 오른쪽 위)
   y: null,
   showClock: true, // 작성 시각
@@ -138,14 +141,14 @@ async function copyText(text) {
 // getState(): 최신 background 상태. getInviteLink(): 현재 페이지 + ?wp=코드
 // onSend(text) / onTyping(bool) / onReaction(emoji) / onNotify(text)
 export function createChat({ getState, getInviteLink, onSend, onTyping, onReaction, onNotify }) {
-  const mount = createLayer(CSS);
+  const mount = createLayer(CSS, { topLayer: true }); // 페이지 축소(transform)의 영향을 받지 않도록 최상위 레이어에
   let built = false;
   let prefs = { ...DEFAULT_PREFS };
   const messages = []; // { userId, text, sentAt, videoTime, el }
   let unread = 0;
 
   // DOM 참조
-  let wrap, panel, head, list, typingLine, input, bubbleBox, badge, floats, menu, codeChip, opacity, clockCb, videoCb, modeBtn, pop, picker;
+  let wrap, panel, head, list, typingLine, input, bubbleBox, badge, floats, menu, codeChip, opacity, clockCb, videoCb, modeBtn, pop, picker, dockFitSel;
 
   try {
     chrome.storage.local.get('chatPrefs').then((r) => {
@@ -165,18 +168,36 @@ export function createChat({ getState, getInviteLink, onSend, onTyping, onReacti
   };
 
   // ---------- 페이지 분할(오른쪽에 붙이기) ----------
-  // 문서 폭을 줄여서 사이트 콘텐츠가 채팅 옆으로 밀리게 한다. 사이트가 viewport 단위(vw)나 fixed 로 배치한 요소는
-  // 줄어들지 않고 채팅 아래에 깔릴 수 있으니, 그런 사이트에서는 "떠 있는 창"을 쓰면 된다.
-  let savedWidth = null;
-  function setPageInset(px) {
+  // 사이트 화면을 채팅 왼쪽 영역에 맞춘다. 두 가지 방식:
+  //  - 'scale'(기본): <html> 전체를 비율대로 축소(transform). 영상이 vw/fixed 로 화면 전체에 깔린 OTT 사이트에서도
+  //    영상이 함께 작아진다. 대신 화면 아래쪽에 빈 영역이 생기고 글자도 같이 작아진다.
+  //  - 'width': <html> 폭만 줄임. 레이아웃이 반응형인 사이트에서는 자연스럽지만, vw/fixed 요소는 줄어들지 않고 채팅 아래에 깔린다.
+  const FIT_PROPS = ['width', 'transform', 'transform-origin', 'min-height'];
+  let savedStyles = null; // 원래 <html> 인라인 스타일(복구용)
+  function setPageInset(px, fit) {
     const html = document.documentElement;
-    if (px > 0) {
-      if (savedWidth === null) savedWidth = [html.style.getPropertyValue('width'), html.style.getPropertyPriority('width')];
+    if (px <= 0) {
+      if (!savedStyles) return;
+      for (const p of FIT_PROPS) {
+        html.style.removeProperty(p);
+        const [v, prio] = savedStyles[p];
+        if (v) html.style.setProperty(p, v, prio);
+      }
+      savedStyles = null;
+      return;
+    }
+    if (!savedStyles) {
+      savedStyles = {};
+      for (const p of FIT_PROPS) savedStyles[p] = [html.style.getPropertyValue(p), html.style.getPropertyPriority(p)];
+    }
+    for (const p of FIT_PROPS) html.style.removeProperty(p); // 방식을 바꿀 때 이전 흔적 제거
+    if (fit === 'width') {
       html.style.setProperty('width', `calc(100% - ${px}px)`, 'important');
-    } else if (savedWidth !== null) {
-      html.style.removeProperty('width');
-      if (savedWidth[0]) html.style.setProperty('width', savedWidth[0], savedWidth[1]);
-      savedWidth = null;
+    } else {
+      const scale = Math.max(0.3, (window.innerWidth - px) / window.innerWidth);
+      html.style.setProperty('transform', `scale(${scale})`, 'important');
+      html.style.setProperty('transform-origin', '0 0', 'important');
+      html.style.setProperty('min-height', '100vh', 'important'); // fixed 요소 기준 높이를 화면 높이로
     }
   }
 
@@ -218,7 +239,8 @@ export function createChat({ getState, getInviteLink, onSend, onTyping, onReacti
         height: `${prefs.height}px`,
       });
     }
-    setPageInset(built && mount.host?.isConnected ? inset : 0);
+    dockFitSel.value = prefs.dockFit;
+    setPageInset(built && mount.host?.isConnected ? inset : 0, prefs.dockFit);
     if (!prefs.collapsed) {
       unread = 0;
       renderBadge();
@@ -484,7 +506,20 @@ export function createChat({ getState, getInviteLink, onSend, onTyping, onReacti
     copyLink.addEventListener('click', async () => (await copyText(getInviteLink())) && flash(copyLink, '✔ 복사됨!'));
     const copyCode = el('button', 'act', '📋 방 코드 복사');
     copyCode.addEventListener('click', async () => (await copyText(getState()?.roomCode ?? '')) && flash(copyCode, '✔ 복사됨!'));
-    menu.append(opLabel, clockLabel, videoLabel, copyLink, copyCode);
+    const fitLabel = el('label');
+    dockFitSel = el('select');
+    for (const [v, t] of [['scale', '전체 축소'], ['width', '폭만 줄이기']]) {
+      const o = el('option', '', t);
+      o.value = v;
+      dockFitSel.append(o);
+    }
+    dockFitSel.addEventListener('change', () => {
+      prefs.dockFit = dockFitSel.value;
+      applyPrefs();
+      savePrefs();
+    });
+    fitLabel.append(el('span', '', '붙일 때 화면'), dockFitSel);
+    menu.append(opLabel, clockLabel, videoLabel, copyLink, copyCode, fitLabel);
     settingsBtn.addEventListener('click', () => (menu.hidden = !menu.hidden));
 
     list = el('div', 'list');
@@ -602,7 +637,7 @@ export function createChat({ getState, getInviteLink, onSend, onTyping, onReacti
     // 방을 나가거나 방이 사라졌을 때
     hide() {
       if (!built) return;
-      setPageInset(0);
+      setPageInset(0, prefs.dockFit);
       closePicker();
       menu.hidden = true;
       mount.remove();

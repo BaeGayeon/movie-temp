@@ -18,6 +18,7 @@ export const CMD = {
   // background -> popup, content
   STATE: 'state',
   SYNC: 'sync', // 방 상태를 받았으니 영상을 맞춰라
+  SEED: 'seed', // 방을 만든 직후: 서버 초기 상태로 맞추지 말고 내 영상의 현재 상태로 방을 시작하라
   REMOTE_VIDEO: 'remote_video',
   TOAST: 'toast',
   COUNTDOWN: 'countdown',

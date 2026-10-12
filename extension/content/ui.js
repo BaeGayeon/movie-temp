@@ -21,7 +21,10 @@ const CSS = `
 // 전체화면에서는 전체화면 요소 안에 붙여야 보이므로, 전체화면이 바뀔 때마다 부모를 옮긴다.
 // (전체화면 요소가 <video>/<iframe>/<img> 자체이면 자식을 그릴 수 없어 문서 루트에 둔다)
 // 여러 UI(토스트, 채팅)가 각자 shadow DOM 호스트를 만들 수 있도록 공용 헬퍼로 분리했다.
-export function createLayer(css, { passEvents = false } = {}) {
+//
+// topLayer: true 이면 Popover API 로 브라우저 최상위 레이어(top layer)에 올린다. 최상위 레이어 요소는 조상(<html>)에
+// transform(화면 축소)이 걸려 있어도 영향을 받지 않아, "오른쪽에 붙이기"에서 페이지만 줄고 채팅은 그대로 유지된다.
+export function createLayer(css, { passEvents = false, topLayer = false } = {}) {
   let host = null;
   let root = null;
 
@@ -39,7 +42,13 @@ export function createLayer(css, { passEvents = false } = {}) {
       style.textContent = css;
       root.append(style);
     }
-    if (host.parentNode !== parent()) parent().append(host);
+    if (host.parentNode !== parent()) parent().append(host); // 부모를 옮기면 popover 는 닫히므로 아래에서 다시 연다
+    if (topLayer && host.isConnected && typeof host.showPopover === 'function') {
+      try {
+        host.popover = 'manual';
+        if (!host.matches(':popover-open')) host.showPopover();
+      } catch {} // 미지원/이미 열림: 일반 fixed 레이어로 동작
+    }
     return root;
   };
 

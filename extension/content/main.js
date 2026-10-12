@@ -24,7 +24,7 @@
   const chat = isTop
     ? createChat({
         getState: () => state,
-        onSend: (text) => send({ cmd: CMD.CHAT_SEND, text, videoTime: roomTimeNow() }),
+        onSend: (text) => send({ cmd: CMD.CHAT_SEND, text, videoTime: currentVideoTime() }),
         getInviteLink: () => {
           const u = new URL(location.href);
           u.searchParams.set('wp', state?.roomCode ?? '');
@@ -41,8 +41,33 @@
 
   const active = () => !!state?.roomCode;
   const serverNow = () => Date.now() + (state?.serverOffset ?? 0);
-  // 방의 현재 재생 위치(초). 채팅에 "어느 장면에서 쓴 말인지" 붙이는 데 쓴다.
-  // 영상이 다른 프레임에 있어도 되도록 서버 기준 타임라인(마지막 상태 + 경과 시간)으로 계산한다.
+  // 채팅에 "어느 장면에서 쓴 말인지" 붙이는 재생 위치(초).
+  //  1) 이 프레임에 영상이 있으면 실제 재생 위치
+  //  2) 영상이 iframe 안에 있으면 그 프레임이 알려준 위치(1초 간격 postMessage)
+  //  3) 둘 다 없으면 방 타임라인(마지막 재생/정지/시크 이벤트 + 경과 시간)
+  // 방 타임라인만 쓰면, 영상을 이미 재생 중인 상태에서 방에 들어왔을 때 이벤트가 없어 0:00 으로 나온다.
+  const currentVideoTime = () => {
+    if (video) return Math.round(video.currentTime * 10) / 10;
+    if (framePos && Date.now() - framePos.at < 5000) {
+      return Math.round((framePos.t + (framePos.playing ? (Date.now() - framePos.at) / 1000 : 0)) * 10) / 10;
+    }
+    return roomTimeNow();
+  };
+  let framePos = null; // { t, playing, at } — iframe 안 영상이 알려준 위치
+  if (isTop) {
+    window.addEventListener('message', (e) => {
+      const d = e.data;
+      if (e.source !== window && d && d.__bmt === 'pos' && Number.isFinite(d.t) && d.t >= 0) {
+        framePos = { t: d.t, playing: !!d.playing, at: Date.now() };
+      }
+    });
+  } else {
+    setInterval(() => {
+      if (video && active()) window.top.postMessage({ __bmt: 'pos', t: video.currentTime, playing: !video.paused }, '*');
+    }, 1000);
+  }
+
+  // 방의 현재 재생 위치(초) — 서버 기준 타임라인
   const roomTimeNow = () => {
     if (!active()) return undefined;
     const v = state.video;
@@ -284,6 +309,11 @@
       case CMD.SYNC:
         state = m.state;
         applyRoomVideo();
+        break;
+      case CMD.SEED:
+        state = m.state;
+        // 방을 만든 사람: 내 영상이 이미 재생 중이어도 서버의 초기 상태(정지, 0초)로 되돌리지 않고, 내 상태를 방에 알린다
+        if (video) onLocal(video.paused ? 'pause' : 'play');
         break;
       case CMD.REMOTE_VIDEO:
         state = m.state;
