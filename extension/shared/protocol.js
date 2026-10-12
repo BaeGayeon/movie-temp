@@ -160,6 +160,10 @@ const validators = {
   [C2S.BUFFERING]: (m) => {
     if (typeof m.isBuffering !== 'boolean') return null;
     const out = { type: m.type, isBuffering: m.isBuffering };
+    if (m.reason !== undefined) {
+      if (m.reason !== 'ad') return null; // 광고 중이라 모두 기다리는 경우(기본은 버퍼링)
+      out.reason = 'ad';
+    }
     if (m.time !== undefined) {
       if (!isTime(m.time)) return null;
       out.time = m.time;

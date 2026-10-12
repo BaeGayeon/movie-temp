@@ -10,12 +10,14 @@ export class RoomManager {
     graceMs = 10_000,
     emptyTtlMs = 5 * 60_000,
     bufferWaitMs = 15_000, // 버퍼링 대기 상한
+    adWaitMs = 10 * 60_000, // 광고 대기 상한(광고는 길 수 있다)
     resumeDelayMs = 500, // 모두 준비된 뒤 함께 재개하기까지의 여유
     now = () => Date.now(),
   } = {}) {
     this.graceMs = graceMs; // 연결이 끊긴 참가자를 유지하는 시간(재접속 대기)
     this.emptyTtlMs = emptyTtlMs; // 모두 나간 방을 삭제하기까지의 시간
     this.bufferWaitMs = bufferWaitMs;
+    this.adWaitMs = adWaitMs;
     this.resumeDelayMs = resumeDelayMs;
     this.now = now;
     this.rooms = new Map();
@@ -32,7 +34,8 @@ export class RoomManager {
       profiles: new Map(), // userId -> { name, avatar, color } (재입장 시 유지)
       seq: 0,
       emptyTimer: null,
-      waiting: new Set(), // 버퍼링 중인 userId
+      waiting: new Set(), // 버퍼링/광고 중이라 모두가 기다리는 userId
+      adIds: new Set(), // waiting 중 광고를 보고 있는 userId
       autoPaused: false, // 버퍼링 때문에 서버가 멈춘 상태인지
       waitTimer: null,
       lastSyncAt: 0,
@@ -137,8 +140,12 @@ export class RoomManager {
         room.autoPaused = true;
       }
       room.waiting.add(p.id);
-      if (!room.waitTimer) {
-        room.waitTimer = setTimeout(() => this.#giveUpWaiting(room), this.bufferWaitMs);
+      const ad = msg.reason === 'ad';
+      if (ad) room.adIds.add(p.id);
+      // 광고가 끼면 상한을 광고용으로 늘린다(버퍼링용 짧은 타이머가 광고 중에 방을 풀어 버리지 않도록)
+      if (!room.waitTimer || ad) {
+        clearTimeout(room.waitTimer);
+        room.waitTimer = setTimeout(() => this.#giveUpWaiting(room), room.adIds.size ? this.adWaitMs : this.bufferWaitMs);
         room.waitTimer.unref?.();
       }
       this.#broadcast(room, this.#bufferMsg(room));
@@ -243,17 +250,19 @@ export class RoomManager {
   }
 
   #bufferMsg(room) {
-    return { type: S2C.BUFFER_STATE, waitingIds: [...room.waiting], video: { ...room.video } };
+    return { type: S2C.BUFFER_STATE, waitingIds: [...room.waiting], adIds: [...room.adIds], video: { ...room.video } };
   }
 
   #clearWait(room) {
     clearTimeout(room.waitTimer);
     room.waitTimer = null;
     room.waiting.clear();
+    room.adIds.clear();
     room.autoPaused = false;
   }
 
   #dropWaiting(room, id) {
+    room.adIds.delete(id);
     if (!room.waiting.delete(id)) return;
     if (room.waiting.size > 0) {
       this.#broadcast(room, this.#bufferMsg(room));
@@ -266,6 +275,7 @@ export class RoomManager {
     room.waitTimer = null;
     if (room.waiting.size === 0) return;
     room.waiting.clear();
+    room.adIds.clear();
     this.#resume(room);
   }
 
@@ -356,6 +366,7 @@ export class RoomManager {
       participants: [...room.participants.values()].sort((a, b) => a.joinSeq - b.joinSeq).map(pub),
       video: { ...room.video },
       waitingIds: [...room.waiting],
+      adIds: [...room.adIds],
       serverNow: this.now(), // 클라이언트가 경과 시간을 보정하는 데 사용
     };
   }

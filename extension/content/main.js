@@ -67,15 +67,21 @@
   } catch {}
 
   function setAdNotice(on) {
-    if (isTop) ui.showAd(on ? '광고 중이라 같이보기 동기화를 잠시 멈췄어요' : null);
+    if (isTop) ui.showAd(on ? '광고 중이에요. 끝나면 다 같이 이어서 재생해요' : null);
   }
 
+  // 광고: 내 영상은 방과 따로 두고, 방에는 "광고 중이니 기다려 달라"고 알린다(다른 사람 영상도 멈추고, 광고가 끝나면 함께 다시 재생)
+  let adReported = false;
   function evalAd() {
+    // 페이지를 새로고침하거나 영상이 바뀌어 보고가 끊겼는데 서버는 아직 나를 기다리고 있다면 풀어 준다
+    if (video && active() && !inAd && !adReported && !bufferingReported && state.waitingIds?.includes(state.userId)) {
+      send({ cmd: CMD.BUFFERING, isBuffering: false });
+    }
     const next = adDetect && !!video && !!adapter.isAd?.(video);
     if (next === inAd) return;
     inAd = next;
     if (!inAd) adGraceUntil = Date.now() + AD_GRACE_MS;
-    log(inAd ? '광고 구간 시작: 동기화 중지' : '광고 구간 끝: 방 상태에 다시 맞춤');
+    log(inAd ? '광고 구간 시작: 방에 대기 요청' : '광고 구간 끝: 방과 함께 재개');
     clearTimeout(startTimer);
     clearTimeout(bufferTimer);
     setAdNotice(inAd);
@@ -83,8 +89,19 @@
       setRate(1);
       if (bufferingReported) {
         bufferingReported = false;
-        send({ cmd: CMD.BUFFERING, isBuffering: false }); // 광고가 버퍼링으로 방 전체를 멈춰 세우지 않도록
+        send({ cmd: CMD.BUFFERING, isBuffering: false }); // 버퍼링 보고는 광고 보고로 대체
       }
+      if (active() && state.video.playing && !adReported) {
+        adReported = true;
+        send({ cmd: CMD.BUFFERING, isBuffering: true, reason: 'ad' }); // 위치는 보내지 않는다(광고 위치는 의미 없음)
+      }
+    } else if (adReported) {
+      adReported = false;
+      send({ cmd: CMD.BUFFERING, isBuffering: false }); // 모두 준비되면 서버가 같은 시각에 함께 재생시킨다
+      applyRoomVideo(); // 재개 신호가 올 때까지 방 상태(정지)에 맞춰 둔다
+    } else if (active() && video && !video.paused && !state.video.playing && canControl()) {
+      adGraceUntil = 0; // 정지 상태의 방에서 재생을 눌렀더니 광고가 먼저 나온 경우: 광고 뒤 본편 재생을 방에 알린다
+      onLocal('play');
     } else {
       applyRoomVideo(); // 본편으로 돌아왔으니 방 상태(다른 사람의 위치)에 맞춘다
     }
@@ -336,6 +353,10 @@
       inAd = false;
       setAdNotice(false);
     }
+    if (adReported) {
+      adReported = false;
+      send({ cmd: CMD.BUFFERING, isBuffering: false }); // 영상이 사라지면(페이지 이동 등) 기다리지 않도록
+    }
     bufferingReported = false;
     clearTimeout(startTimer);
     ui.hideClickPrompt();
@@ -398,10 +419,13 @@
         state = m.state;
         applyRoomVideo(); // 대기 중이면 멈추고, 모두 준비되면 예약된 시각에 함께 재개
         if (isTop) {
-          const names = state.waitingIds.map((id) =>
-            state.participants.find((p) => p.id === id)?.name ?? '누군가', // 내 이름도 "나" 대신 닉네임으로
+          const nameOf = (id) => state.participants.find((p) => p.id === id)?.name ?? '누군가'; // 내 이름도 "나" 대신 닉네임으로
+          const ads = (state.adIds ?? []).filter((id) => id !== state.userId).map(nameOf);
+          const bufs = state.waitingIds.filter((id) => !(state.adIds ?? []).includes(id)).map(nameOf);
+          const names = [...ads, ...bufs];
+          ui.showWaiting(
+            ads.length ? `${ads.join(', ')} 님이 광고 중이에요. 끝나면 같이 재생해요` : bufs.length ? `${bufs.join(', ')} 님이 버퍼링 중이에요. 기다리는 중…` : null,
           );
-          ui.showWaiting(names.length ? `${names.join(', ')} 님이 버퍼링 중이에요. 기다리는 중…` : null);
           if (!names.length && state.video.playing && state.video.updatedAt > serverNow()) {
             ui.toast('모두 준비됐어요. 곧 함께 재생해요');
           }

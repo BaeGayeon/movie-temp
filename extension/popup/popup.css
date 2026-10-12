@@ -109,9 +109,9 @@ details.card > summary::after { content: ''; margin-left: auto; width: 8px; heig
 details.card[open] > summary::after { transform: translateY(2px) rotate(-135deg); }
 details.card[open] > summary { border-bottom: 2px solid var(--border); }
 .inner { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 8px; }
-.preview { display: flex; align-items: center; gap: 10px; }
+.preview { display: flex; align-items: center; gap: 8px; }
 .preview .av { width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 26px; overflow: hidden; border: 3px solid var(--surface); box-shadow: var(--shadow); }
-#pnamePreview { font-weight: 800; padding: 2px 12px; border-radius: 999px; }
+#pnamePreview { font-weight: 800; }
 #pname { width: 100%; }
 .sub { font-size: 12px; font-weight: 700; color: var(--ink-soft); margin-top: 2px; }
 .grid { display: flex; flex-wrap: wrap; gap: 5px; }

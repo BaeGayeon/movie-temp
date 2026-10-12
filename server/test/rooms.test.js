@@ -617,3 +617,29 @@ test('채팅 재생 시각(videoTime): 선택 필드로 그대로 전달, 잘못
   a.close();
   b.close();
 });
+
+test('광고: 광고 보는 사람이 있으면 방이 멈추고, 광고가 끝나면 함께 재개된다(버퍼링 상한과 무관)', async () => {
+  const { a, code } = await makeRoom();
+  const { c: b } = await joinRoom(code);
+  a.send({ type: 'video', action: 'play', time: 10, sentAt: 1 });
+  await b.next('video');
+  b.send({ type: 'buffering', isBuffering: true, reason: 'ad' });
+  const s1 = await a.next('buffer_state');
+  assert.deepEqual(s1.waitingIds, [b.userId]);
+  assert.deepEqual(s1.adIds, [b.userId]);
+  assert.equal(s1.video.playing, false);
+  await sleep(700); // bufferWaitMs(400) 이후에도 광고 중이면 계속 기다린다
+  b.send({ type: 'buffering', isBuffering: false });
+  const s2 = await a.next('buffer_state');
+  assert.deepEqual(s2.waitingIds, []);
+  assert.equal(s2.video.playing, true);
+  a.close();
+  b.close();
+});
+
+test('광고 reason 검증: ad 외의 값은 거부', async () => {
+  const { a } = await makeRoom();
+  a.send({ type: 'buffering', isBuffering: true, reason: 'x' });
+  await a.none('buffer_state');
+  a.close();
+});
