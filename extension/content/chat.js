@@ -18,7 +18,7 @@ const CSS = `
   /* ---- 패널: 장식 없이 차분하게 ---- */
   .panel { position: absolute; pointer-events: auto; display: flex; flex-direction: column;
     background: var(--bg); border: 1px solid var(--border-2); border-radius: 16px; box-shadow: var(--shadow-lg); overflow: hidden; }
-  .panel.dock { border-radius: 0; border-width: 0 0 0 1px; }
+  .panel.dock { border-radius: 0; border-width: 0; box-shadow: none; }
   .panel[hidden], .dock-bubble[hidden] { display: none; }
   .head { position: relative; display: flex; align-items: center; gap: 4px; padding: 6px 8px 6px 12px; user-select: none; color: var(--head-ink);
     background: var(--surface); border-bottom: 1px solid var(--border); }
@@ -53,14 +53,16 @@ const CSS = `
   .meta { font-weight: 400; color: var(--ink-soft); font-size: 11px; }
   .text { word-break: break-word; white-space: pre-wrap; background: var(--surface-2); border-radius: 4px 12px 12px 12px; padding: 6px 11px; }
   .msg.me .text { background: var(--bubble-me); border-radius: 12px 4px 12px 12px; }
-  /* 줄글 모드: 프사/말풍선 없이 "닉네임 시각  내용" 한 덩어리로 */
-  .list.plain { gap: 3px; }
-  .list.plain .msg, .list.plain .msg.me { display: block; }
-  .list.plain .av { display: none; }
-  .list.plain .body, .list.plain .msg.me .body { display: block; max-width: 100%; }
-  .list.plain .name, .list.plain .msg.me .name { display: inline-flex; flex-direction: row; margin-right: 8px; }
-  .list.plain .text, .list.plain .msg.me .text { display: inline; background: none; padding: 0; border-radius: 0; }
-  .sys { align-self: center; text-align: center; color: var(--ink-soft); font-size: 12px; background: var(--surface); border-radius: 999px; padding: 2px 12px; max-width: 100%; }
+  /* 줄글/간단 모드: 말풍선 없이 왼쪽 정렬. 줄글 = 프사 | 이름·시각 / 내용, 간단 = 이름·시각 / 내용(프사 없음) */
+  .list.plain, .list.compact { gap: 14px; }
+  .list.compact { gap: 10px; }
+  .list.plain .msg, .list.plain .msg.me, .list.compact .msg, .list.compact .msg.me { flex-direction: row; gap: 10px; }
+  .list.compact .av { display: none; }
+  .list.plain .body, .list.plain .msg.me .body, .list.compact .body, .list.compact .msg.me .body { flex: 1; max-width: none; align-items: flex-start; gap: 3px; }
+  .list.plain .name, .list.plain .msg.me .name, .list.compact .name, .list.compact .msg.me .name { flex-direction: row; }
+  .list.plain .text, .list.plain .msg.me .text, .list.compact .text, .list.compact .msg.me .text { background: none; padding: 0; border-radius: 0; }
+  .list.plain .sys, .list.compact .sys { align-self: flex-start; text-align: left; background: none; padding: 0; border-radius: 0; }
+  .sys { align-self: center; text-align: center; color: var(--ink-soft); font-size: 12px; background: var(--surface); border-radius: 12px; padding: 2px 12px; max-width: 100%; }
   .no-events .sys { display: none; }
   .empty { color: var(--ink-soft); text-align: center; padding: 18px 0; font-size: 13px; }
 
@@ -125,13 +127,15 @@ const DEFAULT_PREFS = {
   width: 300,
   height: 420,
   dockWidth: 340,
-  dockFit: 'scale', // 붙이기 방식: 'scale' = 화면 전체 축소, 'width' = 폭만 줄이기
+  dockFit: 'width', // 붙이기 방식: 'width' = 폭만 줄이기(자막 위치가 어긋나지 않음), 'scale' = 화면 전체 축소
   x: null, // 떠 있는 창 위치(null 이면 오른쪽 위)
   y: null,
   showClock: true, // 작성 시각
   showVideoTime: true, // 재생 시각
   showEvents: true, // 재생/일시정지/시간 이동 알림
-  style: 'bubble', // 대화 표시 방식: 'bubble' = 채팅방(말풍선), 'plain' = 줄글
+  style: 'bubble', // 대화 표시 방식: 'bubble' = 말풍선, 'plain' = 줄글(프사 + 이름/내용), 'compact' = 간단(이름/내용)
+  hidden: false, // 채팅을 완전히 숨김(팝업에서 다시 켠다)
+  v: 2,
 };
 const MIN_W = 220;
 const MIN_H = 200;
@@ -190,6 +194,15 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
   try {
     chrome.storage.local.get('chatPrefs').then((r) => {
       prefs = { ...DEFAULT_PREFS, ...(r.chatPrefs ?? {}) };
+      if (!r.chatPrefs?.v) prefs.dockFit = 'width'; // 예전 설정: 전체 축소는 사이트 자막 위치가 어긋나서 기본을 폭 줄이기로
+      prefs.v = 2;
+      if (built) applyPrefs();
+    });
+    // 팝업에서 채팅을 숨기거나 다시 보이게 한 경우
+    chrome.storage.onChanged.addListener((ch, area) => {
+      const next = ch.chatPrefs?.newValue;
+      if (area !== 'local' || !next || next.hidden === prefs.hidden) return;
+      prefs.hidden = !!next.hidden;
       if (built) applyPrefs();
     });
   } catch {}
@@ -261,6 +274,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     const set = (name, value) => html.style.setProperty(name, value, 'important');
     if (fitMode === 'width') {
       set('width', `calc(100% - ${px}px)`);
+      set('transform', 'translate(0, 0)'); // 변환이 있으면 position:fixed 요소도 html 폭을 따라 줄어든다(자막 등 위치 계산도 어긋나지 않음)
     } else if (fitMode === 'zoom') {
       set('zoom', String(scale));
       set('width', `${vw}px`); // zoom 이 곱해져 화면 폭이 (vw - px) 가 된다
@@ -277,11 +291,11 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
   // 창 모드는 버튼 하나로 3단 순환: 떠 있는 창 -> 오른쪽에 붙이기(화면 전체 축소) -> 오른쪽에 붙이기(폭만 줄이기) -> 처음으로
   const modeState = () => (!isDock() ? 'float' : prefs.dockFit === 'width' ? 'dock-width' : 'dock-scale');
   const MODE_UI = {
-    float: ['❐', '떠 있는 창 · 클릭하면 오른쪽에 붙여요(화면 전체 축소)'],
-    'dock-scale': ['◨', '오른쪽에 붙임: 화면 전체 축소 · 클릭하면 폭만 줄이기로'],
-    'dock-width': ['◫', '오른쪽에 붙임: 폭만 줄이기 · 클릭하면 떠 있는 창으로'],
+    float: ['❐', '떠 있는 창 · 클릭하면 오른쪽에 붙여요(폭만 줄이기)'],
+    'dock-width': ['◫', '오른쪽에 붙임: 폭만 줄이기 · 클릭하면 화면 전체 축소로'],
+    'dock-scale': ['◨', '오른쪽에 붙임: 화면 전체 축소 · 클릭하면 떠 있는 창으로'],
   };
-  const NEXT_MODE = { float: ['dock', 'scale'], 'dock-scale': ['dock', 'width'], 'dock-width': ['float', 'scale'] };
+  const NEXT_MODE = { float: ['dock', 'width'], 'dock-width': ['dock', 'scale'], 'dock-scale': ['float', 'scale'] };
 
   function applyPrefs() {
     const vw = window.innerWidth;
@@ -294,9 +308,10 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     eventsCb.checked = prefs.showEvents;
     list.classList.toggle('no-events', !prefs.showEvents);
     list.classList.toggle('plain', prefs.style === 'plain');
+    list.classList.toggle('compact', prefs.style === 'compact');
     for (const b of styleSeg.children) b.classList.toggle('on', b.dataset.style === prefs.style);
-    panel.hidden = prefs.collapsed;
-    bubbleBox.hidden = !prefs.collapsed;
+    panel.hidden = prefs.collapsed || prefs.hidden;
+    bubbleBox.hidden = !prefs.collapsed || prefs.hidden;
     panel.classList.toggle('dock', isDock());
     panel.classList.toggle('free', !isDock()); // (리액션 애니메이션 클래스 .float 와 이름이 겹치면 안 된다)
     const [icon, tip] = MODE_UI[modeState()];
@@ -308,7 +323,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
       prefs.dockWidth = clamp(prefs.dockWidth, MIN_W, Math.min(600, vw - 200));
       Object.assign(panel.style, { left: 'auto', right: '0', top: '0', width: `${prefs.dockWidth}px`, height: '100%' });
       // 전체화면에서는 페이지를 줄일 수 없으니 영상 위에 겹쳐서 보여준다
-      if (!prefs.collapsed && !document.fullscreenElement) inset = prefs.dockWidth;
+      if (!prefs.collapsed && !prefs.hidden && !document.fullscreenElement) inset = prefs.dockWidth;
     } else {
       prefs.width = clamp(prefs.width, MIN_W, Math.max(MIN_W, vw - 2 * EDGE));
       prefs.height = clamp(prefs.height, MIN_H, Math.max(MIN_H, vh - 2 * EDGE));
@@ -325,7 +340,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
       });
     }
     setPageInset(built && mount.host?.isConnected ? inset : 0, prefs.dockFit);
-    if (!prefs.collapsed) {
+    if (!prefs.collapsed && !prefs.hidden) {
       unread = 0;
       renderBadge();
     }
@@ -676,7 +691,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     [videoLabel, videoCb] = checkbox('재생 시각 표시 (▶ 영상 위치)', 'showVideoTime');
     [eventsLabel, eventsCb] = checkbox('재생·이동·입퇴장 알림 표시', 'showEvents');
     styleSeg = el('div', 'seg');
-    for (const [k, t] of [['bubble', '말풍선'], ['plain', '줄글']]) {
+    for (const [k, t] of [['bubble', '말풍선'], ['plain', '줄글'], ['compact', '간단']]) {
       const b = el('button', '', t);
       b.dataset.style = k;
       b.addEventListener('click', () => {
@@ -691,7 +706,14 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     copyLink.addEventListener('click', async () => (await copyText(getInviteLink())) && flash(copyLink, '✔ 복사됨!'));
     const copyCode = el('button', 'act', '📋 방 코드 복사');
     copyCode.addEventListener('click', async () => (await copyText(getState()?.roomCode ?? '')) && flash(copyCode, '✔ 복사됨!'));
-    menu.append(opLabel, styleSeg, clockLabel, videoLabel, eventsLabel, copyLink, copyCode);
+    const hideBtn = el('button', 'act', '🙈 채팅 숨기기');
+    hideBtn.addEventListener('click', () => {
+      prefs.hidden = true;
+      menu.hidden = true;
+      applyPrefs();
+      savePrefs();
+    });
+    menu.append(opLabel, styleSeg, clockLabel, videoLabel, eventsLabel, copyLink, copyCode, hideBtn);
     settingsBtn.addEventListener('click', () => (menu.hidden = !menu.hidden));
 
     list = el('div', 'list');
@@ -830,7 +852,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
         // 알림 줄: 안 읽은 수에는 포함하지 않는다. 입퇴장만 채팅이 접혀 있을 때 토스트로 알려 준다.
         renderEvent(m);
         scrollToBottom(false);
-        if (prefs.collapsed && prefs.showEvents && (m.action === 'join' || m.action === 'leave')) onNotify(eventText(m));
+        if ((prefs.collapsed || prefs.hidden) && prefs.showEvents && (m.action === 'join' || m.action === 'leave')) onNotify(eventText(m));
         return;
       }
       const mine = m.userId === getState()?.userId;
@@ -840,7 +862,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
       clearTimeout(typingTimers.get(m.userId));
       typingTimers.delete(m.userId);
       renderTyping();
-      if (prefs.collapsed && !mine) {
+      if ((prefs.collapsed || prefs.hidden) && !mine) {
         unread++;
         renderBadge();
         const t = m.text.length > 40 ? `${m.text.slice(0, 40)}…` : m.text;
@@ -875,7 +897,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
       let a = getReactionArea?.();
       if (!a || a.width < 80 || a.height < 60) {
         // 영상 위치를 모를 때(iframe 안 영상 등): 채팅에 가려지지 않는 화면 영역 전체
-        const docked = isDock() && !prefs.collapsed && !document.fullscreenElement;
+        const docked = isDock() && !prefs.collapsed && !prefs.hidden && !document.fullscreenElement;
         a = { left: 0, top: 0, width: docked ? vw - prefs.dockWidth : vw, height: vh };
       }
       const left = Math.max(0, a.left);
