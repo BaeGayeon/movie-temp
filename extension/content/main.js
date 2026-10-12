@@ -276,9 +276,10 @@
 
   // ---------- 싱크 자동 보정 ----------
   // 기준 위치(서버의 마지막 상태 + 경과 시간)와 내 위치의 차이로 보정한다.
-  //  - 차이 작음(0.3초 미만): 그대로
-  //  - 0.3~2초: playbackRate 를 0.95~1.05 범위에서 미세 조정
-  //  - 2초 초과: 시크
+  // 시크 직후에는 따라가는 쪽이 로딩 때문에 조금(0.2~1초) 늦게 시작하므로 작은 차이도 빨리 줄인다.
+  //  - 차이 작음(0.12초 미만; 보정 중에는 0.05초 미만이 될 때까지): 그대로
+  //  - ~1.5초: playbackRate 를 최대 ±8% 범위에서 미세 조정(차이가 클수록 세게)
+  //  - 1.5초 초과: 시크
   // 방장은 기준점 자체이므로 보정하지 않는다.
   function correctDrift() {
     if (!video || !active() || inAd || video.paused || state.hostId === state.userId) return setRate(1);
@@ -288,15 +289,16 @@
     const expected = v.time + (now - v.updatedAt) / 1000;
     const diff = video.currentTime - expected; // 양수: 내가 앞서 있음
     const abs = Math.abs(diff);
-    if (abs < 0.3) setRate(1);
-    else if (abs <= 2) {
-      const d = Math.min(0.05, Math.max(0.02, abs / 10));
+    if (abs < (video.playbackRate !== 1 ? 0.05 : 0.12)) setRate(1);
+    else if (abs <= 1.5) {
+      const d = Math.min(0.08, Math.max(0.03, abs / 6));
       setRate(diff > 0 ? 1 - d : 1 + d);
     } else {
       setRate(1);
       seekTo(expected);
     }
   }
+  setInterval(correctDrift, 1000); // 네트워크 없이 로컬 계산만이라 자주 돌려도 된다(위치 보고는 아래 5초 주기)
 
   function reportAndCorrect() {
     if (!video || !active() || inAd) return;
