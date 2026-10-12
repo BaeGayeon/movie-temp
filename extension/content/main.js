@@ -20,6 +20,8 @@
   const AD_EVENTS = ['durationchange', 'loadedmetadata', 'emptied']; // 같은 <video> 에서 광고 <-> 본편이 바뀌는 신호
 
   const isTop = window === window.top;
+  // 재생 위치(초): 어댑터가 더 정확한 값을 줄 수 있으면(넷플릭스 플레이어 API) 그 값을, 아니면 <video>.currentTime
+  const pos = () => (adapter.position ? adapter.position(video) : video.currentTime);
   const log = (...a) => console.log('[bmt]', isTop ? 'top' : 'iframe', ...a); // 진단용 로그
   // 호스트별 어댑터: 넷플릭스는 <video> 를 직접 조작하면 오류(M7375)가 나서 전용 어댑터를 쓴다
   const adapter = /(^|\.)netflix\.com$/.test(location.hostname) ? createNetflixAdapter() : createDefaultAdapter();
@@ -138,7 +140,7 @@
   // 방 타임라인만 쓰면, 영상을 이미 재생 중인 상태에서 방에 들어왔을 때 이벤트가 없어 0:00 으로 나온다.
   const currentVideoTime = () => {
     if (inAd) return undefined; // 광고 중의 위치는 장면 정보로 의미가 없다
-    if (video) return Math.round(video.currentTime * 10) / 10;
+    if (video) return Math.round(pos() * 10) / 10;
     if (framePos && Date.now() - framePos.at < 5000) {
       if (framePos.ad) return undefined;
       return Math.round((framePos.t + (framePos.playing ? (Date.now() - framePos.at) / 1000 : 0)) * 10) / 10;
@@ -161,7 +163,7 @@
       if (video) window.top.postMessage({ __bmt: 'vid' }, '*');
     }, 1500);
     setInterval(() => {
-      if (video && active()) window.top.postMessage({ __bmt: 'pos', t: video.currentTime, playing: !video.paused, ad: inAd }, '*');
+      if (video && active()) window.top.postMessage({ __bmt: 'pos', t: pos(), playing: !video.paused, ad: inAd }, '*');
     }, 1000);
   }
 
@@ -191,7 +193,7 @@
   // ---------- 원격 상태 적용 ----------
   let settleTimer = null;
   function seekTo(t) {
-    if (!video || Math.abs(video.currentTime - t) < SEEK_THRESHOLD) return;
+    if (!video || Math.abs(pos() - t) < SEEK_THRESHOLD) return;
     expect('seeked');
     adapter.seek(video, t);
     if (adapter.settleMs) {
@@ -287,7 +289,7 @@
     const now = serverNow();
     if (!v.playing || v.updatedAt > now) return setRate(1);
     const expected = v.time + (now - v.updatedAt) / 1000;
-    const diff = video.currentTime - expected; // 양수: 내가 앞서 있음
+    const diff = pos() - expected; // 양수: 내가 앞서 있음
     const abs = Math.abs(diff);
     if (abs < (video.playbackRate !== 1 ? 0.05 : 0.12)) setRate(1);
     else if (abs <= 1.5) {
@@ -303,7 +305,7 @@
   function reportAndCorrect() {
     if (!video || !active() || inAd) return;
     if (!video.paused && !suspiciousJump()) {
-      send({ cmd: CMD.SYNC_REPORT, time: video.currentTime, playing: true, sentAt: Date.now() });
+      send({ cmd: CMD.SYNC_REPORT, time: pos(), playing: true, sentAt: Date.now() });
     }
     correctDrift();
     if (bufferingReported && video.readyState >= 3) onReady(); // 버퍼링 해소 이벤트를 놓친 경우 대비
@@ -321,7 +323,7 @@
       if (video && active() && !video.paused && video.readyState < 3) {
         bufferingReported = true;
         log('버퍼링 시작 보고');
-        send({ cmd: CMD.BUFFERING, isBuffering: true, time: video.currentTime });
+        send({ cmd: CMD.BUFFERING, isBuffering: true, time: pos() });
       }
     }, BUFFER_DEBOUNCE_MS);
   }
@@ -342,10 +344,10 @@
   let lastStableTime = 0;
   setInterval(() => {
     if (!video || inAd || Number.isNaN(video.duration)) return;
-    const t = video.currentTime;
+    const t = pos();
     if (!(t < 5 && lastStableTime - t > 30)) lastStableTime = t; // 갑자기 크게 되감긴 값은 기준으로 삼지 않는다
   }, 500);
-  const suspiciousJump = () => !!video && video.currentTime < 5 && lastStableTime - video.currentTime > 30;
+  const suspiciousJump = () => !!video && pos() < 5 && lastStableTime - pos() > 30;
   let holdUntil = 0;
   const HOLD_MS = 3000;
 
@@ -364,7 +366,7 @@
         }
         if (Date.now() < holdUntil) return;
         clearInterval(poll);
-        lastStableTime = video.currentTime; // 끝까지 광고가 아니면 진짜로 처음으로 돌아간 것이니 그대로 방에 알린다
+        lastStableTime = pos(); // 끝까지 광고가 아니면 진짜로 처음으로 돌아간 것이니 그대로 방에 알린다
         onLocal('seek', silent, true);
         onLocal(video.paused ? 'pause' : 'play', silent, true);
       }, 300);
@@ -382,14 +384,14 @@
       applyRoomVideo();
       return;
     }
-    log('local', action, '전송', video.currentTime.toFixed(1));
+    log('local', action, '전송', pos().toFixed(1));
     // background 는 자기 쪽 미러만 갱신하므로, 내 조작도 여기 상태에 반영해 둔다(채팅의 재생 시각, 싱크 보정 기준)
     state.video = {
       playing: action === 'seek' ? state.video.playing : action === 'play',
-      time: video.currentTime,
+      time: pos(),
       updatedAt: serverNow(),
     };
-    send({ cmd: CMD.VIDEO_EVENT, action, time: video.currentTime, sentAt: Date.now(), silent });
+    send({ cmd: CMD.VIDEO_EVENT, action, time: pos(), sentAt: Date.now(), silent });
   }
 
   const onPlay = () => !consume('play') && onLocal('play');
