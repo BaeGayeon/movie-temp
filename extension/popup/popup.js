@@ -88,6 +88,13 @@ $('copy').addEventListener('click', async () => {
   setTimeout(() => ($('copy').textContent = '초대 링크 복사'), 1500);
 });
 
+// ---------- 동기화 설정: 광고 구간 제외 ----------
+chrome.storage.local.get('syncPrefs').then((r) => ($('adDetect').checked = r.syncPrefs?.adDetect !== false));
+$('adDetect').addEventListener('change', async (e) => {
+  const { syncPrefs } = await chrome.storage.local.get('syncPrefs');
+  await chrome.storage.local.set({ syncPrefs: { ...syncPrefs, adDetect: e.target.checked } });
+});
+
 // ---------- 프로필 (이름, 이모지 프사 + 배경색, 채팅 색) ----------
 const AVATARS = ['🙂', '😎', '🤓', '🥳', '😺', '🐶', '🐻', '🐼', '🦊', '🐸', '🐧', '🦄'];
 let profile = { name: '', avatar: { kind: 'emoji', value: AVATARS[0], bg: COLOR_PALETTE[5] }, color: COLOR_PALETTE[3] };

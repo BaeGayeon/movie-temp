@@ -13,6 +13,8 @@ const CSS = `
   .count { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
     font-size: 160px; font-weight: 800; color: #fff; text-shadow: 0 4px 24px rgba(0,0,0,.7); }
   .count.go { font-size: 90px; }
+  .ad { position: absolute; bottom: 140px; left: 50%; transform: translateX(-50%); background: rgba(80,60,0,.92); color: #ffe9a8;
+    padding: 8px 16px; border-radius: 20px; box-shadow: 0 2px 8px rgba(0,0,0,.4); }
   .waiting { position: absolute; bottom: 90px; left: 50%; transform: translateX(-50%); background: rgba(20,20,24,.92);
     color: #fff; padding: 8px 16px; border-radius: 20px; box-shadow: 0 2px 8px rgba(0,0,0,.4); }
   .click { position: absolute; pointer-events: auto; transform: translate(-50%, -50%); font-size: 16px; padding: 12px 20px; }
@@ -86,6 +88,7 @@ export function createUI() {
   let countEl = null;
   let countTimer = null;
   let waitEl = null;
+  let adEl = null;
 
   return {
     toast(text, ms = 3000) {
@@ -167,6 +170,22 @@ export function createUI() {
       countTimer = null;
       countEl?.remove();
       countEl = null;
+    },
+
+    // 광고 구간 표시(동기화가 멈춰 있음). text 가 없으면 숨김
+    showAd(text) {
+      if (!text) {
+        adEl?.remove();
+        adEl = null;
+        return;
+      }
+      ensure();
+      if (!adEl) {
+        adEl = document.createElement('div');
+        adEl.className = 'ad';
+        layer.append(adEl);
+      }
+      adEl.textContent = text;
     },
 
     // 버퍼링 대기 표시. text 가 없으면 숨김
