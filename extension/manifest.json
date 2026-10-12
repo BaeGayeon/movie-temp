@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "bae-movie-temp",
+  "version": "0.1.0",
+  "description": "영상 같이보기: 각자 계정으로 재생하고 재생 상태만 동기화합니다.",
+  "permissions": ["storage", "alarms", "activeTab"],
+  "background": { "service_worker": "background.js", "type": "module" },
+  "action": { "default_popup": "popup/popup.html" },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*", "file:///*"],
+      "js": ["content/main.js"],
+      "all_frames": true,
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["shared/*.js", "content/*.js", "content/adapters/*.js"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>같이보기</title>
+  <style>
+    body { width: 300px; margin: 0; padding: 14px; font: 14px/1.4 system-ui, -apple-system, "Malgun Gothic", sans-serif; color: #222; }
+    h1 { font-size: 15px; margin: 0 0 10px; }
+    button { font: inherit; cursor: pointer; border: 0; border-radius: 6px; padding: 7px 12px; background: #4f7cff; color: #fff; }
+    button.sub { background: #e4e7ee; color: #222; }
+    button:disabled { opacity: .5; cursor: default; }
+    input, select { font: inherit; padding: 6px 8px; border: 1px solid #c9ced8; border-radius: 6px; }
+    input { width: 110px; text-transform: uppercase; letter-spacing: 2px; }
+    .row { display: flex; gap: 8px; align-items: center; margin: 8px 0; }
+    .code { font-size: 26px; font-weight: 700; letter-spacing: 4px; }
+    .muted { color: #777; font-size: 12px; }
+    .error { color: #c62828; font-size: 13px; margin-top: 8px; }
+    ul { list-style: none; padding: 0; margin: 6px 0; }
+    li { padding: 3px 0; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <h1 id="title"></h1>
+
+  <section id="lobby" hidden>
+    <div class="row"><button id="create">방 만들기</button></div>
+    <div class="row">
+      <input id="code" maxlength="6" placeholder="방 코드" autocomplete="off">
+      <button id="join" class="sub">참가</button>
+    </div>
+    <div class="muted">영상이 있는 탭에서 열어주세요.</div>
+  </section>
+
+  <section id="room" hidden>
+    <div class="muted">방 코드 · <span id="conn"></span></div>
+    <div class="code" id="roomCode"></div>
+    <div class="row">
+      <button id="copy">초대 링크 복사</button>
+      <button id="leave" class="sub">나가기</button>
+    </div>
+    <div class="row" id="modeRow">
+      <label for="mode">조작</label>
+      <select id="mode">
+        <option value="everyone">모두 조작</option>
+        <option value="host_only">방장만 조작</option>
+      </select>
+    </div>
+    <div class="muted" id="modeInfo" hidden></div>
+    <div class="muted">참가자 <span id="count"></span></div>
+    <ul id="people"></ul>
+  </section>
+
+  <div class="error" id="error"></div>
+  <script type="module" src="popup.js"></script>
+</body>
+</html>

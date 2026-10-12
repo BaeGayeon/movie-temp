@@ -1,0 +1,191 @@
+# 영상 같이보기 크롬 확장 프로그램 SPEC
+
+임시 프로젝트명: `bae-movie-temp` (나중에 변경 예정). 앱 이름은 `extension/config.js`의 `APP_NAME` 상수 한 곳과 `manifest.json`의 `name`으로만 관리한다. 코드 곳곳에 이름을 하드코딩하지 않는다.
+
+## 1. 배경과 목표
+
+티빙, 웨이브, 쿠팡플레이, 넷플릭스에서 여러 명이 같이 영상을 볼 수 있는 크롬 확장 프로그램을 만든다. 공개 배포(크롬 웹스토어)까지 고려한다.
+
+- 영상 자체는 각자 자기 계정으로 재생한다. 재생/일시정지/시크 같은 "상태"만 동기화한다.
+- 화면 공유, 영상 스트리밍, 포인터 공유는 하지 않는다.
+- 이번 대상은 OTT 영상 같이보기다. 일반 웹사이트 공동 탐색은 범위 밖이다.
+
+## 2. 기술 스택
+
+- 확장 프로그램: Chrome Extension Manifest V3, 순수 JavaScript(빌드 도구 없이 시작), ES modules
+- 서버: Node.js + `ws` (WebSocket). 방 상태는 메모리에 보관(DB 없음)
+- 서버 배포는 Render/Fly.io 예정: `PORT` 환경변수 사용, `GET /health` 엔드포인트 제공
+- 서버 주소는 `extension/config.js` 한 곳에서 관리(개발용 `ws://localhost:8080`)
+
+## 3. 폴더 구조
+
+```
+watchparty/                (이 저장소 루트)
+├─ SPEC.md
+├─ CLAUDE.md             # SPEC.md를 읽으라는 안내와 현재 진행 단계 기록
+├─ server/
+│  ├─ package.json
+│  ├─ test/              # WebSocket 클라이언트 2개로 검증하는 테스트 스크립트
+│  └─ src/
+│     ├─ index.js        # HTTP + WebSocket 서버 시작
+│     ├─ rooms.js        # 방 상태 관리(생성/참가/퇴장/방장 위임/삭제)
+│     └─ protocol.js     # 메시지 타입 상수와 검증
+└─ extension/
+   ├─ manifest.json
+   ├─ config.js          # APP_NAME, SERVER_URL
+   ├─ background.js      # 서비스 워커: 연결/방 상태 보관, 탭과 popup 중계
+   ├─ content/
+   │  ├─ main.js         # <video> 탐지, 이벤트 감지, 원격 이벤트 적용
+   │  ├─ ui.js           # 토스트, 참가자 목록, 채팅 사이드바(3단계)
+   │  └─ adapters/
+   │     ├─ default.js   # 표준 <video> 어댑터
+   │     ├─ tving.js     # (4단계)
+   │     ├─ wavve.js     # (4단계)
+   │     └─ coupangplay.js # (4단계)
+   ├─ popup/
+   │  ├─ popup.html
+   │  └─ popup.js
+   └─ shared/
+      └─ protocol.js     # 서버와 동일한 메시지 타입 상수
+```
+
+## 4. 로드맵
+
+### 1단계: 뼈대 + 영상 동기화 (가장 위험한 부분이라 먼저)
+
+1. 방 만들기/참가: popup에서 방 만들기 시 서버가 6자리 영숫자 방 코드를 발급. 코드 입력으로 참가.
+2. 초대 링크: 현재 영상 페이지 URL에 `?wp=ROOMCODE`를 붙인 링크 복사. 링크로 접속하면 content script가 코드를 읽어 자동 참가를 제안.
+3. 영상 동기화: `<video>`의 `play`/`pause`/`seeked` 이벤트를 감지해 서버로 전송(현재 재생 시간 + 보낸 시각 포함). 서버가 같은 방에 중계. 받는 쪽은 적용하되, 재생 시간 차이가 0.5초 미만이면 시크하지 않는다.
+   - 무한 루프 방지: 원격에서 온 동작으로 발생한 이벤트는 다시 보내지 않는다(플래그). 필수.
+   - `MutationObserver`로 `<video>` 생성/교체 감시, 교체 시 이벤트 재연결.
+   - `all_frames: true`로 iframe 안의 `<video>`도 처리.
+   - `video.play()`가 자동재생 정책으로 거부되면 "재생하려면 클릭하세요" 안내 표시.
+4. 방장 권한: 방을 만든 사람이 방장. "방장만 조작"/"모두 조작" 모드 전환. 서버가 강제(방장 전용 모드에서 타인의 video 이벤트 무시). 방장이 나가면 가장 먼저 들어온 사람에게 자동 위임.
+5. 참가자 목록, 입장/퇴장 알림: 서버가 목록 관리 후 브로드캐스트. 임시 이름 `게스트1234`. 입장/퇴장은 토스트로 표시.
+6. 늦게 입장 시 위치 맞추기: 서버가 마지막 영상 상태(재생 여부, 재생 시간, 갱신 시각)를 저장. 새 참가자에게 전달하고, 재생 중이면 경과 시간을 보정해 시크.
+7. 재접속 처리: WebSocket 끊김 시 지수 백오프로 자동 재연결, 이전 방과 userId로 복귀. userId는 `chrome.storage.local`에 저장. 새로고침해도 같은 방에 자동 복귀.
+
+### 2단계: 같이 보는 경험 완성
+
+1. 카운트다운 시작: 방장이 "3, 2, 1, 재생"을 시작. 서버가 `startAt`(서버 기준 시각)을 정해 브로드캐스트하고, 각 클라이언트는 서버와의 시계 오차를 보정해 같은 순간에 재생.
+2. 버퍼링 대기: 한 명이 버퍼링 중이면 나머지는 자동 일시정지하고 대기. 모두 준비되면 함께 재개. 누가 기다리는 중인지 표시. 대기 시간 상한(예: 15초)을 두어 무한 대기를 막는다.
+3. 싱크 자동 보정: 재생 중 주기적(예: 5초)으로 위치를 서버에 보고. 차이가 작으면(예: 0.5~2초) `playbackRate`를 미세 조정(0.95~1.05)해서 부드럽게 맞추고, 크면(예: 2초 초과) 시크.
+
+### 3단계: 채팅 + 프로필
+
+1. 채팅 사이드바: 접기, 투명도 조절, 크기 조절. 전체화면에서도 보이게 처리(전체화면 요소 안에 삽입하는 방식 검토).
+2. 프로필: 이름, 프사, 채팅 색. 프사는 이모지 + 배경색부터. 프로필은 `chrome.storage.local`에 저장하고 입장 시 서버에 등록, 변경 시 방 전체에 전파. 채팅 메시지에는 userId만 붙인다.
+3. 채팅 알림: 사이드바가 접힌 상태에서 새 메시지 오면 배지/토스트.
+4. 입력 중 표시: "OO님이 입력 중..." (디바운스, 3초 후 자동 해제).
+5. 이모지 리액션: ❤️😂😱 등을 영상 위에 잠깐 띄움. 서버에서 도배 방지(사용자당 초당 횟수 제한).
+
+### 4단계: 마무리
+
+1. 이미지 프사: 업로드 이미지를 클라이언트에서 64x64로 줄여 base64(WebP/JPEG)로 변환해 프로필에 포함. 크기 상한(예: 20KB) 검증은 서버에서도 수행.
+2. 방 비밀번호, 인원 제한: 방 생성 시 선택. 비밀번호는 서버 메모리에 해시로만 보관. 방 코드 무작위 대입 방지를 위해 IP/연결당 참가 시도 횟수 제한.
+3. 사이트별 어댑터: 티빙, 웨이브, 쿠팡플레이 전용 어댑터 추가(기본 어댑터로 안 되는 부분만).
+4. 배포 준비: `matches`를 지원 사이트로 최소화, 개인정보처리방침 페이지, 스토어 등록용 문구.
+
+## 5. 메시지 프로토콜 (JSON)
+
+모든 메시지 타입은 `protocol.js`에 상수로 정의한다. 서버는 수신 메시지의 형식과 크기를 검증하고, 잘못된 메시지는 무시하되 연결은 유지한다. 1단계에서는 1단계 메시지만 구현하고, 나머지는 확장 가능하도록 구조만 잡는다.
+
+### 클라이언트 → 서버
+
+```
+// 1단계
+{ type: "create_room", userId }
+{ type: "join_room", roomCode, userId }
+{ type: "leave_room" }
+{ type: "video", action: "play" | "pause" | "seek", time, sentAt }
+{ type: "set_permission", mode: "host_only" | "everyone" }
+{ type: "ping" }
+
+// 2단계
+{ type: "countdown_start", seconds }                 // 방장
+{ type: "buffering", isBuffering }
+{ type: "sync_report", time, playing, sentAt }
+
+// 3단계
+{ type: "profile_update", profile: { name, avatar: { kind: "emoji", value, bg }, color } }
+{ type: "chat", text }
+{ type: "typing", isTyping }
+{ type: "reaction", emoji }
+
+// 4단계
+{ type: "set_room_options", password?, maxParticipants? }
+{ type: "join_room", roomCode, userId, password? }   // 비밀번호 포함
+// avatar.kind: "image"는 value에 base64 데이터 URL
+```
+
+### 서버 → 클라이언트
+
+```
+// 1단계
+{ type: "room_created", roomCode, hostId }
+{ type: "room_state", roomCode, hostId, mode, participants: [{ id, name }], video: { playing, time, updatedAt } }
+{ type: "participant_joined", user }
+{ type: "participant_left", user }
+{ type: "video", action, time, sentAt, fromId }
+{ type: "host_changed", hostId }
+{ type: "error", code, message }
+{ type: "pong" }
+
+// 2단계
+{ type: "countdown", startAt, time }                 // startAt은 서버 기준 시각
+{ type: "buffer_state", waitingIds: [] }
+{ type: "server_time", serverNow }                   // 시계 오차 보정용
+
+// 3단계
+{ type: "profile_updated", user }
+{ type: "chat", userId, text, sentAt }
+{ type: "typing", userId, isTyping }
+{ type: "reaction", userId, emoji }
+```
+
+## 6. 중요한 기술 주의사항
+
+- MV3 서비스 워커는 유휴 시 종료된다. WebSocket 연결 유지를 위해 20초마다 `ping`을 보내고, 워커 재시작 시 `chrome.storage`에서 방 정보를 복구해 재연결한다. 서비스 워커에서 연결할지 offscreen document를 쓸지 선택하고, 그 이유를 README에 적는다.
+- 어댑터 인터페이스: `findVideo()`, `play()`, `pause()`, `seek(t)`를 `content/adapters/default.js`에 분리한다. 티빙 등에서 `currentTime` 설정이 막히거나 이벤트가 중복될 때 전용 어댑터만 추가하면 되게 한다.
+- 방 삭제: 모두 나가면 5분 후 삭제.
+- 보안: 채팅 텍스트는 `textContent`로만 렌더링(XSS 방지). 메시지 크기 상한, 사용자당 메시지 빈도 제한을 둔다.
+- 권한 최소화: 개발 중에는 넓게 열어두되, 4단계에서 `matches`를 지원 사이트로 줄인다.
+- 티빙/웨이브/쿠팡플레이, 넷플릭스 등 기존 서비스명을 앱 이름에 사용하지 않는다.
+
+## 7. 작업 방식
+
+- 단계별로 구현하고, 각 단계의 완료 기준을 확인한 뒤 멈추고 보고한다. 사용자가 "다음 단계 진행"이라고 하기 전에는 다음 단계를 구현하지 않는다.
+- 단계 안에서도 서버 → 확장 프로그램 뼈대 → 핵심 기능 → 나머지 순서로 진행하며 동작을 확인한다.
+- 서버는 두 개의 WebSocket 클라이언트로 방 생성/참가/중계를 검증하는 테스트 스크립트를 함께 만든다.
+- 설계에 문제가 있거나 불명확한 부분은 코드를 짜기 전에 짧게 질문한다.
+- 각 단계가 끝나면 `CLAUDE.md`의 "현재 진행 단계"를 갱신한다.
+- README에는 서버 실행, 크롬에 확장 프로그램 로드(개발자 모드), 두 개의 크롬 프로필로 테스트하는 방법을 적는다.
+
+## 8. 단계별 완료 기준
+
+### 1단계
+
+- 크롬 프로필 두 개에서 확장 프로그램을 로드하고, 한쪽이 방을 만들어 다른 쪽이 초대 링크로 참가할 수 있다.
+- 한쪽이 재생/일시정지/시크하면 다른 쪽에 반영되고 무한 루프가 없다.
+- "방장만 조작" 모드에서 방장이 아닌 사람의 조작은 반영되지 않는다.
+- 중간에 입장한 사람이 현재 재생 위치로 맞춰진다.
+- 새로고침이나 네트워크 끊김 후 자동으로 방에 복귀한다.
+- 먼저 `<video>`가 있는 일반 페이지(mp4 직접 열기)에서 확인하고, 이후 티빙에서 테스트한다.
+
+### 2단계
+
+- 방장이 카운트다운을 시작하면 모든 참가자가 눈에 띄는 어긋남 없이 동시에 재생된다.
+- 한 명이 버퍼링하면 나머지가 대기하고, 해소되면 함께 재개된다. 대기 상한이 동작한다.
+- 재생 중 어긋난 위치가 자동으로 보정된다.
+
+### 3단계
+
+- 채팅을 주고받을 수 있고, 사이드바 접기/투명도 조절/전체화면 표시가 동작한다.
+- 이름, 이모지 프사, 채팅 색이 모든 참가자에게 올바르게 보인다.
+- 알림 배지, 입력 중 표시, 이모지 리액션이 동작하고 도배가 제한된다.
+
+### 4단계
+
+- 이미지 프사가 업로드되어 모든 참가자에게 보인다.
+- 비밀번호가 틀리면 입장할 수 없고, 인원 제한이 동작한다.
+- 웨이브, 쿠팡플레이에서 기본 시나리오(재생/일시정지/시크 동기화)가 동작한다.
