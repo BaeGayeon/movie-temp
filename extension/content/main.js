@@ -69,7 +69,7 @@
   } catch {}
 
   function setAdNotice(on) {
-    if (isTop) ui.showAd(on ? '광고 중이에요. 끝나면 다 같이 이어서 재생해요' : null);
+    if (isTop) ui.showAd(on ? '광고 시청 중이에요. 끝나면 다 같이 이어서 재생해요' : null);
   }
 
   // 광고: 내 영상은 방과 따로 두고, 방에는 "광고 중이니 기다려 달라"고 알린다(다른 사람 영상도 멈추고, 광고가 끝나면 함께 다시 재생)
@@ -492,7 +492,7 @@
           const bufs = state.waitingIds.filter((id) => !(state.adIds ?? []).includes(id)).map(nameOf);
           const names = [...ads, ...bufs];
           ui.showWaiting(
-            ads.length ? `${ads.join(', ')} 님이 광고 중이에요. 끝나면 같이 재생해요` : bufs.length ? `${bufs.join(', ')} 님이 버퍼링 중이에요. 기다리는 중…` : null,
+            ads.length ? `${ads.join(', ')} 님이 광고 시청 중이에요. 끝나면 같이 재생해요` : bufs.length ? `${bufs.join(', ')} 님이 버퍼링 중이에요. 기다리는 중…` : null,
           );
           if (!names.length && state.video.playing && state.video.updatedAt > serverNow()) {
             ui.toast('모두 준비됐어요. 곧 함께 재생해요');
