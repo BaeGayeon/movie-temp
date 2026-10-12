@@ -1,9 +1,10 @@
-import { APP_NAME } from '../config.js';
+import { APP_NAME, APP_NAME_KO } from '../config.js';
 import { CMD } from '../shared/cmd.js';
 import { COLOR_PALETTE, MAX_NAME_LENGTH } from '../shared/protocol.js';
 import { renderAvatar, fileToAvatarDataUrl } from '../shared/avatar.js';
 import { createEmojiPicker, EMOJI_PICKER_CSS } from '../shared/emoji-picker.js';
 import { ROOT_THEME_CSS, pastelize } from '../shared/theme.js';
+import { createColorPicker, isHex } from '../shared/color-picker.js';
 
 // 디자인 토큰(다크)과 이모지 선택기 스타일 주입
 const themeStyle = document.createElement('style');
@@ -12,6 +13,18 @@ document.head.append(themeStyle);
 
 const $ = (id) => document.getElementById(id);
 $('title').textContent = APP_NAME;
+$('titleKo').textContent = `(${APP_NAME_KO})`;
+
+// 접이식 카드: 펼침 상태를 기억한다
+const folds = (await chrome.storage.local.get('popupFold')).popupFold ?? {};
+for (const d of document.querySelectorAll('details[data-fold]')) {
+  const k = d.dataset.fold;
+  if (k in folds) d.open = folds[k];
+  d.addEventListener('toggle', async () => {
+    const cur = (await chrome.storage.local.get('popupFold')).popupFold ?? {};
+    await chrome.storage.local.set({ popupFold: { ...cur, [k]: d.open } });
+  });
+}
 
 let state = null;
 
@@ -132,23 +145,35 @@ const AVATARS = ['🙂', '😎', '🤓', '🥳', '😺', '🐶', '🐻', '🐼',
 let profile = { name: '', avatar: { kind: 'emoji', value: AVATARS[0], bg: COLOR_PALETTE[5] }, color: COLOR_PALETTE[3] };
 let saveTimer = null;
 
-function swatches(container, colors, current, onPick) {
-  container.replaceChildren(
-    ...colors.map((c) => {
-      const b = document.createElement('button');
-      b.className = `sw${c === current ? ' sel' : ''}`;
-      b.style.background = c;
-      b.title = c;
-      b.addEventListener('click', () => onPick(c));
-      return b;
-    }),
-  );
+// 기본 색 + 직접 고르기(무지개 버튼). 팔레트에 없는 색이면 직접 고른 색으로 보여준다
+function swatches(container, pickerBox, colors, current, onPick) {
+  const custom = isHex(current) && !colors.includes(current.toLowerCase());
+  const list = colors.map((c) => {
+    const b = document.createElement('button');
+    b.className = `sw${c === current ? ' sel' : ''}`;
+    b.style.background = c;
+    b.title = c;
+    b.addEventListener('click', () => onPick(c));
+    return b;
+  });
+  const more = document.createElement('button');
+  more.className = `sw rainbow${custom ? ' sel' : ''}`;
+  if (custom) more.style.background = current;
+  more.title = '직접 고르기';
+  more.addEventListener('click', () => {
+    pickerBox.hidden = !pickerBox.hidden;
+    if (!pickerBox.hidden) {
+      if (!pickerBox.firstChild) pickerBox.picker = createColorPicker({ value: current, onChange: onPick }), pickerBox.append(pickerBox.picker.el);
+      else pickerBox.picker.set(current);
+    }
+  });
+  container.replaceChildren(...list, more);
 }
 
 function renderProfile() {
   renderAvatar($('pav'), profile.avatar, 38);
   $('clearPhoto').hidden = profile.avatar.kind !== 'image';
-  $('pnamePreview').textContent = profile.name || '(닉네임 없음: 임시 이름 사용)';
+  $('pnamePreview').textContent = profile.name || '닉네임';
   $('pnamePreview').style.color = pastelize(profile.color); // 채팅에서 보이는 대로(닉네임은 글자색)
   $('emojiGrid').replaceChildren(
     ...AVATARS.map((e) => {
@@ -159,8 +184,8 @@ function renderProfile() {
       return b;
     }),
   );
-  swatches($('bgGrid'), COLOR_PALETTE, profile.avatar.bg, (c) => update({ avatar: { ...profile.avatar, bg: c } }));
-  swatches($('colorGrid'), COLOR_PALETTE, profile.color, (c) => update({ color: c }));
+  swatches($('bgGrid'), $('bgPicker'), COLOR_PALETTE, profile.avatar.bg, (c) => update({ avatar: { ...profile.avatar, bg: c } }));
+  swatches($('colorGrid'), $('colorPicker'), COLOR_PALETTE, profile.color, (c) => update({ color: c }));
 }
 
 // 저장: chrome.storage.local 에 보관하고(background 담당), 방에 있으면 방 전체에 전파된다
@@ -190,7 +215,7 @@ $('moreEmoji').addEventListener('click', () => {
   if (!box.hidden) picker.reset();
 });
 
-// 사진 업로드: 서버가 아니라 내 컴퓨터에서 64x64 로 줄여 프로필에 포함한다
+// 사진 업로드: 내 컴퓨터에서 64x64 로 줄여 프로필에 포함한다
 $('upload').addEventListener('click', () => $('file').click());
 $('file').addEventListener('change', async (e) => {
   const file = e.target.files[0];

@@ -24,8 +24,6 @@ const CSS = `
     background: var(--surface); border-bottom: 1px solid var(--border); }
   .panel.free .head { cursor: move; }
   .head .title { font-weight: 700; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .chip { background: var(--head-chip); color: var(--ink-soft); border-radius: 999px; padding: 1px 10px; font-size: 12px; font-weight: 600; letter-spacing: 1px; }
-  .chip:hover { color: var(--ink); }
   .iconbtn { background: transparent; font-size: 15px; padding: 2px 6px; border-radius: 8px; color: var(--ink-soft); }
   .iconbtn:hover { background: var(--head-chip); color: var(--ink); }
 
@@ -176,7 +174,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
   let unread = 0;
 
   // DOM 참조
-  let wrap, panel, head, list, typingLine, input, bubbleBox, badge, floats, menu, codeChip, opacity, clockCb, videoCb, eventsCb, modeBtn, pop, picker;
+  let wrap, panel, head, list, typingLine, input, bubbleBox, badge, floats, menu, opacity, clockCb, videoCb, eventsCb, modeBtn, pop, picker;
 
   try {
     chrome.storage.local.get('chatPrefs').then((r) => {
@@ -613,11 +611,6 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     // 헤더: 제목, 방 코드(클릭하면 복사), 설정, 배치 전환, 접기
     panel = el('div', 'panel');
     head = el('div', 'head');
-    codeChip = el('button', 'chip');
-    codeChip.addEventListener('click', async () => {
-      const code = getState()?.roomCode;
-      if (code && (await copyText(code))) flash(codeChip, '복사됨!');
-    });
     const settingsBtn = el('button', 'iconbtn', '⚙');
     settingsBtn.title = '설정';
     modeBtn = el('button', 'iconbtn');
@@ -635,7 +628,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
       applyPrefs();
       savePrefs();
     });
-    head.append(el('span', 'title', '💬 채팅'), codeChip, settingsBtn, modeBtn, collapseBtn);
+    head.append(el('span', 'title', '💬 채팅'), settingsBtn, modeBtn, collapseBtn);
 
     // 설정 메뉴: 투명도, 시간 표시, 링크/코드 복사
     menu = el('div', 'menu');
@@ -770,22 +763,12 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     root.append(wrap);
     applyPrefs();
     renderEmpty();
-    updateRoomCode();
-  }
-
-  function updateRoomCode() {
-    if (!built) return;
-    const code = getState()?.roomCode ?? '';
-    codeChip.textContent = code;
-    codeChip.title = '방 코드 복사';
-    codeChip.hidden = !code;
   }
 
   return {
     show() {
       build();
       mount.ensure();
-      updateRoomCode();
       applyPrefs();
     },
 
@@ -848,7 +831,6 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
         else applyProfile(m.el, m.userId);
       }
       renderTyping();
-      updateRoomCode();
     },
 
     setTyping(userId, isTyping) {
