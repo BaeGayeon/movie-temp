@@ -5,6 +5,7 @@
   font-display: swap;
 }
 * { box-sizing: border-box; }
+html { background: var(--bg); color-scheme: dark; }
 html, body { margin: 0; }
 body {
   width: 340px; color: var(--ink); background: var(--bg);
@@ -138,3 +139,6 @@ details.card[open] > summary { border-bottom: 2px solid var(--border); }
 .cp-preview { width: 28px; height: 28px; border-radius: 50%; border: 3px solid var(--surface); box-shadow: 0 0 0 1px var(--border-3); flex: none; }
 .cp-hex { flex: 1; font: inherit; color: var(--ink); background: var(--bg); border: 2px solid var(--border-2); border-radius: 999px; padding: 5px 12px; min-width: 0; text-transform: lowercase; }
 #bgGrid, #colorGrid { gap: 4px; flex-wrap: nowrap; }
+.seg button:disabled { cursor: default; }
+.seg button:disabled:not(.on) { opacity: .55; }
+button:focus-visible, summary:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--border-3); }

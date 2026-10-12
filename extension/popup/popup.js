@@ -76,12 +76,13 @@ function render() {
     }),
   );
 
-  // 방장만: 권한 전환 + 카운트다운. 나머지에게는 현재 권한만 안내
+  // 조작 권한 카드는 모두에게 같은 모양: 방장은 바꿀 수 있고, 나머지는 현재 값만 보인다(눌러도 바뀌지 않음)
   const isHost = state.hostId === state.userId;
-  $('hostBox').hidden = !isHost;
-  for (const b of $('modeSeg').querySelectorAll('button')) b.classList.toggle('on', b.dataset.mode === state.mode);
-  $('modeInfo').hidden = isHost;
-  $('modeInfo').textContent = state.mode === 'host_only' ? '👑 방장만 조작할 수 있어요' : '🙌 모두 조작할 수 있어요';
+  for (const b of $('modeSeg').querySelectorAll('button')) {
+    b.classList.toggle('on', b.dataset.mode === state.mode);
+    b.disabled = !isHost;
+  }
+  $('countdownRow').hidden = !isHost;
   const waiting = state.waitingIds.map((id) => state.participants.find((p) => p.id === id)?.name ?? '누군가');
   $('waitInfo').hidden = waiting.length === 0;
   $('waitInfo').textContent = `⏳ ${waiting.join(', ')} 님을 기다리는 중이에요`;
@@ -194,7 +195,8 @@ function update(patch) {
   renderProfile();
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
-    const name = profile.name.trim();
+    // 닉네임을 비워 둬도 색/프사는 저장되도록, 비었으면 지금 쓰는 이름을 쓴다
+    const name = profile.name.trim() || state?.participants?.find((p) => p.id === state.userId)?.name || '';
     if (name.length >= 1 && name.length <= MAX_NAME_LENGTH) {
       chrome.runtime.sendMessage({ cmd: CMD.SET_PROFILE, profile: { ...profile, name } });
     }

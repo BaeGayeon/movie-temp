@@ -537,6 +537,19 @@ test('이미지 프사: WebP/JPEG 데이터 URL 이 모든 참가자에게 전�
   b.close();
 });
 
+test('이미지 프사: 같은 사진으로 색만 여러 번 바꿔도 모두 반영된다', async () => {
+  const { a, code } = await makeRoom();
+  const { c: b } = await joinRoom(code);
+  await a.next('participant_joined');
+  a.send({ type: 'profile_update', profile: img(fakeWebp()) });
+  await b.next('profile_updated');
+  const colors = ['#111111', '#222222', '#333333', '#444444', '#555555', '#666666'];
+  for (const color of colors) a.send({ type: 'profile_update', profile: { ...img(fakeWebp()), color } });
+  for (const color of colors) assert.equal((await b.next('profile_updated')).user.color, color);
+  a.close();
+  b.close();
+});
+
 test('이미지 프사 검증: 크기 상한(20KB), MIME, 파일 헤더, base64 형식', async () => {
   const { a, code } = await makeRoom();
   const { c: b } = await joinRoom(code);

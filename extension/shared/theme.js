@@ -15,15 +15,16 @@ const POPUP = {
 
 // 채팅/영상 위 안내: 장식 없이 차분하게. 테두리는 배경에 가깝게, 강조색은 채도를 낮춰서 쓴다.
 const CALM = {
-  bg: '#15191f', surface: '#1b2027', 'surface-2': '#232932', 'surface-3': '#2c333e',
-  border: '#222831', 'border-2': '#2a313c', 'border-3': '#38414f',
-  accent: '#4b78b0', 'accent-light': '#5a86be', 'accent-dark': '#355a8a', 'accent-ink': '#9db8d9', 'on-accent': '#f2f6fb',
-  ink: '#dfe5ec', 'ink-soft': '#8c98a8', placeholder: '#667386',
-  'head-1': '#1b2027', 'head-2': '#1b2027', 'head-ink': '#dfe5ec', 'head-shadow': 'none', 'head-chip': 'rgba(255,255,255,.08)',
-  'warn-bg': '#2e2a1c', 'warn-ink': '#e6cf8a', 'warn-border': '#4d4526', yellow: '#e6cf8a',
-  pink: '#d9778f', danger: '#e0707f',
+  // 채팅/영상 위 안내는 무채색(회색조). 포인트 색은 닉네임(사용자가 고른 색)만.
+  bg: '#161616', surface: '#1e1e1e', 'surface-2': '#272727', 'surface-3': '#313131',
+  border: '#242424', 'border-2': '#2e2e2e', 'border-3': '#404040',
+  accent: '#5a5a5a', 'accent-light': '#6e6e6e', 'accent-dark': '#444444', 'accent-ink': '#c4c4c4', 'on-accent': '#f2f2f2',
+  ink: '#e3e3e3', 'ink-soft': '#8f8f8f', placeholder: '#6a6a6a',
+  'head-1': '#1e1e1e', 'head-2': '#1e1e1e', 'head-ink': '#e3e3e3', 'head-shadow': 'none', 'head-chip': 'rgba(255,255,255,.08)',
+  'warn-bg': '#2a2a2a', 'warn-ink': '#d0d0d0', 'warn-border': '#444444', yellow: '#d0d0d0',
+  pink: '#b85c68', danger: '#d46a76',
   shadow: '0 4px 14px rgba(0,0,0,.35)', 'shadow-lg': '0 10px 28px rgba(0,0,0,.5)', 'btn-shadow': 'rgba(0,0,0,.25)',
-  'bubble-me': '#2a4363', // 내 말풍선(튀지 않는 짙은 청회색)
+  'bubble-me': '#383838', // 내 말풍선
 };
 
 const decls = (t) => Object.entries(t).map(([k, v]) => `--${k}:${v};`).join('');
