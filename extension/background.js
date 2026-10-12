@@ -25,6 +25,7 @@ let profile = null; // { name, avatar, color } — chrome.storage.local 에 저�
 let room = freshRoom();
 let connection = 'disconnected'; // disconnected | connecting | connected
 let lastError = null;
+let justCreated = false; // 내가 방금 방을 만들었음(첫 room_state 에서 서버 상태 대신 내 영상 상태로 방을 시작)
 
 let ws = null;
 let pingTimer = null;
@@ -194,6 +195,10 @@ function sendOrQueue(msg) {
 
 function handleServer(m) {
   switch (m.type) {
+    case S2C.ROOM_CREATED:
+      justCreated = true;
+      break;
+
     case S2C.ROOM_STATE:
       room = {
         ...room,
@@ -210,7 +215,9 @@ function handleServer(m) {
       lastError = null;
       persist();
       broadcast();
-      sendToTab({ cmd: CMD.SYNC, state: publicState() }); // 입장/재접속 시 위치 맞추기
+      // 입장/재접속: 서버 상태에 맞춘다. 방을 방금 만든 사람은 반대로 내 영상의 현재 상태로 방을 시작한다.
+      sendToTab({ cmd: justCreated ? CMD.SEED : CMD.SYNC, state: publicState() });
+      justCreated = false;
       break;
 
     case S2C.PARTICIPANT_JOINED:
@@ -332,6 +339,7 @@ function leaveRoom(notifyServer = true) {
   const tabId = room.tabId;
   if (notifyServer) rawSend({ type: C2S.LEAVE_ROOM });
   pending = null;
+  justCreated = false;
   resetRoom();
   clearTimeout(reconnectTimer);
   if (ws) ws.close(); // 방이 없으면 연결도 유지하지 않는다
