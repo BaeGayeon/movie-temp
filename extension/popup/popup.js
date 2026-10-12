@@ -26,6 +26,27 @@ for (const d of document.querySelectorAll('details[data-fold]')) {
   });
 }
 
+// 글자 앞 이모지를 따로 감싸서 글자와 세로 가운데를 맞추고 간격을 둔다(동적으로 바뀌는 문구도 포함)
+const LEAD_EMOJI = /^(\p{Extended_Pictographic}\uFE0F?(?:\u200d\p{Extended_Pictographic}\uFE0F?)*)(\s+)(?=\S)/u;
+function decorate(root) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const hits = [];
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    if (n.parentElement.closest('option,style,script,.pav,.av,#pnamePreview') || n.parentElement.classList.contains('ic')) continue;
+    if (LEAD_EMOJI.test(n.data)) hits.push(n);
+  }
+  for (const n of hits) {
+    const m = LEAD_EMOJI.exec(n.data);
+    const ic = document.createElement('span');
+    ic.className = 'ic';
+    ic.textContent = m[1];
+    n.data = n.data.slice(m[0].length);
+    n.before(ic);
+  }
+}
+new MutationObserver(() => decorate(document.body)).observe(document.body, { childList: true, subtree: true, characterData: true });
+decorate(document.body);
+
 let state = null;
 
 async function activeTab() {
@@ -146,27 +167,44 @@ const AVATARS = ['🙂', '😎', '🤓', '🥳', '😺', '🐶', '🐻', '🐼',
 let profile = { name: '', avatar: { kind: 'emoji', value: AVATARS[0], bg: COLOR_PALETTE[5] }, color: COLOR_PALETTE[3] };
 let saveTimer = null;
 
-// 기본 색 + 직접 고르기(무지개 버튼). 팔레트에 없는 색이면 직접 고른 색으로 보여준다
-function swatches(container, pickerBox, colors, current, onPick) {
-  const custom = isHex(current) && !colors.includes(current.toLowerCase());
+// 기본 색 + 직접 고르기. 직접 고른 색은 기억해 두고, 다른 색으로 바꿨다가 다시 눌러도 그 색이 나온다.
+let customColors = {};
+const pickers = []; // 열린 선택기는 하나만
+function swatches(container, pickerBox, key, colors, current, onPick) {
+  const isCustom = isHex(current) && !colors.includes(current.toLowerCase());
+  if (isCustom && customColors[key] !== current.toLowerCase()) {
+    customColors[key] = current.toLowerCase();
+    chrome.storage.local.set({ customColors });
+  }
+  const last = customColors[key];
   const list = colors.map((c) => {
     const b = document.createElement('button');
     b.className = `sw${c === current ? ' sel' : ''}`;
     b.style.background = c;
     b.title = c;
-    b.addEventListener('click', () => onPick(c));
+    b.addEventListener('click', () => {
+      pickerBox.hidden = true; // 기본 색을 고르면 직접 고르기는 닫는다
+      onPick(c);
+    });
     return b;
   });
   const more = document.createElement('button');
-  more.className = `sw rainbow${custom ? ' sel' : ''}`;
-  if (custom) more.style.background = current;
+  more.className = `sw rainbow${last ? ' has' : ''}${isCustom ? ' sel' : ''}`;
+  if (last) more.style.setProperty('--custom', last);
   more.title = '직접 고르기';
   more.addEventListener('click', () => {
-    pickerBox.hidden = !pickerBox.hidden;
-    if (!pickerBox.hidden) {
-      if (!pickerBox.firstChild) pickerBox.picker = createColorPicker({ value: current, onChange: onPick }), pickerBox.append(pickerBox.picker.el);
-      else pickerBox.picker.set(current);
+    if (!pickerBox.hidden && isCustom) {
+      pickerBox.hidden = true; // 선택된 상태에서 다시 누르면 닫기
+      return;
     }
+    for (const box of pickers) if (box !== pickerBox) box.hidden = true;
+    pickerBox.hidden = false;
+    const start = last ?? (isHex(current) ? current : '#8cc8ff');
+    if (!pickerBox.picker) {
+      pickerBox.picker = createColorPicker({ value: start, onChange: onPick });
+      pickerBox.append(pickerBox.picker.el);
+    } else pickerBox.picker.set(start);
+    if (last && !isCustom) onPick(last); // 전에 고른 색을 바로 적용
   });
   container.replaceChildren(...list, more);
 }
@@ -185,8 +223,8 @@ function renderProfile() {
       return b;
     }),
   );
-  swatches($('bgGrid'), $('bgPicker'), COLOR_PALETTE, profile.avatar.bg, (c) => update({ avatar: { ...profile.avatar, bg: c } }));
-  swatches($('colorGrid'), $('colorPicker'), COLOR_PALETTE, profile.color, (c) => update({ color: c }));
+  swatches($('bgGrid'), $('bgPicker'), 'bg', COLOR_PALETTE, profile.avatar.bg, (c) => update({ avatar: { ...profile.avatar, bg: c } }));
+  swatches($('colorGrid'), $('colorPicker'), 'color', COLOR_PALETTE, profile.color, (c) => update({ color: c }));
 }
 
 // 저장: chrome.storage.local 에 보관하고(background 담당), 방에 있으면 방 전체에 전파된다
@@ -233,7 +271,10 @@ $('file').addEventListener('change', async (e) => {
 });
 $('clearPhoto').addEventListener('click', () => update({ avatar: { kind: 'emoji', value: AVATARS[0], bg: profile.avatar.bg } }));
 
+pickers.push($('bgPicker'), $('colorPicker'));
+
 async function loadProfile() {
+  customColors = (await chrome.storage.local.get('customColors')).customColors ?? {};
   const saved = (await chrome.storage.local.get('profile')).profile;
   if (saved) profile = saved;
   else {
