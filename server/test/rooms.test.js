@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import WebSocket from 'ws';
 import { createServer } from '../src/index.js';
 
-const app = createServer({ port: 0, host: '127.0.0.1', graceMs: 200, emptyTtlMs: 200 });
+const app = createServer({ port: 0, host: '127.0.0.1', graceMs: 200, emptyTtlMs: 200, bufferWaitMs: 400, resumeDelayMs: 100 });
 let port;
 before(async () => {
   port = await app.listen();
@@ -239,4 +239,156 @@ test('모두 나가면 일정 시간 뒤 방 삭제', async () => {
   a.close();
   c1.close();
   c2.close();
+});
+
+// ---------------- 2단계 ----------------
+
+test('ping(clientTime) → server_time 로 시계 오차 보정용 값을 돌려줌', async () => {
+  const c = await new Client().open();
+  const t0 = Date.now();
+  c.send({ type: 'ping', clientTime: t0 });
+  await c.next('pong');
+  const st = await c.next('server_time');
+  assert.equal(st.clientTime, t0);
+  assert.ok(Math.abs(st.serverNow - Date.now()) < 1000);
+  c.close();
+});
+
+test('카운트다운: 방장만 시작, startAt 은 서버 시각, 모두에게 같은 값', async () => {
+  const { a, code } = await makeRoom();
+  const { c: b } = await joinRoom(code);
+  b.send({ type: 'countdown_start', seconds: 3 });
+  assert.equal((await b.next('error')).code, 'not_allowed');
+  await a.none('countdown');
+
+  a.send({ type: 'video', action: 'seek', time: 42, sentAt: 1 });
+  await b.next('video');
+  const before = Date.now();
+  a.send({ type: 'countdown_start', seconds: 3 });
+  const ca = await a.next('countdown');
+  const cb = await b.next('countdown');
+  assert.equal(ca.startAt, cb.startAt);
+  assert.equal(ca.time, 42);
+  assert.ok(ca.startAt >= before + 3000 && ca.startAt <= Date.now() + 3000);
+
+  // 카운트다운 중 입장: "startAt 에 재생 시작" 상태를 받는다
+  const { state } = await joinRoom(code);
+  assert.equal(state.video.playing, true);
+  assert.equal(state.video.updatedAt, ca.startAt);
+  assert.ok(state.video.updatedAt > state.serverNow);
+
+  a.send({ type: 'countdown_start', seconds: 0 }); // 범위 밖은 무시
+  a.send({ type: 'countdown_start', seconds: 99 });
+  await a.none('countdown');
+  a.close();
+  b.close();
+});
+
+test('버퍼링: 한 명이 버퍼링하면 방 정지, 해소되면 함께 재개', async () => {
+  const { a, code } = await makeRoom();
+  const { c: b } = await joinRoom(code);
+  a.send({ type: 'video', action: 'play', time: 30, sentAt: 1 });
+  await b.next('video');
+
+  b.send({ type: 'buffering', isBuffering: true, time: 31.5 });
+  const sa = await a.next('buffer_state');
+  await b.next('buffer_state');
+  assert.deepEqual(sa.waitingIds, [b.userId]);
+  assert.equal(sa.video.playing, false);
+  assert.equal(sa.video.time, 31.5);
+
+  const before = Date.now();
+  b.send({ type: 'buffering', isBuffering: false });
+  const resumed = await a.next('buffer_state');
+  assert.deepEqual(resumed.waitingIds, []);
+  assert.equal(resumed.video.playing, true);
+  assert.equal(resumed.video.time, 31.5);
+  assert.ok(resumed.video.updatedAt >= before + 90, '재개는 약간 뒤의 서버 시각');
+  a.close();
+  b.close();
+});
+
+test('버퍼링: 대기 상한이 지나면 강제 재개', async () => {
+  const { a, code } = await makeRoom();
+  const { c: b } = await joinRoom(code);
+  a.send({ type: 'video', action: 'play', time: 5, sentAt: 1 });
+  await b.next('video');
+  b.send({ type: 'buffering', isBuffering: true });
+  await a.next('buffer_state');
+  const forced = await a.next('buffer_state', 1500); // bufferWaitMs=400
+  assert.deepEqual(forced.waitingIds, []);
+  assert.equal(forced.video.playing, true);
+  a.close();
+  b.close();
+});
+
+test('버퍼링: 재생 중이 아니면 무시, 버퍼링 중 나가면 대기 해제', async () => {
+  const { a, code } = await makeRoom();
+  const { c: b } = await joinRoom(code);
+  b.send({ type: 'buffering', isBuffering: true }); // 정지 상태 → 무시
+  await a.none('buffer_state');
+
+  a.send({ type: 'video', action: 'play', time: 1, sentAt: 1 });
+  await b.next('video');
+  b.send({ type: 'buffering', isBuffering: true });
+  await a.next('buffer_state');
+  b.send({ type: 'leave_room' });
+  const after = await a.next('buffer_state');
+  assert.deepEqual(after.waitingIds, []);
+  assert.equal(after.video.playing, true);
+  a.close();
+  b.close();
+});
+
+test('버퍼링 중 사용자가 직접 일시정지하면 자동 재개하지 않음', async () => {
+  const { a, code } = await makeRoom();
+  const { c: b } = await joinRoom(code);
+  a.send({ type: 'video', action: 'play', time: 1, sentAt: 1 });
+  await b.next('video');
+  b.send({ type: 'buffering', isBuffering: true });
+  await a.next('buffer_state');
+  a.send({ type: 'video', action: 'pause', time: 2, sentAt: 2 });
+  await b.next('video');
+  b.send({ type: 'buffering', isBuffering: false });
+  const st = await a.next('buffer_state');
+  assert.equal(st.video.playing, false);
+  a.close();
+  b.close();
+});
+
+test('sync_report: 방장 위치만 기준점이 되어 다른 참가자에게 전달', async () => {
+  const { a, code } = await makeRoom();
+  const { c: b } = await joinRoom(code);
+  a.send({ type: 'video', action: 'play', time: 10, sentAt: 1 });
+  await b.next('video');
+
+  b.send({ type: 'sync_report', time: 99, playing: true, sentAt: 2 }); // 방장 아님 → 무시
+  await a.none('video');
+
+  a.send({ type: 'sync_report', time: 12.3, playing: true, sentAt: 3 });
+  const v = await b.next('video');
+  assert.deepEqual([v.action, v.time, v.fromId], ['sync', 12.3, a.userId]);
+  await a.none('video');
+
+  const { state } = await joinRoom(code);
+  assert.equal(state.video.time, 12.3);
+  a.close();
+  b.close();
+});
+
+test('버퍼링 중 시크는 자동 재개를 취소하지 않고 위치만 갱신', async () => {
+  const { a, code } = await makeRoom();
+  const { c: b } = await joinRoom(code);
+  a.send({ type: 'video', action: 'play', time: 1, sentAt: 1 });
+  await b.next('video');
+  b.send({ type: 'buffering', isBuffering: true, time: 50 });
+  await a.next('buffer_state');
+  b.send({ type: 'video', action: 'seek', time: 50.2, sentAt: 2 }); // 늦게 도착한 seeked
+  assert.equal((await a.next('video')).time, 50.2);
+  b.send({ type: 'buffering', isBuffering: false });
+  const st = await a.next('buffer_state');
+  assert.equal(st.video.playing, true);
+  assert.equal(st.video.time, 50.2);
+  a.close();
+  b.close();
 });

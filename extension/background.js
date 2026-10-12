@@ -5,6 +5,7 @@ import { CMD } from './shared/cmd.js';
 
 const PING_MS = 20_000;
 const MAX_BACKOFF_MS = 30_000;
+const MAX_CLOCK_SAMPLES = 5;
 
 const freshRoom = () => ({
   roomCode: null,
@@ -13,6 +14,7 @@ const freshRoom = () => ({
   mode: 'everyone',
   participants: [],
   video: { playing: false, time: 0, updatedAt: 0 },
+  waitingIds: [], // 버퍼링 중이라 모두가 기다리는 참가자
   serverOffset: 0, // 서버 시각 - 로컬 시각
 });
 
@@ -26,6 +28,7 @@ let pingTimer = null;
 let reconnectTimer = null;
 let retry = 0;
 let pending = null; // 연결이 열리면 보낼 메시지(방 만들기/참가)
+let clockSamples = []; // { offset, rtt } — RTT 가 가장 작은 표본을 채택
 
 const ready = init();
 
@@ -85,7 +88,8 @@ function nameOf(id) {
 // 서버가 하는 것과 같은 방식으로 영상 상태를 미러링한다 (늦게 로드되는 content 가 맞출 수 있도록)
 function mirrorVideo(action, time, at) {
   room.video = {
-    playing: action === 'seek' ? room.video.playing : action === 'play',
+    // seek 은 재생 여부 유지, sync(서버가 방장 위치로 기준점 갱신)는 재생 중일 때만 온다
+    playing: action === 'seek' ? room.video.playing : action === 'play' || action === 'sync',
     time,
     updatedAt: at,
   };
@@ -109,7 +113,9 @@ function connect() {
     if (ws !== sock) return;
     retry = 0;
     setConnection('connected');
-    pingTimer = setInterval(() => rawSend({ type: C2S.PING }), PING_MS);
+    const ping = () => rawSend({ type: C2S.PING, clientTime: Date.now() });
+    pingTimer = setInterval(ping, PING_MS);
+    ping();
     if (pending) {
       rawSend(pending);
       pending = null;
@@ -178,8 +184,10 @@ function handleServer(m) {
         mode: m.mode,
         participants: m.participants,
         video: m.video,
+        waitingIds: m.waitingIds ?? [],
         serverOffset: m.serverNow - Date.now(),
       };
+      clockSamples = [];
       lastError = null;
       persist();
       broadcast();
@@ -218,6 +226,32 @@ function handleServer(m) {
       mirrorVideo(m.action, m.time, m.serverAt);
       persist();
       sendToTab({ cmd: CMD.REMOTE_VIDEO, msg: m, state: publicState() });
+      break;
+
+    case S2C.SERVER_TIME: {
+      // 시계 오차 보정: 왕복 시간(RTT)의 절반을 편도 지연으로 보고, RTT 가 가장 작은 표본을 쓴다
+      const rtt = Date.now() - m.clientTime;
+      if (rtt < 0 || rtt > 5000) break;
+      clockSamples.push({ rtt, offset: m.serverNow + rtt / 2 - Date.now() });
+      clockSamples = clockSamples.slice(-MAX_CLOCK_SAMPLES);
+      room.serverOffset = clockSamples.reduce((best, s) => (s.rtt < best.rtt ? s : best)).offset;
+      break;
+    }
+
+    case S2C.COUNTDOWN:
+      room.video = { playing: true, time: m.time, updatedAt: m.startAt };
+      room.waitingIds = [];
+      persist();
+      broadcast();
+      sendToTab({ cmd: CMD.COUNTDOWN, state: publicState() });
+      break;
+
+    case S2C.BUFFER_STATE:
+      room.waitingIds = m.waitingIds;
+      room.video = m.video;
+      persist();
+      broadcast();
+      sendToTab({ cmd: CMD.BUFFER, state: publicState() });
       break;
 
     case S2C.ERROR:
@@ -301,6 +335,22 @@ async function onCommand(m, sender) {
     case CMD.SET_MODE:
       if (MODES.includes(m.mode) && room.hostId === userId) rawSend({ type: C2S.SET_PERMISSION, mode: m.mode });
       return { ok: true };
+
+    case CMD.COUNTDOWN_START:
+      if (room.roomCode && room.hostId === userId) {
+        rawSend({ type: C2S.COUNTDOWN_START, seconds: Math.min(10, Math.max(1, Math.round(m.seconds) || 3)) });
+      }
+      return { ok: true };
+
+    case CMD.BUFFERING:
+      if (room.roomCode && fromTab === room.tabId) rawSend({ type: C2S.BUFFERING, isBuffering: !!m.isBuffering, time: m.time });
+      return;
+
+    case CMD.SYNC_REPORT:
+      if (room.roomCode && fromTab === room.tabId) {
+        rawSend({ type: C2S.SYNC_REPORT, time: m.time, playing: !!m.playing, sentAt: m.sentAt });
+      }
+      return;
 
     case CMD.VIDEO_EVENT: {
       if (!room.roomCode || fromTab !== room.tabId) return;

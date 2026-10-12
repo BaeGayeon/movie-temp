@@ -38,6 +38,10 @@ function render() {
   $('modeRow').hidden = !isHost;
   $('mode').value = state.mode;
   $('modeInfo').hidden = isHost;
+  $('countdownRow').hidden = !isHost;
+  const waiting = state.waitingIds.map((id) => state.participants.find((p) => p.id === id)?.name ?? '누군가');
+  $('waitInfo').hidden = waiting.length === 0;
+  $('waitInfo').textContent = `⏳ ${waiting.join(', ')} 님을 기다리는 중`;
   $('modeInfo').textContent = state.mode === 'host_only' ? '방장만 조작할 수 있어요' : '모두 조작할 수 있어요';
 }
 
@@ -51,6 +55,9 @@ $('join').addEventListener('click', async () => {
   chrome.runtime.sendMessage({ cmd: CMD.JOIN_ROOM, roomCode: $('code').value, tabId: tab?.id });
 });
 
+$('countdown').addEventListener('click', () =>
+  chrome.runtime.sendMessage({ cmd: CMD.COUNTDOWN_START, seconds: Number($('seconds').value) }),
+);
 $('leave').addEventListener('click', () => chrome.runtime.sendMessage({ cmd: CMD.LEAVE_ROOM }));
 $('mode').addEventListener('change', (e) => chrome.runtime.sendMessage({ cmd: CMD.SET_MODE, mode: e.target.value }));
 

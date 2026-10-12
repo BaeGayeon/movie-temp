@@ -10,6 +10,11 @@ const CSS = `
     box-shadow: 0 4px 16px rgba(0,0,0,.5); }
   button { font: inherit; cursor: pointer; border: 0; border-radius: 6px; padding: 6px 12px; background: #4f7cff; color: #fff; }
   button.sub { background: #3a4050; }
+  .count { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    font-size: 160px; font-weight: 800; color: #fff; text-shadow: 0 4px 24px rgba(0,0,0,.7); }
+  .count.go { font-size: 90px; }
+  .waiting { position: absolute; bottom: 90px; left: 50%; transform: translateX(-50%); background: rgba(20,20,24,.92);
+    color: #fff; padding: 8px 16px; border-radius: 20px; box-shadow: 0 2px 8px rgba(0,0,0,.4); }
   .click { position: absolute; pointer-events: auto; transform: translate(-50%, -50%); font-size: 16px; padding: 12px 20px; }
 `;
 
@@ -54,6 +59,9 @@ export function createUI() {
 
   let banner = null;
   let clickBtn = null;
+  let countEl = null;
+  let countTimer = null;
+  let waitEl = null;
 
   return {
     toast(text, ms = 3000) {
@@ -105,6 +113,52 @@ export function createUI() {
     hideClickPrompt() {
       clickBtn?.remove();
       clickBtn = null;
+    },
+
+    // 카운트다운: startAt(서버 시각)까지 남은 초를 크게 표시하고, 시작 순간 "재생!" 을 잠깐 보여준다
+    showCountdown(startAt, serverNow) {
+      ensure();
+      this.hideCountdown();
+      countEl = document.createElement('div');
+      countEl.className = 'count';
+      layer.append(countEl);
+      const el = countEl;
+      const tick = () => {
+        const remain = startAt - serverNow();
+        if (remain > 0) {
+          el.textContent = String(Math.ceil(remain / 1000));
+        } else if (remain > -700) {
+          el.textContent = '재생!';
+          el.className = 'count go';
+        } else {
+          this.hideCountdown();
+        }
+      };
+      tick();
+      countTimer = setInterval(tick, 80);
+    },
+
+    hideCountdown() {
+      clearInterval(countTimer);
+      countTimer = null;
+      countEl?.remove();
+      countEl = null;
+    },
+
+    // 버퍼링 대기 표시. text 가 없으면 숨김
+    showWaiting(text) {
+      if (!text) {
+        waitEl?.remove();
+        waitEl = null;
+        return;
+      }
+      ensure();
+      if (!waitEl) {
+        waitEl = document.createElement('div');
+        waitEl.className = 'waiting';
+        layer.append(waitEl);
+      }
+      waitEl.textContent = text;
     },
   };
 }

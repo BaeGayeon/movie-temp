@@ -63,8 +63,21 @@ export function createServer({ port = Number(process.env.PORT) || 8080, host = '
         case C2S.SET_PERMISSION:
           rooms.setPermission(conn, msg.mode);
           break;
+        case C2S.COUNTDOWN_START:
+          rooms.countdown(conn, msg.seconds);
+          break;
+        case C2S.BUFFERING:
+          rooms.buffering(conn, msg);
+          break;
+        case C2S.SYNC_REPORT:
+          rooms.syncReport(conn, msg);
+          break;
         case C2S.PING:
           conn.send({ type: S2C.PONG });
+          // 클라이언트 시계 오차 보정용(RTT 측정에 clientTime 을 그대로 돌려준다)
+          if (msg.clientTime !== undefined) {
+            conn.send({ type: S2C.SERVER_TIME, serverNow: Date.now(), clientTime: msg.clientTime });
+          }
           break;
       }
     });
