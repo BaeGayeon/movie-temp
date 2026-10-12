@@ -116,6 +116,17 @@ function badge(text, cls) {
   return b;
 }
 
+// 영상이 있는 탭에서만 방 만들기/참가 가능(영상은 나중에 뜰 수 있으니 열려 있는 동안 계속 확인)
+async function checkVideo() {
+  if (state?.roomCode) return;
+  const tab = await activeTab();
+  const reply = await chrome.runtime.sendMessage({ cmd: CMD.HAS_VIDEO, tabId: tab?.id }).catch(() => null);
+  const ok = !!reply?.ok;
+  for (const id of ['create', 'join', 'code']) $(id).disabled = !ok;
+  $('noVideo').hidden = ok;
+}
+setInterval(checkVideo, 1500);
+
 $('create').addEventListener('click', async () => {
   const tab = await activeTab();
   chrome.runtime.sendMessage({ cmd: CMD.CREATE_ROOM, tabId: tab?.id });
@@ -303,4 +314,5 @@ chrome.runtime.onMessage.addListener((m) => {
 
 state = await chrome.runtime.sendMessage({ cmd: CMD.GET_STATE });
 render();
+checkVideo();
 await loadProfile();
