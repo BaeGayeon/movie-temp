@@ -4,10 +4,11 @@
   window.__bmtLoaded = true;
 
   const load = (path) => import(chrome.runtime.getURL(path));
-  const [{ CMD }, { ensureSuitFont }, { createDefaultAdapter }, { createUI }, { createChat }] = await Promise.all([
+  const [{ CMD }, { ensureSuitFont }, { createDefaultAdapter }, { createNetflixAdapter }, { createUI }, { createChat }] = await Promise.all([
     load('shared/cmd.js'),
     load('shared/font.js'),
     load('content/adapters/default.js'),
+    load('content/adapters/netflix.js'),
     load('content/ui.js'),
     load('content/chat.js'),
   ]);
@@ -20,7 +21,8 @@
 
   const isTop = window === window.top;
   const log = (...a) => console.log('[bmt]', isTop ? 'top' : 'iframe', ...a); // 진단용 로그
-  const adapter = createDefaultAdapter(); // 4단계에서 호스트별 어댑터 선택
+  // 호스트별 어댑터: 넷플릭스는 <video> 를 직접 조작하면 오류(M7375)가 나서 전용 어댑터를 쓴다
+  const adapter = /(^|\.)netflix\.com$/.test(location.hostname) ? createNetflixAdapter() : createDefaultAdapter();
   const ui = createUI();
   // 채팅/리액션 UI 는 최상위 프레임에만 둔다
   const chat = isTop
