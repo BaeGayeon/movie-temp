@@ -7,6 +7,7 @@ export const CMD = {
   CREATE_ROOM: 'create_room',
   JOIN_ROOM: 'join_room',
   LEAVE_ROOM: 'leave_room',
+  ROOM_PAGE: 'room_page', // content -> background: 방에 묶인 탭이 처음 보여준 페이지(주소). 벗어나면 방에서 나간다
   SET_MODE: 'set_mode',
   VIDEO_EVENT: 'video_event',
   COUNTDOWN_START: 'countdown_start', // popup (방장)

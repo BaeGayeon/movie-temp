@@ -109,6 +109,25 @@
   setInterval(evalAd, 1000);
 
   const active = () => !!state?.roomCode;
+
+  // 방에 묶인 탭이 처음 보여준 페이지를 벗어나면(다른 영상/페이지로 이동) 방에서 나간다. 새로고침(같은 주소)은 유지.
+  // 사이트가 주소를 곧바로 바꿔 쓰는 경우(리다이렉트)를 위해 기록 직후 5초 안의 변경은 새 주소로 다시 기록한다.
+  const pageKey = () => location.origin + location.pathname;
+  let pageSetAt = 0;
+  function checkPage() {
+    if (!isTop || !active()) return;
+    if (!state.roomPage || (Date.now() - pageSetAt < 5000 && state.roomPage !== pageKey())) {
+      pageSetAt = Date.now();
+      state = { ...state, roomPage: pageKey() };
+      send({ cmd: CMD.ROOM_PAGE, page: pageKey() });
+      return;
+    }
+    if (state.roomPage !== pageKey()) {
+      log('방 페이지를 벗어남: 나가기');
+      send({ cmd: CMD.LEAVE_ROOM });
+    }
+  }
+  if (isTop) setInterval(checkPage, 1000);
   const serverNow = () => Date.now() + (state?.serverOffset ?? 0);
   // 채팅에 "어느 장면에서 쓴 말인지" 붙이는 재생 위치(초).
   //  1) 이 프레임에 영상이 있으면 실제 재생 위치

@@ -11,6 +11,7 @@ const MAX_CHAT_HISTORY = 200; // 채팅 + 재생/정지/이동 알림
 const freshRoom = () => ({
   roomCode: null,
   tabId: null, // 방에 묶인 탭: 이 탭의 영상만 동기화한다
+  roomPage: null, // 그 탭이 방에서 보여준 페이지(origin+path). 이 페이지를 벗어나면 방에서 나간다
   hostId: null,
   mode: 'everyone',
   participants: [],
@@ -471,6 +472,14 @@ async function onCommand(m, sender) {
 
     case CMD.LEAVE_ROOM:
       leaveRoom();
+      return { ok: true };
+
+    case CMD.ROOM_PAGE:
+      if (room.roomCode && fromTab === room.tabId && typeof m.page === 'string' && m.page.length < 500) {
+        room.roomPage = m.page;
+        persist();
+        broadcast();
+      }
       return { ok: true };
 
     case CMD.SET_MODE:
