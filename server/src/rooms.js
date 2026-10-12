@@ -1,6 +1,8 @@
 import { randomInt } from 'node:crypto';
 import { S2C, ERR, VIDEO_ACTION_SYNC, DEFAULT_COLORS, DEFAULT_AVATAR_EMOJI } from './protocol.js';
 
+const AD_ROLLBACK_MS = 4000; // 광고 보고 직전 이 시간 안의 본인 이벤트는 광고 전환 중 생긴 것으로 보고 되돌린다
+
 // 헷갈리는 문자(0/O, 1/I)를 뺀 영숫자
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
@@ -93,6 +95,7 @@ export class RoomManager {
     // 재생/일시정지는 사용자의 직접 조작이 우선이라 자동 재개하지 않는다.
     // 시크는 재생 여부를 바꾸지 않는다(버퍼링 중인 사람의 시크는 데이터가 도착한 뒤에야 보고되기도 함).
     if (msg.action !== 'seek') room.autoPaused = false;
+    room.prevVideo = { video: { ...room.video }, by: p.id, at }; // 직후에 광고였다고 보고되면 되돌리기 위해
     room.video = {
       playing: msg.action === 'seek' ? room.video.playing : msg.action === 'play',
       time: msg.time,
@@ -133,6 +136,16 @@ export class RoomManager {
     const now = this.now();
     if (msg.isBuffering) {
       if (room.waiting.has(p.id)) return;
+      // 광고가 시작되면서 영상이 바뀌는 순간의 이벤트(0초로 이동 등)가 광고 감지보다 먼저 방에 전해졌을 수 있다.
+      // 같은 사람이 직전 몇 초 안에 보낸 상태가 있으면 그 이전 상태로 되돌린다.
+      const prev = room.prevVideo;
+      if (
+        msg.reason === 'ad' && prev?.by === p.id && now - prev.at < AD_ROLLBACK_MS && !room.autoPaused &&
+        room.video.time < 5 && prev.video.time - room.video.time > 30 // 한참 뒤였다가 갑자기 0~5초로 된 경우만(진짜 조작은 건드리지 않는다)
+      ) {
+        room.video = { ...room.prevVideo.video };
+      }
+      room.prevVideo = null;
       if (!room.autoPaused) {
         if (!room.video.playing) return; // 재생 중이 아니면 기다릴 필요 없음
         const time = msg.time ?? this.#currentTime(room, now);
@@ -164,6 +177,7 @@ export class RoomManager {
     if (!room.video.playing || room.autoPaused || now < room.video.updatedAt) return;
     if (now - room.lastSyncAt < 2000) return;
     room.lastSyncAt = now;
+    room.prevVideo = { video: { ...room.video }, by: p.id, at: now };
     room.video = { playing: true, time: msg.time, updatedAt: now };
     this.#broadcast(
       room,

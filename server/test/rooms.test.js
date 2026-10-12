@@ -643,3 +643,33 @@ test('광고 reason 검증: ad 외의 값은 거부', async () => {
   await a.none('buffer_state');
   a.close();
 });
+
+test('광고: 광고 전환 중 먼저 전해진 0초 이동은 광고 보고 때 되돌려진다', async () => {
+  const { a, code } = await makeRoom();
+  const { c: b } = await joinRoom(code);
+  a.send({ type: 'video', action: 'play', time: 100, sentAt: 1 });
+  await b.next('video');
+  b.send({ type: 'video', action: 'seek', time: 0, sentAt: 2 }); // 광고로 바뀌는 순간 b 의 영상이 0초가 됨
+  const jumped = await a.next('video');
+  assert.equal(jumped.time, 0);
+  b.send({ type: 'buffering', isBuffering: true, reason: 'ad' });
+  const s = await a.next('buffer_state');
+  assert.ok(s.video.time >= 100 && s.video.time < 105, `time=${s.video.time}`);
+  assert.equal(s.video.playing, false);
+  a.close();
+  b.close();
+});
+
+test('광고 보고: 진짜로 0초 근처로 간 것이 아니면(가까운 위치 이동) 되돌리지 않는다', async () => {
+  const { a, code } = await makeRoom();
+  const { c: b } = await joinRoom(code);
+  a.send({ type: 'video', action: 'play', time: 100, sentAt: 1 });
+  await b.next('video');
+  b.send({ type: 'video', action: 'seek', time: 120, sentAt: 2 });
+  await a.next('video');
+  b.send({ type: 'buffering', isBuffering: true, reason: 'ad' });
+  const s = await a.next('buffer_state');
+  assert.ok(s.video.time >= 120, `time=${s.video.time}`);
+  a.close();
+  b.close();
+});

@@ -302,7 +302,7 @@
 
   function reportAndCorrect() {
     if (!video || !active() || inAd) return;
-    if (!video.paused) {
+    if (!video.paused && !suspiciousJump()) {
       send({ cmd: CMD.SYNC_REPORT, time: video.currentTime, playing: true, sentAt: Date.now() });
     }
     correctDrift();
@@ -337,8 +337,32 @@
   // ---------- 로컬 이벤트 → 서버 ----------
   let lastBlockedToast = 0;
 
-  function onLocal(action, silent = false) {
+  // 광고가 시작되는 순간에는 화면의 광고 표시가 뜨기 전에 영상이 0초로 바뀌며 seek/play 이벤트가 먼저 나올 수 있다.
+  // "방금까지 한참 뒤였는데 갑자기 0~5초"인 이벤트는 광고 감지가 따라올 때까지 잠깐 보류한다.
+  let lastStableTime = 0;
+  setInterval(() => {
+    if (!video || inAd || Number.isNaN(video.duration)) return;
+    const t = video.currentTime;
+    if (!(t < 5 && lastStableTime - t > 30)) lastStableTime = t; // 갑자기 크게 되감긴 값은 기준으로 삼지 않는다
+  }, 500);
+  const suspiciousJump = () => !!video && video.currentTime < 5 && lastStableTime - video.currentTime > 30;
+  let holdUntil = 0;
+
+  function onLocal(action, silent = false, held = false) {
     if (inAd || Date.now() < adGraceUntil) return; // 광고 중의 조작은 방에 보내지도, 방 상태로 되돌리지도 않는다
+    if (!held && suspiciousJump()) {
+      if (Date.now() < holdUntil) return; // 보류 중에 이어 오는 이벤트는 보류가 끝날 때 현재 상태로 한 번에 보낸다
+      holdUntil = Date.now() + 1500;
+      evalAd();
+      setTimeout(() => {
+        evalAd();
+        if (inAd || !video) return log('광고 전환 중의 이벤트 폐기');
+        lastStableTime = video.currentTime; // 진짜로 처음으로 돌아간 것이면 그대로 방에 알린다
+        onLocal('seek', silent, true);
+        onLocal(video.paused ? 'pause' : 'play', silent, true);
+      }, 1500);
+      return;
+    }
     // 소스가 바뀌는 중(메타데이터 전, duration NaN): 광고로 바뀌는 순간의 play(0초) 같은 이벤트가 방 전체를 되감지 않도록 무시
     if (video && Number.isNaN(video.duration)) return;
     if (!active()) return log('local', action, '무시: 방에 묶인 탭이 아님/방 없음');
