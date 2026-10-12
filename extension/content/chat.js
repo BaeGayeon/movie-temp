@@ -226,8 +226,9 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
   //      · 스크롤되는 페이지: transform 은 fixed 요소를 문서에 묶어 스크롤에 딸려 나가게 하므로(영상이 사라짐) CSS zoom 을 쓴다.
   //        zoom 은 fixed 가 화면에 고정된 채 함께 줄어든다(세로 가운데 정렬은 안 됨: 위쪽 정렬).
   //  - 'width' "폭만 줄이기": <html> 폭만 줄임. 반응형 사이트에서는 자연스럽지만 vw/fixed 요소는 줄지 않고 채팅 아래에 깔린다.
-  const FIT_PROPS = ['width', 'transform', 'transform-origin', 'min-height', 'zoom'];
+  const FIT_PROPS = ['width', 'transform', 'transform-origin', 'min-height', 'zoom', 'overflow'];
   let savedStyles = null; // 원래 <html> 인라인 스타일(복구용)
+  let widthTrick = false; // 폭만 줄이기에서 html 에 항등 transform 을 거는지(스크롤 없는 페이지만)
   let fitMode = null; // 'transform' | 'zoom' | 'width' — 붙인 동안 유지(스크롤이 생기면 transform -> zoom 으로만 바뀜)
 
   const clearFit = (html) => {
@@ -264,7 +265,10 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
       savedStyles = {};
       for (const p of FIT_PROPS) savedStyles[p] = [html.style.getPropertyValue(p), html.style.getPropertyPriority(p)];
     }
-    if (fit === 'width') fitMode = 'width';
+    if (fit === 'width') {
+      fitMode = 'width';
+      widthTrick = !isScrollable(html); // 스크롤되는 페이지에서는 html 이 길어져서 fixed 기준이 달라지므로 쓰지 않는다
+    }
     else if (!fitMode || fitMode === 'width') fitMode = isScrollable(html) ? 'zoom' : 'transform';
     clearFit(html);
 
@@ -274,7 +278,13 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     const set = (name, value) => html.style.setProperty(name, value, 'important');
     if (fitMode === 'width') {
       set('width', `calc(100% - ${px}px)`);
-      set('transform', 'translate(0, 0)'); // 변환이 있으면 position:fixed 요소도 html 폭을 따라 줄어든다(자막 등 위치 계산도 어긋나지 않음)
+      if (widthTrick) {
+        // 변환이 있으면 position:fixed 요소의 기준이 html 이 되어 줄어든 폭을 따른다(자막 등 위치 계산도 어긋나지 않음).
+        // html 높이가 내용 높이(fixed 만 있으면 0)가 되지 않도록 화면 높이를 보장한다.
+        set('transform', 'translate(0, 0)');
+        set('min-height', '100vh');
+        set('overflow', 'hidden'); // fixed 요소가 html 안으로 들어오면서 생기는 몇 px 의 가짜 스크롤바 방지(스크롤 없는 페이지에서만 쓴다)
+      }
     } else if (fitMode === 'zoom') {
       set('zoom', String(scale));
       set('width', `${vw}px`); // zoom 이 곱해져 화면 폭이 (vw - px) 가 된다
