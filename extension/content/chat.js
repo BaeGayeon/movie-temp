@@ -43,6 +43,8 @@ const CSS = `
   .meta { font-weight: 400; color: #8a90a0; margin-left: 6px; }
   .text { word-break: break-word; white-space: pre-wrap; }
   .msg.me .text { color: #cfe0ff; }
+  .sys { text-align: center; color: #8a90a0; font-size: 12px; padding: 1px 6px; }
+  .no-events .sys { display: none; }
   .empty { color: #8a90a0; text-align: center; padding: 16px 0; font-size: 13px; }
 
   .typing { min-height: 18px; padding: 0 10px 2px; font-size: 12px; color: #aab; }
@@ -96,10 +98,12 @@ const DEFAULT_PREFS = {
   y: null,
   showClock: true, // 작성 시각
   showVideoTime: true, // 재생 시각
+  showEvents: true, // 재생/일시정지/시간 이동 알림
 };
 const MIN_W = 220;
 const MIN_H = 200;
 const MAX_MESSAGES = 200;
+const EVENT_MERGE_MS = 1500; // 같은 사람의 연속 이벤트(사이트가 시크할 때 pause→seek→play 를 내보냄)를 합치는 시간
 const MAX_FLOATS = 30;
 const TYPING_IDLE_MS = 3000;
 const TYPING_RESEND_MS = 2000;
@@ -148,7 +152,7 @@ export function createChat({ getState, getInviteLink, onSend, onTyping, onReacti
   let unread = 0;
 
   // DOM 참조
-  let wrap, panel, head, list, typingLine, input, bubbleBox, badge, floats, menu, codeChip, opacity, clockCb, videoCb, modeBtn, pop, picker, dockFitSel;
+  let wrap, panel, head, list, typingLine, input, bubbleBox, badge, floats, menu, codeChip, opacity, clockCb, videoCb, eventsCb, modeBtn, pop, picker, dockFitSel;
 
   try {
     chrome.storage.local.get('chatPrefs').then((r) => {
@@ -244,6 +248,8 @@ export function createChat({ getState, getInviteLink, onSend, onTyping, onReacti
     opacity.value = String(prefs.opacity);
     clockCb.checked = prefs.showClock;
     videoCb.checked = prefs.showVideoTime;
+    eventsCb.checked = prefs.showEvents;
+    list.classList.toggle('no-events', !prefs.showEvents);
     panel.hidden = prefs.collapsed;
     bubbleBox.hidden = !prefs.collapsed;
     panel.classList.toggle('dock', isDock());
@@ -443,7 +449,49 @@ export function createChat({ getState, getInviteLink, onSend, onTyping, onReacti
     name.style.color = p.color ?? '#fff';
   }
 
+  // ---------- 재생/일시정지/시간 이동 알림 ----------
+  const lastEvent = new Map(); // userId -> { entry, at } — 연속 이벤트 합치기용
+  function eventText(m) {
+    const who = m.userId === getState()?.userId ? '내가' : `${profileOf(m.userId).name}님이`;
+    const t = fmtVideo(m.time);
+    if (m.action === 'play') return `▶ ${who} 재생했어요 · ${t}`;
+    if (m.action === 'pause') return `⏸ ${who} 일시정지했어요 · ${t}`;
+    if (m.action === 'seekplay') return `⏩ ${who} ${t} 위치로 이동해서 재생했어요`;
+    return `⏩ ${who} ${t} 위치로 이동했어요`;
+  }
+
+  function renderEvent(m) {
+    list.querySelector('.empty')?.remove();
+    const prev = lastEvent.get(m.userId);
+    const fresh = prev && m.sentAt - prev.at < EVENT_MERGE_MS;
+    // 사이트마다 시크할 때 pause → seek → play 또는 play → seek 를 내보낸다. 같은 사람의 연속 이벤트를 한 줄로 합친다:
+    //  - 정지 + 이동 = 이동 / 이동 + 재생(또는 재생 + 이동) = "이동해서 재생" / 같은 종류가 연달아 오면 마지막 값으로 갱신
+    if (fresh) {
+      const a = prev.entry.action;
+      const n = m.action;
+      let merged = null;
+      if (n === 'seek') merged = a === 'pause' || a === 'seek' ? 'seek' : a === 'play' || a === 'seekplay' ? 'seekplay' : null;
+      else if (n === 'play') merged = a === 'seek' || a === 'seekplay' ? 'seekplay' : a === 'play' ? 'play' : null;
+      else if (n === 'pause' && a === 'pause') merged = 'pause';
+      if (merged) {
+        Object.assign(prev.entry, { action: merged, time: m.time, sentAt: m.sentAt });
+        prev.entry.el.textContent = eventText(prev.entry);
+        prev.at = m.sentAt;
+        return prev.entry.el;
+      }
+    }
+    const row = el('div', 'sys');
+    const entry = { ...m, el: row };
+    row.textContent = eventText(entry);
+    list.append(row);
+    messages.push(entry);
+    lastEvent.set(m.userId, { entry, at: m.sentAt });
+    while (messages.length > MAX_MESSAGES) messages.shift().el.remove();
+    return row;
+  }
+
   function renderMessage(m) {
+    if (m.kind === 'event') return renderEvent(m);
     list.querySelector('.empty')?.remove();
     const row = el('div', m.userId === getState()?.userId ? 'msg me' : 'msg');
     const body = el('div', 'body');
@@ -526,15 +574,17 @@ export function createChat({ getState, getInviteLink, onSend, onTyping, onReacti
       cb.type = 'checkbox';
       cb.addEventListener('change', () => {
         prefs[key] = cb.checked;
-        messages.forEach(renderMeta);
+        messages.forEach((m) => m.kind !== 'event' && renderMeta(m));
+        list.classList.toggle('no-events', !prefs.showEvents);
         savePrefs();
       });
       label.append(cb, el('span', '', text));
       return [label, cb];
     };
-    let clockLabel, videoLabel;
+    let clockLabel, videoLabel, eventsLabel;
     [clockLabel, clockCb] = checkbox('작성 시각 표시', 'showClock');
     [videoLabel, videoCb] = checkbox('재생 시각 표시 (▶ 영상 위치)', 'showVideoTime');
+    [eventsLabel, eventsCb] = checkbox('재생·정지·이동 알림 표시', 'showEvents');
     const copyLink = el('button', 'act', '🔗 초대 링크 복사');
     copyLink.addEventListener('click', async () => (await copyText(getInviteLink())) && flash(copyLink, '✔ 복사됨!'));
     const copyCode = el('button', 'act', '📋 방 코드 복사');
@@ -552,7 +602,7 @@ export function createChat({ getState, getInviteLink, onSend, onTyping, onReacti
       savePrefs();
     });
     fitLabel.append(el('span', '', '붙일 때 화면'), dockFitSel);
-    menu.append(opLabel, clockLabel, videoLabel, copyLink, copyCode, fitLabel);
+    menu.append(opLabel, clockLabel, videoLabel, eventsLabel, copyLink, copyCode, fitLabel);
     settingsBtn.addEventListener('click', () => (menu.hidden = !menu.hidden));
 
     list = el('div', 'list');
@@ -679,6 +729,7 @@ export function createChat({ getState, getInviteLink, onSend, onTyping, onReacti
       typingTimers.clear();
       list.replaceChildren();
       messages.length = 0;
+      lastEvent.clear();
       unread = 0;
       renderBadge();
       renderTyping();
@@ -695,6 +746,12 @@ export function createChat({ getState, getInviteLink, onSend, onTyping, onReacti
 
     addMessage(m) {
       build();
+      if (m.kind === 'event') {
+        // 재생/일시정지/이동 알림: 안 읽은 수나 토스트에는 포함하지 않는다
+        renderEvent(m);
+        scrollToBottom(false);
+        return;
+      }
       const mine = m.userId === getState()?.userId;
       renderMessage(m);
       scrollToBottom(mine);
@@ -713,7 +770,10 @@ export function createChat({ getState, getInviteLink, onSend, onTyping, onReacti
     // 프로필이 바뀌면 기존 메시지의 이름/프사/색도 갱신
     refreshProfiles() {
       if (!built) return;
-      for (const m of messages) applyProfile(m.el, m.userId);
+      for (const m of messages) {
+        if (m.kind === 'event') m.el.textContent = eventText(m); // 이름이 바뀌었을 수 있음
+        else applyProfile(m.el, m.userId);
+      }
       renderTyping();
       updateRoomCode();
     },

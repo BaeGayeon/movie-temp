@@ -6,7 +6,7 @@ import { CMD } from './shared/cmd.js';
 const PING_MS = 20_000;
 const MAX_BACKOFF_MS = 30_000;
 const MAX_CLOCK_SAMPLES = 5;
-const MAX_CHAT_HISTORY = 100;
+const MAX_CHAT_HISTORY = 200; // 채팅 + 재생/정지/이동 알림
 
 const freshRoom = () => ({
   roomCode: null,
@@ -98,6 +98,14 @@ function syncProfile() {
     me.avatar?.value === profile.avatar.value &&
     me.avatar?.bg === profile.avatar.bg;
   if (!same) rawSend({ type: C2S.PROFILE_UPDATE, profile });
+}
+
+// 누가 재생/일시정지/시간 이동을 했는지 채팅창에 알린다(채팅 기록에도 남겨 새로고침 후에도 보이게 한다)
+function pushVideoNotice(fromId, action, time) {
+  const entry = { kind: 'event', userId: fromId, action, time, sentAt: Date.now() };
+  room.chat.push(entry);
+  room.chat = room.chat.slice(-MAX_CHAT_HISTORY);
+  sendToTab({ cmd: CMD.CHAT, msg: entry });
 }
 
 function nameOf(id) {
@@ -276,6 +284,7 @@ function handleServer(m) {
       break;
 
     case S2C.VIDEO:
+      if (m.action !== 'sync') pushVideoNotice(m.fromId, m.action, m.time);
       mirrorVideo(m.action, m.time, m.serverAt);
       persist();
       sendToTab({ cmd: CMD.REMOTE_VIDEO, msg: m, state: publicState() });
@@ -437,6 +446,7 @@ async function onCommand(m, sender) {
       if (room.mode === 'host_only' && room.hostId !== userId) return;
       rawSend({ type: C2S.VIDEO, action: m.action, time: m.time, sentAt: m.sentAt });
       mirrorVideo(m.action, m.time, Date.now() + room.serverOffset);
+      if (!m.silent) pushVideoNotice(userId, m.action, m.time);
       persist();
       return;
     }
