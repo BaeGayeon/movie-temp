@@ -3,38 +3,12 @@ import { CMD } from '../shared/cmd.js';
 import { COLOR_PALETTE, MAX_NAME_LENGTH } from '../shared/protocol.js';
 import { renderAvatar, fileToAvatarDataUrl } from '../shared/avatar.js';
 import { createEmojiPicker, EMOJI_PICKER_CSS } from '../shared/emoji-picker.js';
-import { ROOT_THEME_CSS, THEME_NAMES, THEME_LABELS, THEME_DOTS, loadThemePrefs, saveThemePrefs, onThemePrefs, readableTextOn } from '../shared/theme.js';
+import { ROOT_THEME_CSS, pastelize } from '../shared/theme.js';
 
-// 디자인 토큰(테마)과 이모지 선택기 스타일 주입
+// 디자인 토큰(다크)과 이모지 선택기 스타일 주입
 const themeStyle = document.createElement('style');
 themeStyle.textContent = `${ROOT_THEME_CSS} ${EMOJI_PICKER_CSS}`;
 document.head.append(themeStyle);
-
-// ---------- 테마: 확장 프로그램(이 창)과 채팅을 따로 고르거나, "전체 적용"으로 한 번에 ----------
-let themePrefs = await loadThemePrefs();
-function renderTheme() {
-  document.documentElement.dataset.theme = themePrefs.ui;
-  for (const [target, id] of [['ui', 'uiDots'], ['chat', 'chatDots']]) {
-    document.getElementById(id).replaceChildren(
-      ...THEME_NAMES.map((name) => {
-        const b = document.createElement('button');
-        b.style.background = THEME_DOTS[name];
-        b.title = THEME_LABELS[name];
-        b.setAttribute('aria-label', THEME_LABELS[name]);
-        if (themePrefs[target] === name) b.className = 'on';
-        b.addEventListener('click', () => saveThemePrefs({ [target]: name }));
-        return b;
-      }),
-    );
-  }
-}
-document.getElementById('uiAll').addEventListener('click', () => saveThemePrefs({ ui: themePrefs.ui, chat: themePrefs.ui }));
-document.getElementById('chatAll').addEventListener('click', () => saveThemePrefs({ ui: themePrefs.chat, chat: themePrefs.chat }));
-onThemePrefs((p) => {
-  themePrefs = p;
-  renderTheme();
-});
-renderTheme();
 
 const $ = (id) => document.getElementById(id);
 $('title').textContent = APP_NAME;
@@ -175,8 +149,7 @@ function renderProfile() {
   renderAvatar($('pav'), profile.avatar, 38);
   $('clearPhoto').hidden = profile.avatar.kind !== 'image';
   $('pnamePreview').textContent = profile.name || '(닉네임 없음: 임시 이름 사용)';
-  $('pnamePreview').style.background = profile.color;
-  $('pnamePreview').style.color = readableTextOn(profile.color);
+  $('pnamePreview').style.color = pastelize(profile.color); // 채팅에서 보이는 대로(닉네임은 글자색)
   $('emojiGrid').replaceChildren(
     ...AVATARS.map((e) => {
       const b = document.createElement('button');

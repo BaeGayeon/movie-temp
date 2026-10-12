@@ -7,19 +7,19 @@ const MAX_RECENT = 24;
 
 export const EMOJI_PICKER_CSS = `
   .ep { width: 288px; height: 300px; display: flex; flex-direction: column; background: var(--surface); color: var(--ink);
-    border: 2px solid var(--border-2); border-radius: 18px; box-shadow: var(--shadow-lg); overflow: hidden;
+    border: 1px solid var(--border-3); border-radius: 14px; box-shadow: var(--shadow-lg); overflow: hidden;
     font-family: var(--font), "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif; box-sizing: border-box; }
   .ep * { box-sizing: border-box; }
   .ep-search { margin: 8px 8px 4px; font: inherit; font-size: 13px; color: var(--ink); background: var(--bg);
-    border: 2px solid var(--border-2); border-radius: 999px; padding: 6px 12px; outline: none; }
-  .ep-search:focus { border-color: var(--accent-light); background: var(--surface); }
+    border: 1px solid var(--border-2); border-radius: 999px; padding: 6px 12px; outline: none; }
+  .ep-search:focus { border-color: var(--border-3); background: var(--surface); }
   .ep-search::placeholder { color: var(--placeholder); }
   .ep-tabs { display: flex; margin: 2px 6px 0; background: var(--bg); border-radius: 12px; padding: 2px; }
   .ep-tabs button { flex: 1; background: transparent; border: 0; padding: 4px 0; font-size: 16px; cursor: pointer; opacity: .55; color: inherit; border-radius: 10px; }
   .ep-tabs button:hover { opacity: .9; }
   .ep-tabs button.on { opacity: 1; background: var(--surface-2); box-shadow: 0 1px 4px var(--btn-shadow); }
   .ep-title { font-size: 11px; font-weight: 700; color: var(--ink-soft); padding: 6px 12px 0; }
-  .ep-grid { flex: 1; overflow-y: auto; display: grid; grid-template-columns: repeat(8, 1fr); align-content: start; padding: 4px 8px 8px; gap: 1px; }
+  .ep-grid { scrollbar-width: thin; scrollbar-color: var(--surface-3) transparent; flex: 1; overflow-y: auto; display: grid; grid-template-columns: repeat(8, 1fr); align-content: start; padding: 4px 8px 8px; gap: 1px; }
   .ep-grid button { background: transparent; border: 0; border-radius: 10px; font-size: 20px; padding: 3px 0; cursor: pointer; color: inherit; line-height: 1.2; transition: transform .08s; }
   .ep-grid button:hover { background: var(--surface-2); transform: scale(1.18); }
   .ep-empty { grid-column: 1 / -1; color: var(--ink-soft); font-size: 12px; padding: 18px 4px; text-align: center; }

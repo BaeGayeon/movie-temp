@@ -121,12 +121,3 @@ details.card[open] > summary { border-bottom: 2px solid var(--border); }
 .check input { width: 18px; height: 18px; accent-color: var(--accent); }
 .error { color: var(--danger); font-size: 12px; font-weight: 700; min-height: 0; text-align: center; }
 .error:empty { display: none; }
-
-/* ---- 테마 선택 ---- */
-.themerow { display: flex; align-items: center; gap: 8px; }
-.themerow .tlabel { flex: 1; font-weight: 700; font-size: 13px; line-height: 1.25; }
-.themerow .tlabel small { display: block; font-weight: 500; color: var(--ink-soft); font-size: 11px; }
-.dots { display: flex; gap: 6px; }
-.dots button { width: 28px; height: 28px; border-radius: 50%; border: 3px solid var(--surface); cursor: pointer; padding: 0; box-shadow: 0 0 0 1px var(--border-3); transition: transform .1s; }
-.dots button:hover { transform: scale(1.12); }
-.dots button.on { box-shadow: 0 0 0 3px var(--accent-light); transform: scale(1.1); }

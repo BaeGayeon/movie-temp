@@ -25,6 +25,7 @@ export const CMD = {
   COUNTDOWN: 'countdown',
   BUFFER: 'buffer',
   CHAT: 'chat',
+  HISTORY: 'history', // 같은 방으로 다시 들어왔을 때 지난 채팅/알림 복원
   TYPING_EVENT: 'typing_event',
   REACTION_EVENT: 'reaction_event',
 };

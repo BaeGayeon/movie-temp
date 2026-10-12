@@ -114,6 +114,7 @@ function pushMembershipNotice(user, action) {
 function pushEvent(entry) {
   room.chat.push(entry);
   room.chat = room.chat.slice(-MAX_CHAT_HISTORY);
+  persist(); // 입장 알림처럼 다른 저장 직후에 만들어지는 것도 새로고침/서비스 워커 재시작 뒤에 남도록 바로 저장
   sendToTab({ cmd: CMD.CHAT, msg: entry });
 }
 
@@ -238,6 +239,13 @@ function handleServer(m) {
         serverOffset: m.serverNow - Date.now(),
       };
       for (const p of room.participants) remember(p);
+      if (entering && pendingRestore?.roomCode === m.roomCode) {
+        room.chat = pendingRestore.chat.slice();
+        room.known = { ...pendingRestore.known, ...room.known };
+        for (const p of room.participants) remember(p);
+      }
+      const restored = entering && pendingRestore?.roomCode === m.roomCode;
+      if (entering) pendingRestore = null;
       clockSamples = [];
       syncProfile();
       lastError = null;
@@ -246,6 +254,7 @@ function handleServer(m) {
       // 입장/재접속: 서버 상태에 맞춘다. 방을 방금 만든 사람은 반대로 내 영상의 현재 상태로 방을 시작한다.
       sendToTab({ cmd: justCreated ? CMD.SEED : CMD.SYNC, state: publicState() });
       justCreated = false;
+      if (restored) sendToTab({ cmd: CMD.HISTORY, chat: room.chat }); // 지난 채팅/알림을 채팅창에 다시 채운다
       if (entering) {
         const me = room.participants.find((p) => p.id === userId);
         if (me) pushMembershipNotice(me, 'join');
@@ -371,9 +380,28 @@ function handleServerError(m) {
 
 // ---------- 명령 ----------
 
+// 방을 나가도 같은 방으로 다시 들어오면 지난 채팅과 입퇴장 기록이 이어지도록 잠시 기억해 둔다(6시간).
+// 내가 나간 것도 알림으로 남긴다("곰님이 퇴장했어요" -> 다시 들어오면 "곰님이 입장했어요").
+const ROOM_MEMORY_MS = 6 * 60 * 60 * 1000;
+let pendingRestore = null; // 다시 들어갈 방의 기억(입장 요청 때 불러옴)
+
+function rememberRoom() {
+  if (!room.roomCode) return;
+  const me = room.participants.find((p) => p.id === userId) ?? room.known[userId];
+  if (me) room.chat.push({ kind: 'event', userId, action: 'leave', name: me.name, sentAt: Date.now() });
+  try {
+    chrome.storage.local.set({
+      roomMemory: { roomCode: room.roomCode, chat: room.chat.slice(-MAX_CHAT_HISTORY), known: room.known, at: Date.now() },
+    });
+  } catch {}
+}
+
 function leaveRoom(notifyServer = true) {
   const tabId = room.tabId;
-  if (notifyServer) rawSend({ type: C2S.LEAVE_ROOM });
+  if (notifyServer) {
+    rememberRoom();
+    rawSend({ type: C2S.LEAVE_ROOM });
+  }
   pending = null;
   justCreated = false;
   resetRoom();
@@ -429,6 +457,10 @@ async function onCommand(m, sender) {
         return { ok: false };
       }
       if (roomCode === room.roomCode) return { ok: true };
+      {
+        const mem = (await chrome.storage.local.get('roomMemory')).roomMemory;
+        pendingRestore = mem?.roomCode === roomCode && Date.now() - mem.at < ROOM_MEMORY_MS ? mem : null;
+      }
       enterRoom({ type: C2S.JOIN_ROOM, roomCode, userId }, m.tabId ?? fromTab);
       return { ok: true };
     }
