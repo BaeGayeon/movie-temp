@@ -4,7 +4,7 @@ import { WebSocketServer } from 'ws';
 import { C2S, S2C, parseMessage } from './protocol.js';
 import { RoomManager } from './rooms.js';
 
-const MAX_PAYLOAD = 16 * 1024;
+const MAX_PAYLOAD = 64 * 1024; // 이미지 프사 포함 profile_update 를 받기 위함(메시지 타입별 상한은 protocol.js)
 const RATE_CAPACITY = 60; // 연결당 버스트
 const RATE_PER_SEC = 30; // 연결당 초당 평균 메시지 수
 
@@ -76,7 +76,7 @@ export function createServer({ port = Number(process.env.PORT) || 8080, host = '
           rooms.profileUpdate(conn, msg.profile);
           break;
         case C2S.CHAT:
-          rooms.chat(conn, msg.text);
+          rooms.chat(conn, msg.text, msg.videoTime);
           break;
         case C2S.TYPING:
           rooms.typing(conn, msg.isTyping);

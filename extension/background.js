@@ -230,10 +230,13 @@ function handleServer(m) {
     }
 
     case S2C.CHAT:
-      room.chat.push({ userId: m.userId, text: m.text, sentAt: m.sentAt });
-      room.chat = room.chat.slice(-MAX_CHAT_HISTORY);
-      persist();
-      sendToTab({ cmd: CMD.CHAT, msg: { userId: m.userId, text: m.text, sentAt: m.sentAt } });
+      {
+        const entry = { userId: m.userId, text: m.text, sentAt: m.sentAt, videoTime: m.videoTime };
+        room.chat.push(entry);
+        room.chat = room.chat.slice(-MAX_CHAT_HISTORY);
+        persist();
+        sendToTab({ cmd: CMD.CHAT, msg: entry });
+      }
       break;
 
     case S2C.TYPING:
@@ -390,7 +393,11 @@ async function onCommand(m, sender) {
       return { ok: true };
 
     case CMD.CHAT_SEND:
-      if (room.roomCode && fromTab === room.tabId) rawSend({ type: C2S.CHAT, text: String(m.text ?? '') });
+      if (room.roomCode && fromTab === room.tabId) {
+        const msg = { type: C2S.CHAT, text: String(m.text ?? '') };
+        if (Number.isFinite(m.videoTime)) msg.videoTime = Math.max(0, m.videoTime);
+        rawSend(msg);
+      }
       return;
 
     case CMD.TYPING_SEND:

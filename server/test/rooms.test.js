@@ -437,6 +437,7 @@ test('잘못된 프로필은 무시', async () => {
     { ...PROFILE, avatar: { kind: 'emoji', value: '🐻🐻', bg: '#ffaa00' } },
     { ...PROFILE, avatar: { kind: 'image', value: 'data:image/png;base64,AAAA', bg: '#ffaa00' } },
     { ...PROFILE, avatar: { kind: 'emoji', value: '🐻', bg: 'red' } },
+    { ...PROFILE, avatar: { kind: 'emoji', value: 'A', bg: '#ffaa00' } },
     { ...PROFILE, color: 'javascript:1' },
   ];
   for (const profile of bad) a.send({ type: 'profile_update', profile });
@@ -488,18 +489,118 @@ test('입력 중 표시: 보낸 사람 제외 전달', async () => {
   b.close();
 });
 
-test('이모지 리액션: 허용 이모지만, 사용자당 초당 횟수 제한', async () => {
+test('이모지 리액션: 이모지는 모두 허용(조합/국기 포함), 텍스트는 거부, 사용자당 초당 횟수 제한', async () => {
   const { a, code } = await makeRoom();
   const { c: b } = await joinRoom(code);
-  a.send({ type: 'reaction', emoji: '💩' }); // 허용 목록 밖
-  a.send({ type: 'reaction', emoji: '<script>' });
+  for (const bad of ['<script>', 'ab', '❤️❤️', '', 'A', '1']) a.send({ type: 'reaction', emoji: bad });
   await b.none('reaction');
+  await sleep(1200); // 버킷 보충
+  for (const ok of ['💩', '🧑‍🚀', '🇰🇷', '1️⃣']) {
+    a.send({ type: 'reaction', emoji: ok });
+    assert.equal((await b.next('reaction')).emoji, ok);
+    await sleep(400); // 버킷 보충
+  }
+  await sleep(1200);
+  b.inbox.length = 0;
+  a.inbox.length = 0;
   for (let i = 0; i < 20; i++) a.send({ type: 'reaction', emoji: '❤️' });
   await sleep(300);
   const got = b.inbox.filter((m) => m.type === 'reaction');
   assert.ok(got.length >= 3 && got.length <= 4, `전달된 개수 ${got.length}`);
   assert.deepEqual([got[0].userId, got[0].emoji], [a.userId, '❤️']);
   assert.equal(a.inbox.filter((m) => m.type === 'reaction').length, got.length, '본인에게도 전달');
+  a.close();
+  b.close();
+});
+
+
+// ---------------- 4단계 ----------------
+
+// 검증기는 형식/크기/파일 헤더만 보므로 테스트용으로 헤더만 맞춘 바이트열을 쓴다
+const b64 = (bytes) => Buffer.from(bytes).toString('base64');
+const fakeWebp = (n = 200) => b64([...Buffer.from('RIFF'), 0, 0, 0, 0, ...Buffer.from('WEBP'), ...new Array(n).fill(7)]);
+const fakeJpeg = (n = 200) => b64([0xff, 0xd8, 0xff, 0xe0, ...new Array(n).fill(7)]);
+const img = (data, mime = 'webp') => ({ ...PROFILE, avatar: { kind: 'image', value: `data:image/${mime};base64,${data}`, bg: '#ffaa00' } });
+
+test('이미지 프사: WebP/JPEG 데이터 URL 이 모든 참가자에게 전달된다', async () => {
+  const { a, code } = await makeRoom();
+  const { c: b } = await joinRoom(code);
+  await a.next('participant_joined');
+  a.send({ type: 'profile_update', profile: img(fakeWebp()) });
+  const u = await b.next('profile_updated');
+  assert.equal(u.user.avatar.kind, 'image');
+  assert.equal(u.user.avatar.value, `data:image/webp;base64,${fakeWebp()}`);
+  await sleep(50);
+  const { state } = await joinRoom(code); // 이후 입장자의 room_state 에도 포함
+  assert.equal(state.participants.find((p) => p.id === a.userId).avatar.kind, 'image');
+  a.close();
+  b.close();
+});
+
+test('이미지 프사 검증: 크기 상한(20KB), MIME, 파일 헤더, base64 형식', async () => {
+  const { a, code } = await makeRoom();
+  const { c: b } = await joinRoom(code);
+  await a.next('participant_joined');
+
+  a.send({ type: 'profile_update', profile: img(fakeJpeg(20 * 1024 - 4), 'jpeg') }); // 정확히 20KB: 허용
+  assert.equal((await b.next('profile_updated')).user.avatar.kind, 'image');
+
+  const bad = [
+    img(fakeWebp(20 * 1024)), // 20KB 초과
+    img(fakeJpeg(), 'webp'), // 선언은 webp, 실제는 jpeg
+    img(fakeWebp(), 'jpeg'), // 선언은 jpeg, 실제는 webp
+    img(b64(Buffer.from('<svg onload=alert(1)>'.padEnd(64))), 'webp'), // 이미지가 아님
+    img(fakeWebp(), 'png'), // 허용하지 않는 MIME
+    img('****not base64****'),
+    img(fakeWebp() + '!!'),
+    { ...PROFILE, avatar: { kind: 'image', value: 'https://evil.example/a.png', bg: '#ffaa00' } }, // 외부 URL 금지
+    { ...PROFILE, avatar: { kind: 'image', value: 'javascript:alert(1)', bg: '#ffaa00' } },
+  ];
+  for (const profile of bad) a.send({ type: 'profile_update', profile });
+  await b.none('profile_updated', 300);
+  a.close();
+  b.close();
+});
+
+test('이미지 프로필 변경은 빈도 제한(증폭 방지), 이모지 프로필은 느슨', async () => {
+  const { a, code } = await makeRoom();
+  const { c: b } = await joinRoom(code);
+  await a.next('participant_joined');
+  for (let i = 0; i < 10; i++) a.send({ type: 'profile_update', profile: img(fakeWebp(100 + i)) });
+  await sleep(300);
+  const imgs = b.inbox.filter((m) => m.type === 'profile_updated').length;
+  assert.ok(imgs >= 3 && imgs <= 4, `이미지 프로필 전달 ${imgs}`);
+  b.inbox.length = 0;
+  for (let i = 0; i < 8; i++) a.send({ type: 'profile_update', profile: { ...PROFILE, name: `n${i}` } });
+  await sleep(300);
+  assert.equal(b.inbox.filter((m) => m.type === 'profile_updated').length, 8);
+  a.close();
+  b.close();
+});
+
+test('profile_update 만 큰 메시지 허용, 다른 타입은 4KB 초과 거부', async () => {
+  const { a, code } = await makeRoom();
+  const { c: b } = await joinRoom(code);
+  a.send(JSON.stringify({ type: 'chat', text: 'ok', pad: 'x'.repeat(5000) }));
+  await b.none('chat');
+  a.send({ type: 'ping' });
+  await a.next('pong'); // 연결은 유지
+  a.close();
+  b.close();
+});
+
+test('채팅 재생 시각(videoTime): 선택 필드로 그대로 전달, 잘못된 값은 무시', async () => {
+  const { a, code } = await makeRoom();
+  const { c: b } = await joinRoom(code);
+  a.send({ type: 'chat', text: '이 장면', videoTime: 754.5 });
+  assert.equal((await b.next('chat')).videoTime, 754.5);
+  a.send({ type: 'chat', text: '시간 없음' });
+  assert.equal('videoTime' in (await b.next('chat')), false);
+  await sleep(1500);
+  a.send({ type: 'chat', text: 'x', videoTime: -1 });
+  a.send({ type: 'chat', text: 'x', videoTime: 'abc' });
+  a.send({ type: 'chat', text: 'x', videoTime: 1e9 });
+  await b.none('chat');
   a.close();
   b.close();
 });
