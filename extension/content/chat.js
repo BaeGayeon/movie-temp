@@ -61,8 +61,7 @@ const CSS = `
   .list.plain .body, .list.plain .msg.me .body, .list.compact .body, .list.compact .msg.me .body { flex: 1; max-width: none; align-items: flex-start; gap: 3px; }
   .list.plain .name, .list.plain .msg.me .name, .list.compact .name, .list.compact .msg.me .name { flex-direction: row; }
   .list.plain .text, .list.plain .msg.me .text, .list.compact .text, .list.compact .msg.me .text { background: none; padding: 0; border-radius: 0; }
-  .list.plain .sys, .list.compact .sys { align-self: flex-start; text-align: left; background: none; padding: 0; border-radius: 0; }
-  .sys { align-self: center; text-align: center; color: var(--ink-soft); font-size: 12px; background: var(--surface); border-radius: 12px; padding: 2px 12px; max-width: 100%; }
+  .sys { align-self: center; text-align: center; color: var(--ink-soft); font-size: 12px; padding: 0 8px; max-width: 100%; } /* 안내 문구: 어느 모드에서나 가운데, 말풍선 없이 글만 */
   .no-events .sys { display: none; }
   .empty { color: var(--ink-soft); text-align: center; padding: 18px 0; font-size: 13px; }
 
@@ -194,7 +193,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
   try {
     chrome.storage.local.get('chatPrefs').then((r) => {
       prefs = { ...DEFAULT_PREFS, ...(r.chatPrefs ?? {}) };
-      if (!r.chatPrefs?.v) prefs.dockFit = 'width'; // 예전 설정: 전체 축소는 사이트 자막 위치가 어긋나서 기본을 폭 줄이기로
+      prefs.dockFit = 'width'; // 붙이기는 폭 줄이기 하나만(영상이 줄지 않는 사이트는 자동으로 전체 축소)
       prefs.v = 2;
       if (built) applyPrefs();
     });
@@ -315,13 +314,12 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
 
   const isDock = () => prefs.mode === 'dock';
   // 창 모드는 버튼 하나로 3단 순환: 떠 있는 창 -> 오른쪽에 붙이기(화면 전체 축소) -> 오른쪽에 붙이기(폭만 줄이기) -> 처음으로
-  const modeState = () => (!isDock() ? 'float' : prefs.dockFit === 'width' ? 'dock-width' : 'dock-scale');
+  const modeState = () => (isDock() ? 'dock-width' : 'float');
   const MODE_UI = {
-    float: ['❐', '떠 있는 창 · 클릭하면 오른쪽에 붙여요(폭만 줄이기)'],
-    'dock-width': ['◫', '오른쪽에 붙임: 폭만 줄이기 · 클릭하면 화면 전체 축소로'],
-    'dock-scale': ['◨', '오른쪽에 붙임: 화면 전체 축소 · 클릭하면 떠 있는 창으로'],
+    float: ['❐', '떠 있는 창 · 클릭하면 오른쪽에 붙여요'],
+    'dock-width': ['◨', '오른쪽에 붙임 · 클릭하면 떠 있는 창으로'],
   };
-  const NEXT_MODE = { float: ['dock', 'width'], 'dock-width': ['dock', 'scale'], 'dock-scale': ['float', 'scale'] };
+  const NEXT_MODE = { float: ['dock', 'width'], 'dock-width': ['float', 'width'] };
 
   function applyPrefs() {
     const vw = window.innerWidth;
