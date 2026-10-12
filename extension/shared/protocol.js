@@ -57,8 +57,17 @@ export const MAX_COUNTDOWN_SECONDS = 10;
 // 3단계: 프로필/채팅/리액션 제한
 export const MAX_NAME_LENGTH = 16;
 export const MAX_CHAT_LENGTH = 300;
-// 리액션 빠른 선택 목록(기본). 서버는 이모지 1개면 무엇이든 허용하고 빈도만 제한한다.
-export const REACTION_EMOJIS = ['❤️', '😂', '😱', '👍', '👏', '🔥', '😢', '🎉'];
+// 리액션 빠른 선택 목록(기본). 감정이 비슷한 것끼리 묶어 두었다(묶음 사이는 화면에서 간격을 둔다).
+//   호감·기쁨 | 응원·축하 | 놀람·의문 | 슬픔 | 화남·무덤덤
+// 서버는 이모지 1개면 무엇이든 허용하고 빈도만 제한한다.
+export const REACTION_GROUPS = [
+  ['❤️', '😍', '😂', '😎'],
+  ['👍', '👏', '🎉', '🔥'],
+  ['😱', '🤯', '❓'],
+  ['😢', '😭'],
+  ['😡', '😑'],
+];
+export const REACTION_EMOJIS = REACTION_GROUPS.flat();
 export const DEFAULT_AVATAR_EMOJI = '🙂';
 export const COLOR_PALETTE = ['#ff6b6b', '#ffa94d', '#ffd43b', '#69db7c', '#38d9a9', '#4dabf7', '#9775fa', '#f783ac'];
 const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;

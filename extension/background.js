@@ -273,7 +273,7 @@ function handleServer(m) {
       room.hostId = m.hostId;
       persist();
       broadcast();
-      toast(m.hostId === userId ? '내가 새 방장이 됐어요' : `${nameOf(m.hostId)}님이 새 방장이에요`);
+      toast(`${nameOf(m.hostId)}님이 새 방장이에요`); // 나일 때도 닉네임으로
       break;
 
     case S2C.MODE_CHANGED:
