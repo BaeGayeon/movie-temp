@@ -14,6 +14,7 @@
   const TOKEN_TTL = 1500; // 원격 동작이 일으킨 이벤트를 무시하는 유효 시간(ms)
 
   const isTop = window === window.top;
+  const log = (...a) => console.log('[bmt]', isTop ? 'top' : 'iframe', ...a); // 진단용 로그
   const adapter = createDefaultAdapter(); // 4단계에서 호스트별 어댑터 선택
   const ui = createUI();
 
@@ -72,6 +73,7 @@
   }
 
   function applyRemote(msg) {
+    log('remote', msg.action, msg.time.toFixed(1), video ? '적용' : '무시: video 없음');
     if (!video) return;
     if (msg.action === 'play') {
       seekTo(msg.time);
@@ -88,7 +90,7 @@
   let lastBlockedToast = 0;
 
   function onLocal(action) {
-    if (!active()) return;
+    if (!active()) return log('local', action, '무시: 방에 묶인 탭이 아님/방 없음');
     if (!canControl()) {
       // 방장 전용 모드: 보내지 않고 방 상태로 되돌린다
       if (Date.now() - lastBlockedToast > 2000 && isTop) {
@@ -98,6 +100,7 @@
       applyRoomVideo();
       return;
     }
+    log('local', action, '전송', video.currentTime.toFixed(1));
     send({ cmd: CMD.VIDEO_EVENT, action, time: video.currentTime, sentAt: Date.now() });
   }
 
@@ -110,6 +113,7 @@
     if (video === v) return;
     detach();
     video = v;
+    log('video 연결', v.clientWidth + 'x' + v.clientHeight, 'room:', state?.roomCode ?? '없음');
     v.addEventListener('play', onPlay);
     v.addEventListener('pause', onPause);
     v.addEventListener('seeked', onSeeked);
@@ -144,6 +148,7 @@
     switch (m.cmd) {
       case CMD.STATE:
         state = m.state;
+        log('state', state.roomCode ?? '방 없음', state.connection);
         if (!active()) ui.hideClickPrompt();
         break;
       case CMD.SYNC:
@@ -163,6 +168,7 @@
   // ---------- 시작: 상태 복구 + 초대 링크 ----------
   const reply = await chrome.runtime.sendMessage({ cmd: CMD.REGISTER }).catch(() => null);
   state = reply?.state ?? null;
+  log('로드됨', location.href.slice(0, 60), 'room:', state?.roomCode ?? '없음(이 탭은 방에 묶이지 않음)');
   applyRoomVideo();
 
   if (isTop) {
