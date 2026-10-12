@@ -10,7 +10,7 @@
     <div class="brand">
       <div class="logo">☁️</div>
       <div>
-        <h1 id="title"></h1>
+        <h1><span id="title"></span> <small id="titleKo"></small></h1>
         <p class="tagline">같이 보면 더 재밌어요 🍿</p>
       </div>
     </div>
@@ -25,53 +25,54 @@
         <input id="code" maxlength="6" placeholder="방 코드 6자리" autocomplete="off" spellcheck="false">
         <button id="join" class="btn">참가</button>
       </div>
-      <p class="hint">영상이 있는 탭에서 열어 주세요 👀</p>
     </section>
 
-    <!-- 방에 있을 때 -->
+    <!-- 방에 있을 때: 카드마다 접었다 펼 수 있다(펼침 상태는 기억한다) -->
     <section id="room" hidden>
-      <div class="card">
-        <div class="roomhead">
-          <span class="label">🏠 방 코드 <span class="status" id="conn"></span></span>
+      <details class="card" data-fold="room" open>
+        <summary>🏠 방 코드 <span class="status" id="conn"></span></summary>
+        <div class="inner">
+          <div class="code" id="roomCode"></div>
+          <div class="row nowrap">
+            <button id="copy" class="btn primary">🔗 링크 복사</button>
+            <button id="copyCode" class="btn">📋 코드 복사</button>
+          </div>
           <button id="leave" class="btn ghost small">나가기 👋</button>
         </div>
-        <div class="code" id="roomCode"></div>
-        <div class="row nowrap">
-          <button id="copy" class="btn primary">🔗 링크 복사</button>
-          <button id="copyCode" class="btn">📋 코드 복사</button>
-        </div>
-      </div>
+      </details>
 
-      <div class="card" style="margin-top:12px">
-        <h2>🧑‍🤝‍🧑 같이 보는 사람 <span class="count" id="count"></span></h2>
-        <ul class="people" id="people"></ul>
-      </div>
+      <details class="card" data-fold="people" open>
+        <summary>🧑‍🤝‍🧑 같이 보는 사람 <span class="count" id="count"></span></summary>
+        <div class="inner"><ul class="people" id="people"></ul></div>
+      </details>
 
-      <div class="card" id="hostBox" style="margin-top:12px">
-        <h2>🎮 조작 권한</h2>
-        <div class="seg" id="modeSeg">
-          <button data-mode="everyone">🙌 모두 조작</button>
-          <button data-mode="host_only">👑 방장만</button>
+      <details class="card" id="hostBox" data-fold="host" open>
+        <summary>🎮 조작 권한</summary>
+        <div class="inner">
+          <div class="seg" id="modeSeg">
+            <button data-mode="everyone">🙌 모두 조작</button>
+            <button data-mode="host_only">👑 방장만</button>
+          </div>
+          <div class="row nowrap" id="countdownRow">
+            <select id="seconds" aria-label="카운트다운 초">
+              <option value="3">3초</option>
+              <option value="5">5초</option>
+              <option value="10">10초</option>
+            </select>
+            <button id="countdown" class="btn primary">⏱️ 카운트다운 시작</button>
+          </div>
         </div>
-        <div class="row nowrap" id="countdownRow">
-          <select id="seconds" aria-label="카운트다운 초">
-            <option value="3">3초</option>
-            <option value="5">5초</option>
-            <option value="10">10초</option>
-          </select>
-          <button id="countdown" class="btn primary">⏱️ 카운트다운 시작</button>
-        </div>
-      </div>
+      </details>
       <p class="note" id="modeInfo" hidden style="text-align:center"></p>
-      <p class="wait" id="waitInfo" hidden style="margin-top:12px"></p>
+      <p class="wait" id="waitInfo" hidden></p>
     </section>
 
-    <details class="card" id="profileBox">
+    <details class="card" id="profileBox" data-fold="profile">
       <summary>🎨 내 프로필</summary>
       <div class="inner">
         <div class="preview"><span class="av" id="pav"></span><span id="pnamePreview"></span></div>
-        <input id="pname" maxlength="16" placeholder="닉네임을 입력하면 저장돼요 (최대 16자)" autocomplete="off">
-        <div class="sub">프사 (이모지 또는 사진)</div>
+        <input id="pname" maxlength="16" placeholder="닉네임 (최대 16자)" autocomplete="off">
+        <div class="sub">프사</div>
         <div class="grid" id="emojiGrid"></div>
         <div class="row nowrap">
           <button id="moreEmoji" class="btn small">＋ 모든 이모지</button>
@@ -80,20 +81,20 @@
           <input type="file" id="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
         </div>
         <div id="pickerBox" hidden></div>
-        <div class="note">사진은 64×64로 줄여 20KB 이하로 만들어 방 참가자에게만 전달돼요. 서버에 저장되지 않아요.</div>
         <div class="error" id="perror"></div>
         <div class="sub">프사 배경색</div>
         <div class="grid" id="bgGrid"></div>
-        <div class="sub">닉네임(채팅) 색</div>
+        <div id="bgPicker" hidden></div>
+        <div class="sub">닉네임 색</div>
         <div class="grid" id="colorGrid"></div>
+        <div id="colorPicker" hidden></div>
       </div>
     </details>
 
-    <details class="card" id="syncBox">
+    <details class="card" id="syncBox" data-fold="sync">
       <summary>⚙️ 동기화 설정</summary>
       <div class="inner">
-        <label class="check"><input type="checkbox" id="adDetect"> 광고 구간은 동기화에서 제외</label>
-        <div class="note" style="margin:0">90초보다 짧은 영상을 광고로 보고, 광고 중에는 서로의 재생/일시정지/시크를 주고받지 않아요. 짧은 영상으로 테스트할 때는 꺼 주세요.</div>
+        <label class="check" title="90초보다 짧은 영상은 광고로 보고, 광고 중에는 재생·일시정지·이동을 주고받지 않아요"><input type="checkbox" id="adDetect"> 광고 구간은 동기화에서 제외</label>
       </div>
     </details>
 

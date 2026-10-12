@@ -52,8 +52,9 @@ export function pastelize(hex) {
     h = max === r ? (g - b) / d + (g < b ? 6 : 0) : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
     h /= 6;
   }
+  if (s < 0.1) l = Math.max(l, 0.8); // 흰색/회색: 밝게만(흰색은 흰색 그대로)
+  else l = Math.min(0.88, Math.max(l, 0.76));
   s = Math.min(s, 0.85);
-  l = Math.min(0.88, Math.max(l, 0.76));
   const f = (p, q, t) => {
     t = (t + 1) % 1;
     return t < 1 / 6 ? p + (q - p) * 6 * t : t < 1 / 2 ? q : t < 2 / 3 ? p + (q - p) * (2 / 3 - t) * 6 : p;

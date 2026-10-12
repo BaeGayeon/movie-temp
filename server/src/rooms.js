@@ -1,5 +1,5 @@
 import { randomInt } from 'node:crypto';
-import { S2C, ERR, VIDEO_ACTION_SYNC, COLOR_PALETTE, DEFAULT_AVATAR_EMOJI } from './protocol.js';
+import { S2C, ERR, VIDEO_ACTION_SYNC, DEFAULT_COLORS, DEFAULT_AVATAR_EMOJI } from './protocol.js';
 
 // 헷갈리는 문자(0/O, 1/I)를 뺀 영숫자
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -308,7 +308,7 @@ export class RoomManager {
     } else {
       const seq = ++room.seq;
       if (!room.profiles.has(userId)) {
-        const color = COLOR_PALETTE[(seq - 1) % COLOR_PALETTE.length];
+        const color = DEFAULT_COLORS[(seq - 1) % DEFAULT_COLORS.length];
         room.profiles.set(userId, {
           name: `게스트${randomInt(1000, 10000)}`,
           avatar: { kind: 'emoji', value: DEFAULT_AVATAR_EMOJI, bg: color },
