@@ -225,7 +225,7 @@
     if (!video || Math.abs(pos() - t) < SEEK_THRESHOLD) return;
     expect('seeked');
     note('seekTo', +t.toFixed(1), 'from pos', +pos().toFixed(1), 'offset', +timeOffset.toFixed(1));
-    adapter.seek(video, t - timeOffset); // 어댑터/플레이어에는 영상 자체의 시간축 값으로
+    adapter.seek(video, t); // 이동 요청은 본편 위치(방의 시간) 그대로 — 이동하고 나면 영상 시간축이 본편 위치와 같아진다(onSeeked 에서 보정값 해제)
     if (adapter.settleMs) {
       // 이동 뒤 재생/정지가 어긋나 있으면(어댑터의 명령이 비동기라 상태 확인이 엇갈린 경우) 방 상태로 다시 맞춘다. 위치는 건드리지 않는다.
       clearTimeout(settleTimer);
@@ -426,7 +426,14 @@
 
   const onPlay = () => !consume('play') && onLocal('play');
   const onPause = () => !consume('pause') && onLocal('pause');
-  const onSeeked = () => !consume('seeked') && onLocal('seek');
+  const onSeeked = () => {
+    // 넷플릭스는 이동(시크)하면 영상 시간축이 다시 본편 위치와 같아진다(보정값 해제). 광고 직후 이어서 재생되는 동안에만 시간축이 어긋나 있다.
+    if (timeOffset !== 0) {
+      log('이동 뒤 시간축 보정 해제', { offset: +timeOffset.toFixed(1), vct: +video.currentTime.toFixed(1) });
+      timeOffset = 0;
+    }
+    return !consume('seeked') && onLocal('seek');
+  };
 
   // ---------- <video> 탐지 ----------
   function attach(v) {
