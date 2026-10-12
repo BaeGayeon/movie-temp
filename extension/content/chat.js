@@ -126,7 +126,6 @@ const DEFAULT_PREFS = {
   width: 300,
   height: 420,
   dockWidth: 340,
-  dockFit: 'width', // 붙이기 방식: 'width' = 폭만 줄이기(자막 위치가 어긋나지 않음), 'scale' = 화면 전체 축소
   x: null, // 떠 있는 창 위치(null 이면 오른쪽 위)
   y: null,
   showClock: true, // 작성 시각
@@ -193,7 +192,6 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
   try {
     chrome.storage.local.get('chatPrefs').then((r) => {
       prefs = { ...DEFAULT_PREFS, ...(r.chatPrefs ?? {}) };
-      if (!r.chatPrefs?.v) prefs.dockFit = 'width'; // 예전 설정은 폭만 줄이기로(전체 축소는 모드 버튼으로 고른다)
       prefs.v = 2;
       if (built) applyPrefs();
     });
@@ -219,16 +217,13 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
   };
 
   // ---------- 페이지 분할(오른쪽에 붙이기) ----------
-  // 사이트 화면을 채팅 왼쪽 영역에 맞춘다. 방식은 두 가지(설정 "붙일 때 화면"):
-  //  - 'scale'(기본) "전체 축소": 영상이 vw/fixed 로 화면 전체에 깔린 OTT 사이트에서도 영상이 함께 줄어든다.
-  //      · 스크롤이 없는 페이지(시청 화면): <html> 에 transform 을 걸어 비율대로 줄이고 세로 가운데에 놓는다.
-  //      · 스크롤되는 페이지: transform 은 fixed 요소를 문서에 묶어 스크롤에 딸려 나가게 하므로(영상이 사라짐) CSS zoom 을 쓴다.
-  //        zoom 은 fixed 가 화면에 고정된 채 함께 줄어든다(세로 가운데 정렬은 안 됨: 위쪽 정렬).
-  //  - 'width' "폭만 줄이기": <html> 폭만 줄임. 반응형 사이트에서는 자연스럽지만 vw/fixed 요소는 줄지 않고 채팅 아래에 깔린다.
-  const FIT_PROPS = ['width', 'transform', 'transform-origin', 'min-height', 'zoom', 'overflow'];
+  // 사이트 화면을 채팅 왼쪽 영역에 맞춘다: <html> 폭을 줄인다.
+  //  - 스크롤이 없는 페이지(시청 화면): html 에 항등 transform 을 걸어 position:fixed 요소(플레이어)의 기준을 html 로 만들어
+  //    함께 줄어들게 한다. 화면을 비율로 줄이지 않으므로 사이트가 영상 위치로 계산하는 자막도 어긋나지 않는다.
+  //    html 높이가 내용 높이(fixed 만 있으면 0)가 되어 영상이 사라지지 않도록 min-height:100vh, 가짜 스크롤바는 overflow:hidden 으로 막는다.
+  //  - 스크롤되는 페이지: fixed 요소가 문서에 묶여 스크롤에 딸려 나가므로 transform 은 쓰지 않고 폭만 줄인다.
+  const FIT_PROPS = ['width', 'transform', 'min-height', 'overflow'];
   let savedStyles = null; // 원래 <html> 인라인 스타일(복구용)
-  let widthTrick = false; // 폭만 줄이기에서 html 에 항등 transform 을 거는지(스크롤 없는 페이지만)
-  let fitMode = null; // 'transform' | 'zoom' | 'width' — 붙인 동안 유지(스크롤이 생기면 transform -> zoom 으로만 바뀜)
 
   const clearFit = (html) => {
     for (const p of FIT_PROPS) html.style.removeProperty(p);
@@ -238,19 +233,10 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     clearFit(html);
     return window.scrollY > 0 || html.scrollHeight > window.innerHeight + 2;
   };
-  function onScrollWhileScaled() {
-    // 스크롤이 생기면(페이지가 늘어나거나 사용자가 스크롤) transform 은 fixed 영상을 깨뜨리므로 zoom 으로 바꾼다
-    if (fitMode === 'transform' && window.scrollY > 0) {
-      fitMode = 'zoom';
-      applyPrefs();
-    }
-  }
 
-  function setPageInset(px, fit) {
+  function setPageInset(px) {
     const html = document.documentElement;
     if (px <= 0) {
-      window.removeEventListener('scroll', onScrollWhileScaled);
-      fitMode = null;
       if (!savedStyles) return;
       clearFit(html);
       for (const p of FIT_PROPS) {
@@ -264,47 +250,25 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
       savedStyles = {};
       for (const p of FIT_PROPS) savedStyles[p] = [html.style.getPropertyValue(p), html.style.getPropertyPriority(p)];
     }
-    if (fit === 'width') {
-      fitMode = 'width';
-      widthTrick = !isScrollable(html); // 스크롤되는 페이지에서는 html 이 길어져서 fixed 기준이 달라지므로 쓰지 않는다
-    }
-    else if (!fitMode || fitMode === 'width') fitMode = isScrollable(html) ? 'zoom' : 'transform';
+    const trick = !isScrollable(html);
     clearFit(html);
-
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-    const scale = Math.max(0.3, (vw - px) / vw);
     const set = (name, value) => html.style.setProperty(name, value, 'important');
-    if (fitMode === 'width') {
-      set('width', `calc(100% - ${px}px)`);
-      if (widthTrick) {
-        // 변환이 있으면 position:fixed 요소의 기준이 html 이 되어 줄어든 폭을 따른다(자막 등 위치 계산도 어긋나지 않음).
-        // html 높이가 내용 높이(fixed 만 있으면 0)가 되지 않도록 화면 높이를 보장한다.
-        set('transform', 'translate(0, 0)');
-        set('min-height', '100vh');
-        set('overflow', 'hidden'); // fixed 요소가 html 안으로 들어오면서 생기는 몇 px 의 가짜 스크롤바 방지(스크롤 없는 페이지에서만 쓴다)
-      }
-    } else if (fitMode === 'zoom') {
-      set('zoom', String(scale));
-      set('width', `${vw}px`); // zoom 이 곱해져 화면 폭이 (vw - px) 가 된다
-    } else {
-      set('transform', `translate(0, ${(vh - vh * scale) / 2}px) scale(${scale})`); // 세로 가운데
-      set('transform-origin', '0 0');
-      set('min-height', '100vh'); // fixed 요소 기준 높이를 화면 높이로
+    set('width', `calc(100% - ${px}px)`);
+    if (trick) {
+      set('transform', 'translate(0, 0)');
+      set('min-height', '100vh');
+      set('overflow', 'hidden');
     }
-    window.removeEventListener('scroll', onScrollWhileScaled);
-    if (fitMode === 'transform') window.addEventListener('scroll', onScrollWhileScaled, { passive: true });
   }
 
   const isDock = () => prefs.mode === 'dock';
-  // 창 모드는 버튼 하나로 3단 순환: 떠 있는 창 -> 오른쪽에 붙이기(화면 전체 축소) -> 오른쪽에 붙이기(폭만 줄이기) -> 처음으로
-  const modeState = () => (!isDock() ? 'float' : prefs.dockFit === 'scale' ? 'dock-scale' : 'dock-width');
+  // 창 모드는 버튼 하나로 전환: 떠 있는 창 <-> 오른쪽에 붙이기
+  const modeState = () => (isDock() ? 'dock' : 'float');
   const MODE_UI = {
-    float: ['❐', '떠 있는 창 · 클릭하면 오른쪽에 붙여요(폭만 줄이기: 화면 크기는 그대로, 페이지 폭만 줄어요)'],
-    'dock-width': ['◫', '오른쪽에 붙임: 폭만 줄이기 · 클릭하면 화면 전체 축소로(영상이 가려지면 이걸 써요)'],
-    'dock-scale': ['◨', '오른쪽에 붙임: 화면 전체 축소 · 클릭하면 떠 있는 창으로'],
+    float: ['❐', '떠 있는 창 · 클릭하면 오른쪽에 붙여요'],
+    dock: ['◨', '오른쪽에 붙임 · 클릭하면 떠 있는 창으로'],
   };
-  const NEXT_MODE = { float: ['dock', 'width'], 'dock-width': ['dock', 'scale'], 'dock-scale': ['float', 'width'] };
+  const NEXT_MODE = { float: 'dock', dock: 'float' };
 
   function applyPrefs() {
     const vw = window.innerWidth;
@@ -348,7 +312,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
         height: `${prefs.height}px`,
       });
     }
-    setPageInset(built && mount.host?.isConnected ? inset : 0, prefs.dockFit);
+    setPageInset(built && mount.host?.isConnected ? inset : 0);
     if (!prefs.collapsed && !prefs.hidden) {
       unread = 0;
       renderBadge();
@@ -652,7 +616,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     settingsBtn.title = '설정';
     modeBtn = el('button', 'iconbtn');
     modeBtn.addEventListener('click', () => {
-      [prefs.mode, prefs.dockFit] = NEXT_MODE[modeState()];
+      prefs.mode = NEXT_MODE[modeState()];
       applyPrefs();
       savePrefs();
     });
@@ -831,7 +795,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     // 방을 나가거나 방이 사라졌을 때
     hide() {
       if (!built) return;
-      setPageInset(0, prefs.dockFit);
+      setPageInset(0);
       closePicker();
       menu.hidden = true;
       mount.remove();
