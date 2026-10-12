@@ -15,7 +15,8 @@ const freshRoom = () => ({
   mode: 'everyone',
   participants: [],
   video: { playing: false, time: 0, updatedAt: 0 },
-  waitingIds: [], // 버퍼링 중이라 모두가 기다리는 참가자
+  waitingIds: [], // 버퍼링/광고 중이라 모두가 기다리는 참가자
+  adIds: [], // 그중 광고를 보고 있는 참가자
   chat: [], // 최근 채팅(새로고침 후 복구용). content 에는 REGISTER 응답으로만 전달
   known: {}, // 방에 있었던 사람들의 프로필(userId -> { name, avatar, color }). 나간 뒤에도 지난 메시지에 닉네임/프사를 보여주기 위함
   serverOffset: 0, // 서버 시각 - 로컬 시각
@@ -236,6 +237,7 @@ function handleServer(m) {
         participants: m.participants,
         video: m.video,
         waitingIds: m.waitingIds ?? [],
+        adIds: m.adIds ?? [],
         serverOffset: m.serverNow - Date.now(),
       };
       for (const p of room.participants) remember(p);
@@ -339,6 +341,7 @@ function handleServer(m) {
     case S2C.COUNTDOWN:
       room.video = { playing: true, time: m.time, updatedAt: m.startAt };
       room.waitingIds = [];
+      room.adIds = [];
       persist();
       broadcast();
       sendToTab({ cmd: CMD.COUNTDOWN, state: publicState() });
@@ -346,6 +349,7 @@ function handleServer(m) {
 
     case S2C.BUFFER_STATE:
       room.waitingIds = m.waitingIds;
+      room.adIds = m.adIds ?? [];
       room.video = m.video;
       persist();
       broadcast();
@@ -504,7 +508,7 @@ async function onCommand(m, sender) {
       return { ok: true };
 
     case CMD.BUFFERING:
-      if (room.roomCode && fromTab === room.tabId) rawSend({ type: C2S.BUFFERING, isBuffering: !!m.isBuffering, time: m.time });
+      if (room.roomCode && fromTab === room.tabId) rawSend({ type: C2S.BUFFERING, isBuffering: !!m.isBuffering, time: m.time, reason: m.reason });
       return;
 
     case CMD.SYNC_REPORT:

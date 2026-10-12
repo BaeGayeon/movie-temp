@@ -27,7 +27,7 @@ const CSS = `
   .iconbtn { background: transparent; font-size: 15px; padding: 2px 6px; border-radius: 8px; color: var(--ink-soft); }
   .iconbtn:hover { background: var(--head-chip); color: var(--ink); }
 
-  .menu { position: absolute; top: calc(100% + 6px); right: 8px; z-index: 5; width: 240px; background: var(--surface); color: var(--ink); border: 1px solid var(--border-3);
+  .menu { position: absolute; top: calc(100% + 6px); left: 8px; right: 8px; margin-left: auto; max-width: 240px; max-height: calc(100vh - 80px); overflow-y: auto; z-index: 5; background: var(--surface); color: var(--ink); border: 1px solid var(--border-3);
     border-radius: 14px; padding: 10px; box-shadow: var(--shadow-lg); display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
   .menu[hidden] { display: none; }
   .menu label { display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 500; }
