@@ -11,6 +11,10 @@ export const CMD = {
   COUNTDOWN_START: 'countdown_start', // popup (방장)
   BUFFERING: 'buffering', // content
   SYNC_REPORT: 'sync_report', // content
+  SET_PROFILE: 'set_profile', // popup
+  CHAT_SEND: 'chat_send', // content
+  TYPING_SEND: 'typing_send', // content
+  REACTION_SEND: 'reaction_send', // content
   // background -> popup, content
   STATE: 'state',
   SYNC: 'sync', // 방 상태를 받았으니 영상을 맞춰라
@@ -18,4 +22,7 @@ export const CMD = {
   TOAST: 'toast',
   COUNTDOWN: 'countdown',
   BUFFER: 'buffer',
+  CHAT: 'chat',
+  TYPING_EVENT: 'typing_event',
+  REACTION_EVENT: 'reaction_event',
 };

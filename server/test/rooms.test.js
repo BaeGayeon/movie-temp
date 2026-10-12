@@ -392,3 +392,114 @@ test('버퍼링 중 시크는 자동 재개를 취소하지 않고 위치만 갱
   a.close();
   b.close();
 });
+
+// ---------------- 3단계 ----------------
+
+const PROFILE = { name: '가연', avatar: { kind: 'emoji', value: '🐻', bg: '#FFAA00' }, color: '#38d9a9' };
+
+test('입장 시 기본 프로필(이름/이모지/색)이 부여된다', async () => {
+  const { a, state } = await makeRoom();
+  const me = state.participants[0];
+  assert.match(me.name, /^게스트\d{4}$/);
+  assert.equal(me.avatar.kind, 'emoji');
+  assert.match(me.avatar.bg, /^#[0-9a-f]{6}$/);
+  assert.match(me.color, /^#[0-9a-f]{6}$/);
+  a.close();
+});
+
+test('프로필 변경은 본인 포함 방 전체에 전파되고, 이후 입장자/재입장에 반영', async () => {
+  const { a, code } = await makeRoom();
+  const { c: b } = await joinRoom(code);
+  await a.next('participant_joined');
+  a.send({ type: 'profile_update', profile: PROFILE });
+  const ua = await a.next('profile_updated');
+  const ub = await b.next('profile_updated');
+  assert.deepEqual(ub.user, ua.user);
+  assert.equal(ua.user.id, a.userId);
+  assert.equal(ua.user.name, '가연');
+  assert.equal(ua.user.avatar.bg, '#ffaa00'); // 정규화(소문자)
+
+  const { state } = await joinRoom(code);
+  const found = state.participants.find((p) => p.id === a.userId);
+  assert.equal(found.name, '가연');
+  assert.equal(found.avatar.value, '🐻');
+  a.close();
+  b.close();
+});
+
+test('잘못된 프로필은 무시', async () => {
+  const { a } = await makeRoom();
+  const bad = [
+    { ...PROFILE, name: '' },
+    { ...PROFILE, name: 'x'.repeat(17) },
+    { ...PROFILE, name: 'a​b' }, // 제로폭 문자
+    { ...PROFILE, avatar: { kind: 'emoji', value: 'ab', bg: '#ffaa00' } },
+    { ...PROFILE, avatar: { kind: 'emoji', value: '🐻🐻', bg: '#ffaa00' } },
+    { ...PROFILE, avatar: { kind: 'image', value: 'data:image/png;base64,AAAA', bg: '#ffaa00' } },
+    { ...PROFILE, avatar: { kind: 'emoji', value: '🐻', bg: 'red' } },
+    { ...PROFILE, color: 'javascript:1' },
+  ];
+  for (const profile of bad) a.send({ type: 'profile_update', profile });
+  await a.none('profile_updated');
+  a.close();
+});
+
+test('채팅: 본인 포함 전체 전달, userId 만 붙고 서버 시각, 길이/빈 문자열 검증', async () => {
+  const { a, code } = await makeRoom();
+  const { c: b } = await joinRoom(code);
+  a.send({ type: 'chat', text: '  안녕하세요 <b>x</b>\n둘째줄 ' });
+  const ca = await a.next('chat');
+  const cb = await b.next('chat');
+  assert.deepEqual(ca, cb);
+  assert.equal(ca.userId, a.userId);
+  assert.equal(ca.text, '안녕하세요 <b>x</b> 둘째줄'); // 태그는 그대로(클라이언트가 textContent 로 렌더링)
+  assert.ok(Math.abs(ca.sentAt - Date.now()) < 1000);
+  assert.deepEqual(Object.keys(ca).sort(), ['sentAt', 'text', 'type', 'userId']);
+
+  a.send({ type: 'chat', text: '   ' });
+  a.send({ type: 'chat', text: 'x'.repeat(301) });
+  a.send({ type: 'chat', text: 123 });
+  await b.none('chat');
+  a.close();
+  b.close();
+});
+
+test('채팅 빈도 제한: 도배는 일부만 전달', async () => {
+  const { a, code } = await makeRoom();
+  const { c: b } = await joinRoom(code);
+  for (let i = 0; i < 30; i++) a.send({ type: 'chat', text: `m${i}` });
+  await sleep(300);
+  const got = b.inbox.filter((m) => m.type === 'chat').length;
+  assert.ok(got >= 5 && got <= 8, `전달된 개수 ${got}`);
+  a.close();
+  b.close();
+});
+
+test('입력 중 표시: 보낸 사람 제외 전달', async () => {
+  const { a, code } = await makeRoom();
+  const { c: b } = await joinRoom(code);
+  a.send({ type: 'typing', isTyping: true });
+  const t = await b.next('typing');
+  assert.deepEqual([t.userId, t.isTyping], [a.userId, true]);
+  await a.none('typing');
+  a.send({ type: 'typing', isTyping: false });
+  assert.equal((await b.next('typing')).isTyping, false);
+  a.close();
+  b.close();
+});
+
+test('이모지 리액션: 허용 이모지만, 사용자당 초당 횟수 제한', async () => {
+  const { a, code } = await makeRoom();
+  const { c: b } = await joinRoom(code);
+  a.send({ type: 'reaction', emoji: '💩' }); // 허용 목록 밖
+  a.send({ type: 'reaction', emoji: '<script>' });
+  await b.none('reaction');
+  for (let i = 0; i < 20; i++) a.send({ type: 'reaction', emoji: '❤️' });
+  await sleep(300);
+  const got = b.inbox.filter((m) => m.type === 'reaction');
+  assert.ok(got.length >= 3 && got.length <= 4, `전달된 개수 ${got.length}`);
+  assert.deepEqual([got[0].userId, got[0].emoji], [a.userId, '❤️']);
+  assert.equal(a.inbox.filter((m) => m.type === 'reaction').length, got.length, '본인에게도 전달');
+  a.close();
+  b.close();
+});

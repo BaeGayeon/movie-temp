@@ -1,5 +1,5 @@
 import { randomInt } from 'node:crypto';
-import { S2C, ERR, VIDEO_ACTION_SYNC } from './protocol.js';
+import { S2C, ERR, VIDEO_ACTION_SYNC, COLOR_PALETTE, DEFAULT_AVATAR_EMOJI } from './protocol.js';
 
 // 헷갈리는 문자(0/O, 1/I)를 뺀 영숫자
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -29,7 +29,7 @@ export class RoomManager {
       mode: 'everyone',
       video: { playing: false, time: 0, updatedAt: this.now() },
       participants: new Map(),
-      names: new Map(), // userId -> 이름 (재입장 시 유지)
+      profiles: new Map(), // userId -> { name, avatar, color } (재입장 시 유지)
       seq: 0,
       emptyTimer: null,
       waiting: new Set(), // 버퍼링 중인 userId
@@ -165,6 +165,36 @@ export class RoomManager {
     );
   }
 
+  // 프로필 등록/변경: 방 전체(본인 포함)에 전파
+  profileUpdate(conn, profile) {
+    const found = this.#find(conn);
+    if (!found) return;
+    const { room, p } = found;
+    Object.assign(p, profile);
+    room.profiles.set(p.id, profile);
+    this.#broadcast(room, { type: S2C.PROFILE_UPDATED, user: pub(p) });
+  }
+
+  // 채팅: 메시지에는 userId 만 붙이고 방 전체(본인 포함)에 전파. 사용자당 빈도 제한.
+  chat(conn, text) {
+    const found = this.#find(conn);
+    if (!found || !this.#take(found.p, 'chat', 5, 1.5)) return; // 버스트 5개, 평균 초당 1.5개
+    this.#broadcast(found.room, { type: S2C.CHAT, userId: found.p.id, text, sentAt: this.now() });
+  }
+
+  typing(conn, isTyping) {
+    const found = this.#find(conn);
+    if (!found || !this.#take(found.p, 'typing', 5, 2)) return;
+    this.#broadcast(found.room, { type: S2C.TYPING, userId: found.p.id, isTyping }, found.p.id);
+  }
+
+  // 이모지 리액션: 사용자당 초당 3회 제한(도배 방지), 본인 포함 전체에 전파
+  reaction(conn, emoji) {
+    const found = this.#find(conn);
+    if (!found || !this.#take(found.p, 'reaction', 3, 3)) return;
+    this.#broadcast(found.room, { type: S2C.REACTION, userId: found.p.id, emoji });
+  }
+
   setPermission(conn, mode) {
     const found = this.#find(conn);
     if (!found) return;
@@ -189,6 +219,17 @@ export class RoomManager {
     const room = this.rooms.get(conn.roomCode);
     const p = room?.participants.get(conn.userId);
     return p && p.conn === conn ? { room, p } : null;
+  }
+
+  // 토큰 버킷: 허용되면 true. capacity=버스트, perSec=초당 보충량
+  #take(p, key, capacity, perSec) {
+    const now = this.now();
+    const b = (p.limits[key] ??= { tokens: capacity, at: now });
+    b.tokens = Math.min(capacity, b.tokens + ((now - b.at) / 1000) * perSec);
+    b.at = now;
+    if (b.tokens < 1) return false;
+    b.tokens -= 1;
+    return true;
   }
 
   #currentTime(room, now) {
@@ -260,8 +301,16 @@ export class RoomManager {
       }
       p.conn = conn;
     } else {
-      if (!room.names.has(userId)) room.names.set(userId, `게스트${randomInt(1000, 10000)}`);
-      p = { id: userId, name: room.names.get(userId), joinSeq: ++room.seq, conn, graceTimer: null };
+      const seq = ++room.seq;
+      if (!room.profiles.has(userId)) {
+        const color = COLOR_PALETTE[(seq - 1) % COLOR_PALETTE.length];
+        room.profiles.set(userId, {
+          name: `게스트${randomInt(1000, 10000)}`,
+          avatar: { kind: 'emoji', value: DEFAULT_AVATAR_EMOJI, bg: color },
+          color,
+        });
+      }
+      p = { id: userId, ...room.profiles.get(userId), joinSeq: seq, conn, graceTimer: null, limits: {} };
       room.participants.set(userId, p);
     }
     conn.userId = userId;
@@ -313,4 +362,4 @@ export class RoomManager {
   }
 }
 
-const pub = (p) => ({ id: p.id, name: p.name });
+const pub = (p) => ({ id: p.id, name: p.name, avatar: p.avatar, color: p.color });

@@ -3,7 +3,7 @@
 const CSS = `
   :host { all: initial; }
   .wrap { position: fixed; inset: 0; pointer-events: none; font: 14px/1.4 system-ui, -apple-system, "Malgun Gothic", sans-serif; }
-  .toasts { position: absolute; top: 16px; right: 16px; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
+  .toasts { position: absolute; top: 64px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 8px; align-items: center; }
   .toast { background: rgba(20,20,24,.92); color: #fff; padding: 8px 14px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,.4); }
   .banner { position: absolute; top: 16px; left: 50%; transform: translateX(-50%); pointer-events: auto;
     background: #1f2430; color: #fff; padding: 10px 14px; border-radius: 10px; display: flex; gap: 10px; align-items: center;
@@ -18,36 +18,51 @@ const CSS = `
   .click { position: absolute; pointer-events: auto; transform: translate(-50%, -50%); font-size: 16px; padding: 12px 20px; }
 `;
 
-export function createUI() {
+// 전체화면에서는 전체화면 요소 안에 붙여야 보이므로, 전체화면이 바뀔 때마다 부모를 옮긴다.
+// (전체화면 요소가 <video>/<iframe>/<img> 자체이면 자식을 그릴 수 없어 문서 루트에 둔다)
+// 여러 UI(토스트, 채팅)가 각자 shadow DOM 호스트를 만들 수 있도록 공용 헬퍼로 분리했다.
+export function createLayer(css, { passEvents = false } = {}) {
   let host = null;
-  let toasts = null;
-  let layer = null;
+  let root = null;
 
-  // 전체화면일 때는 전체화면 요소 안에 붙여야 보인다 (<video> 자체가 전체화면이면 불가)
-  function parent() {
+  const parent = () => {
     const fs = document.fullscreenElement;
-    if (fs && !['VIDEO', 'IFRAME', 'IMG'].includes(fs.tagName)) return fs;
-    return document.documentElement;
-  }
+    return fs && !['VIDEO', 'IFRAME', 'IMG'].includes(fs.tagName) ? fs : document.documentElement;
+  };
 
-  function ensure() {
+  const ensure = () => {
     if (!host) {
       host = document.createElement('div');
-      host.style.cssText = 'all: initial; position: fixed; inset: 0; z-index: 2147483647; pointer-events: none;';
-      const root = host.attachShadow({ mode: 'closed' });
+      host.style.cssText = `all: initial; position: fixed; inset: 0; z-index: 2147483647; pointer-events: ${passEvents ? 'auto' : 'none'};`;
+      root = host.attachShadow({ mode: 'closed' });
       const style = document.createElement('style');
-      style.textContent = CSS;
+      style.textContent = css;
+      root.append(style);
+    }
+    if (host.parentNode !== parent()) parent().append(host);
+    return root;
+  };
+
+  document.addEventListener('fullscreenchange', () => host && ensure());
+  return { ensure, remove: () => host?.remove() };
+}
+
+export function createUI() {
+  let toasts = null;
+  let layer = null;
+  const mount = createLayer(CSS);
+
+  function ensure() {
+    const root = mount.ensure();
+    if (!layer) {
       layer = document.createElement('div');
       layer.className = 'wrap';
       toasts = document.createElement('div');
       toasts.className = 'toasts';
       layer.append(toasts);
-      root.append(style, layer);
+      root.append(layer);
     }
-    if (host.parentNode !== parent()) parent().append(host);
   }
-
-  document.addEventListener('fullscreenchange', () => host && ensure());
 
   function button(label, cls, onClick) {
     const b = document.createElement('button');

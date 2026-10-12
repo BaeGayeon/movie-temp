@@ -72,6 +72,18 @@ export function createServer({ port = Number(process.env.PORT) || 8080, host = '
         case C2S.SYNC_REPORT:
           rooms.syncReport(conn, msg);
           break;
+        case C2S.PROFILE_UPDATE:
+          rooms.profileUpdate(conn, msg.profile);
+          break;
+        case C2S.CHAT:
+          rooms.chat(conn, msg.text);
+          break;
+        case C2S.TYPING:
+          rooms.typing(conn, msg.isTyping);
+          break;
+        case C2S.REACTION:
+          rooms.reaction(conn, msg.emoji);
+          break;
         case C2S.PING:
           conn.send({ type: S2C.PONG });
           // 클라이언트 시계 오차 보정용(RTT 측정에 clientTime 을 그대로 돌려준다)
