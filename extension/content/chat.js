@@ -33,6 +33,9 @@ const CSS = `
   .menu label { display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 500; }
   .menu input[type=range], .menu input[type=checkbox] { accent-color: var(--accent); }
   .menu input[type=range] { flex: 1; }
+  .seg { display: flex; gap: 2px; padding: 2px; background: var(--bg); border-radius: 10px; }
+  .seg button { flex: 1; background: transparent; color: var(--ink-soft); border-radius: 8px; padding: 4px 0; font-size: 12px; }
+  .seg button.on { background: var(--surface-3); color: var(--ink); }
   .menu .act { background: var(--surface-2); color: var(--ink); font-weight: 500; border-radius: 10px; padding: 6px 12px; text-align: left; }
   .menu .act:hover { background: var(--surface-3); }
 
@@ -50,6 +53,13 @@ const CSS = `
   .meta { font-weight: 400; color: var(--ink-soft); font-size: 11px; }
   .text { word-break: break-word; white-space: pre-wrap; background: var(--surface-2); border-radius: 4px 12px 12px 12px; padding: 6px 11px; }
   .msg.me .text { background: var(--bubble-me); border-radius: 12px 4px 12px 12px; }
+  /* 줄글 모드: 프사/말풍선 없이 "닉네임 시각  내용" 한 덩어리로 */
+  .list.plain { gap: 3px; }
+  .list.plain .msg, .list.plain .msg.me { display: block; }
+  .list.plain .av { display: none; }
+  .list.plain .body, .list.plain .msg.me .body { display: block; max-width: 100%; }
+  .list.plain .name, .list.plain .msg.me .name { display: inline-flex; flex-direction: row; margin-right: 8px; }
+  .list.plain .text, .list.plain .msg.me .text { display: inline; background: none; padding: 0; border-radius: 0; }
   .sys { align-self: center; text-align: center; color: var(--ink-soft); font-size: 12px; background: var(--surface); border-radius: 999px; padding: 2px 12px; max-width: 100%; }
   .no-events .sys { display: none; }
   .empty { color: var(--ink-soft); text-align: center; padding: 18px 0; font-size: 13px; }
@@ -121,6 +131,7 @@ const DEFAULT_PREFS = {
   showClock: true, // 작성 시각
   showVideoTime: true, // 재생 시각
   showEvents: true, // 재생/일시정지/시간 이동 알림
+  style: 'bubble', // 대화 표시 방식: 'bubble' = 채팅방(말풍선), 'plain' = 줄글
 };
 const MIN_W = 220;
 const MIN_H = 200;
@@ -174,7 +185,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
   let unread = 0;
 
   // DOM 참조
-  let wrap, panel, head, list, typingLine, input, bubbleBox, badge, floats, menu, opacity, clockCb, videoCb, eventsCb, modeBtn, pop, picker;
+  let wrap, panel, head, list, typingLine, input, bubbleBox, badge, floats, menu, opacity, clockCb, videoCb, eventsCb, modeBtn, pop, picker, styleSeg;
 
   try {
     chrome.storage.local.get('chatPrefs').then((r) => {
@@ -282,6 +293,8 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     videoCb.checked = prefs.showVideoTime;
     eventsCb.checked = prefs.showEvents;
     list.classList.toggle('no-events', !prefs.showEvents);
+    list.classList.toggle('plain', prefs.style === 'plain');
+    for (const b of styleSeg.children) b.classList.toggle('on', b.dataset.style === prefs.style);
     panel.hidden = prefs.collapsed;
     bubbleBox.hidden = !prefs.collapsed;
     panel.classList.toggle('dock', isDock());
@@ -662,11 +675,23 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     [clockLabel, clockCb] = checkbox('작성 시각 표시', 'showClock');
     [videoLabel, videoCb] = checkbox('재생 시각 표시 (▶ 영상 위치)', 'showVideoTime');
     [eventsLabel, eventsCb] = checkbox('재생·이동·입퇴장 알림 표시', 'showEvents');
+    styleSeg = el('div', 'seg');
+    for (const [k, t] of [['bubble', '말풍선'], ['plain', '줄글']]) {
+      const b = el('button', '', t);
+      b.dataset.style = k;
+      b.addEventListener('click', () => {
+        prefs.style = k;
+        applyPrefs();
+        scrollToBottom(true);
+        savePrefs();
+      });
+      styleSeg.append(b);
+    }
     const copyLink = el('button', 'act', '🔗 초대 링크 복사');
     copyLink.addEventListener('click', async () => (await copyText(getInviteLink())) && flash(copyLink, '✔ 복사됨!'));
     const copyCode = el('button', 'act', '📋 방 코드 복사');
     copyCode.addEventListener('click', async () => (await copyText(getState()?.roomCode ?? '')) && flash(copyCode, '✔ 복사됨!'));
-    menu.append(opLabel, clockLabel, videoLabel, eventsLabel, copyLink, copyCode);
+    menu.append(opLabel, styleSeg, clockLabel, videoLabel, eventsLabel, copyLink, copyCode);
     settingsBtn.addEventListener('click', () => (menu.hidden = !menu.hidden));
 
     list = el('div', 'list');

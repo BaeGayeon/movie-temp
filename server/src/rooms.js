@@ -171,7 +171,7 @@ export class RoomManager {
     if (!found) return;
     const { room, p } = found;
     // 이미지 프로필은 크기가 커서 방 전체에 증폭 전파되므로 더 엄격히 제한(이모지는 느슨하게)
-    const image = profile.avatar.kind === 'image';
+    const image = profile.avatar.kind === 'image' && profile.avatar.value !== p.avatar?.value; // 같은 사진으로 색만 바꾸는 건 일반 한도
     if (!(image ? this.#take(p, 'profileImage', 3, 0.2) : this.#take(p, 'profile', 10, 2))) return;
     Object.assign(p, profile);
     room.profiles.set(p.id, profile);
