@@ -112,10 +112,10 @@ const CSS = `
   .floats { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
   .float { position: absolute; display: flex; flex-direction: column; align-items: center; animation: rise 2.4s cubic-bezier(.2,.6,.3,1) forwards; }
   .float .e { font-size: var(--size, 44px); line-height: 1.1; filter: drop-shadow(0 2px 4px rgba(0,0,0,.4)); }
-  .float .n { font-size: var(--nsize, 11px); font-weight: 600; color: var(--ink); background: var(--surface); border-radius: 999px; padding: 0 8px; white-space: nowrap; opacity: .92; }
+  .float .n { font-size: var(--nsize, 11px); font-weight: 600; color: var(--ink); background: var(--surface); border-radius: 999px; padding: 0 8px; white-space: nowrap; opacity: .85; }
   @keyframes rise { 0% { transform: translate(0, 0) scale(.88); opacity: 0; }
-    4% { transform: translate(0, 0) scale(1); opacity: 1; }
-    75% { opacity: 1; }
+    4% { transform: translate(0, 0) scale(1); opacity: .8; }
+    75% { opacity: .8; }
     100% { transform: translate(var(--dx, 0px), calc(var(--rise, 300px) * -1)) scale(1); opacity: 0; } }
 ` + EMOJI_PICKER_CSS;
 
@@ -261,6 +261,58 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     }
   }
 
+  // ---------- 전체화면에서 붙이기 ----------
+  // 전체화면에서는 그 요소만 최상위 레이어에 그려지고 UA 스타일이 폭/위치를 !important 로 고정해서 html 폭을 줄여도 소용없다.
+  // padding-right 는 막지 않으므로 전체화면 요소에 padding-right 를 줘서(안쪽 영상이 줄어든다) 채팅 폭을 비우고,
+  // 화면 오른쪽 끝에 붙어 있는 absolute/fixed 요소(컨트롤 막대 등)는 같은 만큼 안쪽으로 밀어서 채팅에 가려지지 않게 한다.
+  let fsFit = null; // { el, px, pad: [값, 우선순위], touched: Map(요소 -> { kind, prev: [[속성, 값, 우선순위]] }) }
+  let fsTimer = null;
+  const FS_PROPS = { w: ['max-width'], m: ['margin-right'] };
+  function applyFsProps(e, kind, px) {
+    e.style.setProperty(FS_PROPS[kind][0], kind === 'w' ? `calc(100% - ${px}px)` : `${px}px`, 'important');
+  }
+  function fsSweep() {
+    if (!fsFit) return;
+    const vw = window.innerWidth;
+    for (const e of fsFit.el.querySelectorAll('*')) {
+      if (fsFit.touched.has(e)) continue;
+      const cs = getComputedStyle(e);
+      if ((cs.position !== 'absolute' && cs.position !== 'fixed') || parseFloat(cs.right) !== 0) continue;
+      const r = e.getBoundingClientRect();
+      if (r.width <= 0 || r.right < vw - 1) continue; // 이미 줄어든 부모 안쪽이거나 오른쪽 끝이 아님
+      const kind = r.width >= vw * 0.9 ? 'w' : 'm'; // 가로로 꽉 찬 것은 폭을 줄이고, 오른쪽 끝에 붙은 작은 것은 안쪽으로 민다
+      const prop = FS_PROPS[kind][0];
+      fsFit.touched.set(e, { kind, prev: [e.style.getPropertyValue(prop), e.style.getPropertyPriority(prop)] });
+      applyFsProps(e, kind, fsFit.px);
+    }
+  }
+  function clearFsFit() {
+    clearInterval(fsTimer);
+    fsTimer = null;
+    if (!fsFit) return;
+    const { el, pad, touched } = fsFit;
+    fsFit = null;
+    if (pad[0]) el.style.setProperty('padding-right', pad[0], pad[1]);
+    else el.style.removeProperty('padding-right');
+    for (const [e, { kind, prev }] of touched) {
+      const prop = FS_PROPS[kind][0];
+      if (prev[0]) e.style.setProperty(prop, prev[0], prev[1]);
+      else e.style.removeProperty(prop);
+    }
+  }
+  function fitFullscreen(px) {
+    const el = document.fullscreenElement;
+    if (px <= 0 || !el || el === document.documentElement) return clearFsFit();
+    if (fsFit && fsFit.el !== el) clearFsFit();
+    if (!fsFit) fsFit = { el, px, pad: [el.style.getPropertyValue('padding-right'), el.style.getPropertyPriority('padding-right')], touched: new Map() };
+    fsFit.px = px;
+    el.style.setProperty('padding-right', `${px}px`, 'important');
+    for (const [e, { kind }] of fsFit.touched) applyFsProps(e, kind, px); // 채팅 폭을 바꾼 경우
+    fsSweep();
+    clearInterval(fsTimer);
+    fsTimer = setInterval(fsSweep, 1000); // 나중에 생기는 요소(메뉴 등)도
+  }
+
   const isDock = () => prefs.mode === 'dock';
   // 창 모드는 버튼 하나로 전환: 떠 있는 창 <-> 오른쪽에 붙이기
   const modeState = () => (isDock() ? 'dock' : 'float');
@@ -313,6 +365,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
       });
     }
     setPageInset(built && mount.host?.isConnected ? inset : 0);
+    fitFullscreen(isDock() && !prefs.collapsed && !prefs.hidden && built && mount.host?.isConnected ? prefs.dockWidth : 0);
     if (!prefs.collapsed && !prefs.hidden) {
       unread = 0;
       renderBadge();
@@ -796,6 +849,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     hide() {
       if (!built) return;
       setPageInset(0);
+      clearFsFit();
       closePicker();
       menu.hidden = true;
       mount.remove();
@@ -877,7 +931,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
       const top = Math.max(0, a.top);
       const w = Math.max(40, Math.min(vw, a.left + a.width) - left);
       const h = Math.max(40, Math.min(vh, a.top + a.height) - top);
-      const size = clamp(w * 0.05, 20, 60) * (0.85 + Math.random() * 0.35);
+      const size = clamp(w * 0.035, 16, 42) * (0.85 + Math.random() * 0.3);
 
       while (floats.childElementCount >= MAX_FLOATS) floats.firstChild.remove();
       const f = el('div', 'float');
