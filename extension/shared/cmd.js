@@ -3,6 +3,7 @@ export const CMD = {
   // popup, content -> background
   GET_STATE: 'get_state',
   REGISTER: 'register', // content 가 로드될 때
+  GET_FONT: 'get_font', // content -> background: 내장 SUIT 글꼴(base64)
   CREATE_ROOM: 'create_room',
   JOIN_ROOM: 'join_room',
   LEAVE_ROOM: 'leave_room',

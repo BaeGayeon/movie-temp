@@ -3,62 +3,85 @@
 //  - 메시지 옆에 작성 시각 / 재생 시각 표시(설정에서 각각 켜고 끔)
 //  - 방 코드·초대 링크 복사, 이모지 전체 선택(채팅 입력, 리액션)
 import { createLayer } from './ui.js';
-import { REACTION_GROUPS } from '../shared/protocol.js';
+import { REACTION_GROUPS, REACTION_EMOJIS } from '../shared/protocol.js';
 import { renderAvatar } from '../shared/avatar.js';
+import { SHADOW_THEME_CSS, THEME_NAMES, THEME_LABELS, THEME_DOTS, loadThemePrefs, saveThemePrefs, onThemePrefs, readableTextOn } from '../shared/theme.js';
 import { createEmojiPicker, EMOJI_PICKER_CSS } from '../shared/emoji-picker.js';
 
 const CSS = `
   :host { all: initial; }
+  ${SHADOW_THEME_CSS}
   * { box-sizing: border-box; }
-  .root { position: fixed; inset: 0; pointer-events: none; font: 14px/1.45 system-ui, -apple-system, "Malgun Gothic", sans-serif; color: #fff; }
+  .root { position: fixed; inset: 0; pointer-events: none; font: 14px/1.45 var(--font); color: var(--ink); }
   button { font: inherit; cursor: pointer; border: 0; color: inherit; }
 
+  /* ---- 패널 ---- */
   .panel { position: absolute; pointer-events: auto; display: flex; flex-direction: column;
-    background: rgba(18,18,24,.94); border-radius: 12px; box-shadow: 0 6px 24px rgba(0,0,0,.55); overflow: hidden; }
-  .panel.dock { border-radius: 0; box-shadow: -4px 0 16px rgba(0,0,0,.4); }
+    background: var(--bg); border: 2px solid var(--border-2); border-radius: 22px; box-shadow: var(--shadow-lg); overflow: hidden; }
+  .panel.dock { border-radius: 0; border-width: 0 0 0 2px; }
   .panel[hidden], .dock-bubble[hidden] { display: none; }
-  .head { position: relative; display: flex; align-items: center; gap: 4px; padding: 6px 8px; background: rgba(255,255,255,.07); user-select: none; }
+  .head { position: relative; display: flex; align-items: center; gap: 4px; padding: 6px 8px 6px 12px; user-select: none; color: var(--head-ink);
+    background: linear-gradient(135deg, var(--head-1), var(--head-2)); text-shadow: var(--head-shadow); border-bottom: 1px solid var(--border); }
   .panel.free .head { cursor: move; }
-  .head .title { font-weight: 700; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .chip { background: rgba(255,255,255,.12); border-radius: 10px; padding: 1px 8px; font-size: 12px; letter-spacing: 1px; }
-  .chip:hover { background: rgba(255,255,255,.25); }
-  .iconbtn { background: transparent; font-size: 15px; padding: 2px 6px; border-radius: 6px; }
-  .iconbtn:hover { background: rgba(255,255,255,.15); }
+  .head .title { font-weight: 800; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .chip { background: var(--head-chip); color: var(--head-ink); border-radius: 999px; padding: 1px 10px; font-size: 12px; font-weight: 700; letter-spacing: 1px; }
+  .chip:hover { filter: brightness(1.15); }
+  .iconbtn { background: transparent; font-size: 15px; padding: 2px 6px; border-radius: 10px; color: var(--head-ink); }
+  .iconbtn:hover { background: var(--head-chip); }
 
-  .menu { position: absolute; top: 100%; right: 6px; z-index: 5; width: 220px; background: #262b38; border-radius: 10px; padding: 10px;
-    box-shadow: 0 6px 20px rgba(0,0,0,.6); display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+  .menu { position: absolute; top: calc(100% + 6px); right: 8px; z-index: 5; width: 240px; background: var(--surface); color: var(--ink); border: 2px solid var(--border-2);
+    border-radius: 18px; padding: 10px; box-shadow: var(--shadow-lg); display: flex; flex-direction: column; gap: 8px; font-size: 13px; text-shadow: none; }
   .menu[hidden] { display: none; }
-  .menu label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
-  .menu input[type=range] { flex: 1; accent-color: #4f7cff; }
-  .menu select { flex: 1; font: inherit; color: #fff; background: rgba(255,255,255,.12); border: 0; border-radius: 6px; padding: 3px 4px; }
-  .menu select option { color: #000; }
-  .menu .act { background: rgba(255,255,255,.12); border-radius: 8px; padding: 5px 8px; text-align: left; }
-  .menu .act:hover { background: rgba(255,255,255,.22); }
+  .menu label { display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 600; }
+  .menu input[type=range], .menu input[type=checkbox] { accent-color: var(--accent); }
+  .menu input[type=range] { flex: 1; }
+  .menu .act { background: var(--surface-2); color: var(--accent-ink); font-weight: 700; border-radius: 999px; padding: 6px 12px; text-align: left; }
+  .menu .act:hover { background: var(--surface-3); }
+  .menu .themes { display: flex; align-items: center; gap: 6px; font-weight: 600; }
+  .menu .themes .dots { display: flex; gap: 6px; flex: 1; }
+  .menu .themes .dots button { width: 24px; height: 24px; border-radius: 50%; border: 3px solid var(--surface); box-shadow: 0 0 0 1px var(--border-3); padding: 0; }
+  .menu .themes .dots button.on { box-shadow: 0 0 0 3px var(--accent-light); }
+  .menu .themes .all { font-size: 12px; font-weight: 700; background: var(--surface-2); color: var(--accent-ink); border-radius: 999px; padding: 3px 10px; white-space: nowrap; }
+  .menu .themes .all:hover { background: var(--surface-3); }
 
-  .list { flex: 1; overflow-y: auto; padding: 8px 10px; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+  /* ---- 메시지 ---- */
+  .list { flex: 1; overflow-y: auto; padding: 10px 10px 6px; display: flex; flex-direction: column; gap: 9px; min-height: 0; }
   .msg { display: flex; gap: 8px; align-items: flex-start; }
-  .av { flex: none; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 16px; overflow: hidden; }
-  .body { min-width: 0; }
-  .name { font-weight: 700; font-size: 12px; }
-  .meta { font-weight: 400; color: #8a90a0; margin-left: 6px; }
-  .text { word-break: break-word; white-space: pre-wrap; }
-  .msg.me .text { color: #cfe0ff; }
-  .sys { text-align: center; color: #8a90a0; font-size: 12px; padding: 1px 6px; }
+  .msg.me { flex-direction: row-reverse; }
+  .av { flex: none; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 17px; overflow: hidden;
+    border: 2px solid var(--surface); box-shadow: 0 1px 4px var(--btn-shadow); }
+  .body { min-width: 0; max-width: calc(100% - 42px); display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+  .msg.me .body { align-items: flex-end; }
+  .name { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+  .msg.me .name { flex-direction: row-reverse; }
+  .name-text { font-weight: 800; padding: 0 9px; border-radius: 999px; line-height: 18px; }
+  .meta { font-weight: 500; color: var(--ink-soft); font-size: 11px; }
+  .text { word-break: break-word; white-space: pre-wrap; background: var(--surface); border: 2px solid var(--border); border-radius: 4px 16px 16px 16px; padding: 6px 12px;
+    box-shadow: 0 2px 6px var(--btn-shadow); }
+  .msg.me .text { background: linear-gradient(180deg, var(--accent-light), var(--accent)); color: var(--on-accent); border-color: transparent; border-radius: 16px 4px 16px 16px; }
+  .sys { align-self: center; text-align: center; color: var(--ink-soft); font-size: 12px; background: var(--surface-2); border-radius: 999px; padding: 2px 12px; max-width: 100%; }
   .no-events .sys { display: none; }
-  .empty { color: #8a90a0; text-align: center; padding: 16px 0; font-size: 13px; }
+  .empty { color: var(--ink-soft); text-align: center; padding: 18px 0; font-size: 13px; }
 
-  .typing { min-height: 18px; padding: 0 10px 2px; font-size: 12px; color: #aab; }
-  .reacts { display: flex; gap: 0; padding: 2px 6px; flex-wrap: wrap; align-items: center; }
+  .typing { min-height: 18px; padding: 0 14px 2px; font-size: 12px; color: var(--accent-ink); font-weight: 600; }
+  .reacts { display: flex; gap: 0; padding: 2px 8px; flex-wrap: wrap; align-items: center; }
   .reacts .grp { display: flex; margin-right: 8px; } /* 감정이 비슷한 것끼리 묶고 묶음 사이에 간격 */
-  .reacts button { background: transparent; font-size: 17px; border-radius: 8px; padding: 2px 4px; }
-  .reacts button:hover { background: rgba(255,255,255,.15); }
-  .form { display: flex; gap: 6px; padding: 6px 8px 8px; align-items: center; }
-  .form .emo { background: transparent; font-size: 20px; padding: 2px 4px; border-radius: 8px; }
-  .form .emo:hover { background: rgba(255,255,255,.15); }
-  .form input { flex: 1; min-width: 0; font: inherit; color: #fff; background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.18);
-    border-radius: 8px; padding: 6px 8px; outline: none; }
-  .form input:focus { border-color: #4f7cff; }
-  .form .send { background: #4f7cff; border-radius: 8px; padding: 6px 12px; }
+  .reacts .grp[hidden] { display: none; }
+  .reacts .brk { flex-basis: 100%; height: 0; } /* 최근 이모지가 있으면 그 줄을 따로 쓴다(＋ 가 혼자 떨어지지 않도록) */
+  .reacts .brk[hidden] { display: none; }
+  .reacts .rlabel { font-size: 11px; font-weight: 700; color: var(--ink-soft); padding: 0 6px 0 4px; }
+  .reacts .rlabel[hidden] { display: none; }
+  .reacts .grp.recent { margin-right: 4px; } /* 최근에 직접 고른 이모지(기본 목록에 없는 것) */
+  .reacts button { background: transparent; font-size: 17px; border-radius: 10px; padding: 2px 4px; transition: transform .08s; }
+  .reacts button:hover { background: var(--surface-2); transform: scale(1.2); }
+  .form { display: flex; gap: 6px; padding: 6px 8px 10px; align-items: center; }
+  .form .emo { background: transparent; font-size: 20px; padding: 2px 4px; border-radius: 10px; }
+  .form .emo:hover { background: var(--surface-2); }
+  .form input { flex: 1; min-width: 0; font: inherit; color: var(--ink); background: var(--surface); border: 2px solid var(--border-2); border-radius: 999px; padding: 6px 12px; outline: none; }
+  .form input::placeholder { color: var(--placeholder); }
+  .form input:focus { border-color: var(--accent-light); }
+  .form .send { color: var(--on-accent); font-weight: 700; background: linear-gradient(180deg, var(--accent-light), var(--accent)); border-radius: 999px; padding: 6px 14px; box-shadow: 0 2px 0 var(--accent-dark); }
+  .form .send:active { transform: translateY(1px); }
 
   .rz { position: absolute; }
   .rz-l { left: 0; top: 0; bottom: 0; width: 6px; cursor: ew-resize; }
@@ -68,22 +91,25 @@ const CSS = `
   .rz-br { right: 0; bottom: 0; width: 14px; height: 14px; cursor: nwse-resize; }
   .panel.dock .rz-r, .panel.dock .rz-b, .panel.dock .rz-bl, .panel.dock .rz-br { display: none; }
 
+  /* ---- 접힌 상태 ---- */
   .dock-bubble { position: absolute; right: 16px; bottom: 90px; pointer-events: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
-  .bubble { position: relative; width: 46px; height: 46px; border-radius: 50%; background: rgba(18,18,24,.92); font-size: 22px; box-shadow: 0 4px 14px rgba(0,0,0,.5); }
-  .badge { position: absolute; top: -4px; right: -4px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px; background: #ff4d4f;
-    font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+  .bubble { position: relative; width: 50px; height: 50px; border-radius: 50%; background: linear-gradient(180deg, var(--surface), var(--surface-2)); border: 3px solid var(--border-3);
+    font-size: 24px; box-shadow: var(--shadow-lg); transition: transform .1s; }
+  .bubble:hover { transform: scale(1.08) rotate(-4deg); }
+  .badge { position: absolute; top: -6px; right: -6px; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px; background: var(--pink); color: #fff; border: 2px solid var(--surface);
+    font-size: 12px; font-weight: 800; display: flex; align-items: center; justify-content: center; }
   .badge[hidden] { display: none; }
-  .dock-bubble .reacts { display: none; background: rgba(18,18,24,.92); border-radius: 12px; }
+  .dock-bubble .reacts { display: none; background: var(--surface); border: 2px solid var(--border-2); border-radius: 18px; padding: 4px 8px; box-shadow: var(--shadow); max-width: 260px; justify-content: center; }
   .dock-bubble:hover .reacts { display: flex; }
 
   .pop { position: absolute; pointer-events: auto; }
   .pop[hidden] { display: none; }
 
+  /* ---- 리액션: --size 이모지 크기(영상 폭에 비례), --rise 떠오르는 높이, --dx 좌우 흔들림 ---- */
   .floats { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
-  /* --size: 이모지 크기(영상 폭에 비례), --rise: 떠오르는 높이(영상 높이에 비례), --dx: 좌우로 흔들리는 폭 */
   .float { position: absolute; display: flex; flex-direction: column; align-items: center; animation: rise 2.8s ease-out forwards; }
-  .float .e { font-size: var(--size, 44px); line-height: 1.1; filter: drop-shadow(0 2px 6px rgba(0,0,0,.5)); }
-  .float .n { font-size: var(--nsize, 11px); background: rgba(0,0,0,.55); border-radius: 8px; padding: 0 6px; white-space: nowrap; }
+  .float .e { font-size: var(--size, 44px); line-height: 1.1; filter: drop-shadow(0 3px 6px var(--btn-shadow)); }
+  .float .n { font-size: var(--nsize, 11px); font-weight: 700; color: var(--accent-ink); background: var(--surface); border-radius: 999px; padding: 0 8px; white-space: nowrap; box-shadow: var(--shadow); }
   @keyframes rise { 0% { transform: translate(0, 0) scale(.6); opacity: 0; }
     12% { transform: translate(calc(var(--dx, 0px) * .2), calc(var(--rise, 300px) * -.06)) scale(1.1); opacity: 1; }
     100% { transform: translate(var(--dx, 0px), calc(var(--rise, 300px) * -1)) scale(1); opacity: 0; } }
@@ -155,7 +181,8 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
   let unread = 0;
 
   // DOM 참조
-  let wrap, panel, head, list, typingLine, input, bubbleBox, badge, floats, menu, codeChip, opacity, clockCb, videoCb, eventsCb, modeBtn, pop, picker, dockFitSel;
+  let wrap, panel, head, list, typingLine, input, bubbleBox, badge, floats, menu, codeChip, opacity, clockCb, videoCb, eventsCb, modeBtn, pop, picker;
+  let chatTheme = 'sky'; // 설정 메뉴의 테마 선택 표시용(저장값은 themePrefs.chat)
 
   try {
     chrome.storage.local.get('chatPrefs').then((r) => {
@@ -170,7 +197,9 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
   };
 
   const profileOf = (userId) => {
-    const p = getState()?.participants?.find((x) => x.id === userId);
+    // 지금 방에 있는 사람 -> 아니면 방에 있었던 사람의 기억된 프로필(나간 뒤에도 지난 메시지의 닉네임/프사 유지)
+    const st = getState();
+    const p = st?.participants?.find((x) => x.id === userId) ?? st?.known?.[userId];
     return p ?? { name: '알 수 없음', color: '#aab', avatar: { kind: 'emoji', value: '❔', bg: '#555' } };
   };
 
@@ -242,6 +271,14 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
   }
 
   const isDock = () => prefs.mode === 'dock';
+  // 창 모드는 버튼 하나로 3단 순환: 떠 있는 창 -> 오른쪽에 붙이기(화면 전체 축소) -> 오른쪽에 붙이기(폭만 줄이기) -> 처음으로
+  const modeState = () => (!isDock() ? 'float' : prefs.dockFit === 'width' ? 'dock-width' : 'dock-scale');
+  const MODE_UI = {
+    float: ['❐', '떠 있는 창 · 클릭하면 오른쪽에 붙여요(화면 전체 축소)'],
+    'dock-scale': ['◨', '오른쪽에 붙임: 화면 전체 축소 · 클릭하면 폭만 줄이기로'],
+    'dock-width': ['◫', '오른쪽에 붙임: 폭만 줄이기 · 클릭하면 떠 있는 창으로'],
+  };
+  const NEXT_MODE = { float: ['dock', 'scale'], 'dock-scale': ['dock', 'width'], 'dock-width': ['float', 'scale'] };
 
   function applyPrefs() {
     const vw = window.innerWidth;
@@ -257,8 +294,9 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     bubbleBox.hidden = !prefs.collapsed;
     panel.classList.toggle('dock', isDock());
     panel.classList.toggle('free', !isDock()); // (리액션 애니메이션 클래스 .float 와 이름이 겹치면 안 된다)
-    modeBtn.textContent = isDock() ? '❐' : '◨';
-    modeBtn.title = isDock() ? '떠 있는 창으로 바꾸기' : '화면 오른쪽에 붙이기';
+    const [icon, tip] = MODE_UI[modeState()];
+    modeBtn.textContent = icon;
+    modeBtn.title = tip;
 
     let inset = 0;
     if (isDock()) {
@@ -281,7 +319,6 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
         height: `${prefs.height}px`,
       });
     }
-    dockFitSel.value = prefs.dockFit;
     setPageInset(built && mount.host?.isConnected ? inset : 0, prefs.dockFit);
     if (!prefs.collapsed) {
       unread = 0;
@@ -323,6 +360,28 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     pop.style.top = `${above >= 8 ? above : Math.min(r.bottom + 8, window.innerHeight - h - 8)}px`;
   }
 
+  // 최근에 직접 고른(기본 목록에 없는) 리액션 이모지를 최대 3개, 최신순으로 기본 목록 옆에 같이 보여준다
+  const MAX_RECENT_REACTIONS = 3;
+  let recentReactions = [];
+  const reactionRows = []; // 패널의 줄 + 접힌 말풍선의 줄: 최근 목록이 바뀌면 모두 갱신
+  try {
+    chrome.storage.local.get('recentReactions').then((r) => {
+      recentReactions = (r.recentReactions ?? []).slice(0, MAX_RECENT_REACTIONS);
+      reactionRows.forEach((fn) => fn());
+    });
+  } catch {}
+
+  function sendReaction(emoji) {
+    if (!REACTION_EMOJIS.includes(emoji)) {
+      recentReactions = [emoji, ...recentReactions.filter((e) => e !== emoji)].slice(0, MAX_RECENT_REACTIONS);
+      try {
+        chrome.storage.local.set({ recentReactions });
+      } catch {}
+      reactionRows.forEach((fn) => fn());
+    }
+    onReaction(emoji);
+  }
+
   function reactionRow() {
     const row = el('div', 'reacts');
     for (const group of REACTION_GROUPS) {
@@ -330,14 +389,32 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
       for (const emoji of group) {
         const b = el('button', '', emoji);
         b.title = '리액션';
-        b.addEventListener('click', () => onReaction(emoji));
+        b.addEventListener('click', () => sendReaction(emoji));
         grp.append(b);
       }
       row.append(grp);
     }
+    const brk = el('div', 'brk');
+    const rlabel = el('span', 'rlabel', '최근');
+    const recent = el('div', 'grp recent');
+    recent.title = '최근에 쓴 리액션';
+    const renderRecent = () => {
+      brk.hidden = rlabel.hidden = recent.hidden = recentReactions.length === 0;
+      recent.replaceChildren(
+        ...recentReactions.map((emoji) => {
+          const b = el('button', '', emoji);
+          b.title = '최근에 쓴 리액션';
+          b.addEventListener('click', () => sendReaction(emoji));
+          return b;
+        }),
+      );
+    };
+    reactionRows.push(renderRecent);
+    renderRecent();
+    row.append(brk, rlabel, recent);
     const more = el('button', '', '＋');
-    more.title = '모든 이모지';
-    more.addEventListener('click', () => openPicker(more, (emoji) => onReaction(emoji), false));
+    more.title = '모든 이모지 (검색도 돼요)';
+    more.addEventListener('click', () => openPicker(more, (emoji) => sendReaction(emoji), false));
     row.append(more);
     return row;
   }
@@ -454,18 +531,24 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     renderAvatar(row.querySelector('.av'), p.avatar, 28);
     const name = row.querySelector('.name-text');
     name.textContent = p.name;
-    name.style.color = p.color ?? '#fff';
+    name.style.background = p.color ?? '#cdeaff'; // 닉네임은 고른 색의 칩으로(밝은 색에서도 읽히도록 글자색을 자동 선택)
+    name.style.color = readableTextOn(p.color);
   }
 
   // ---------- 재생/일시정지/시간 이동 알림 ----------
   const lastEvent = new Map(); // userId -> { entry, at } — 연속 이벤트 합치기용
   function eventText(m) {
-    const who = `${profileOf(m.userId).name}님이`; // 내 동작도 "내가" 가 아니라 닉네임으로
+    // 입장/퇴장: 알고 있는(방에 있거나 있었던) 사람의 현재 닉네임을 우선 쓰고, 모르면 알림이 만들어질 때 저장한 닉네임(m.name)을 쓴다
+    const st = getState();
+    const known = st?.participants?.find((x) => x.id === m.userId) ?? st?.known?.[m.userId];
+    const name = m.action === 'join' || m.action === 'leave' ? (known?.name ?? m.name ?? '알 수 없음') : profileOf(m.userId).name;
+    const who = `${name}님이`; // 내 동작도 "내가" 가 아니라 닉네임으로
+    if (m.action === 'join') return `🎈 ${who} 입장했어요`;
+    if (m.action === 'leave') return `👋 ${who} 퇴장했어요`;
     const t = fmtVideo(m.time);
     if (m.action === 'play') return `▶ ${who} 재생했어요 · ${t}`;
     if (m.action === 'pause') return `⏸ ${who} 일시정지했어요 · ${t}`;
-    if (m.action === 'seekplay') return `⏩ ${who} ${t} 위치로 이동해서 재생했어요`;
-    return `⏩ ${who} ${t} 위치로 이동했어요`;
+    return `⏩ ${who} ${t} 위치로 이동했어요`; // 이동(+재생)은 한 가지 문구로
   }
 
   function renderEvent(m) {
@@ -546,7 +629,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     settingsBtn.title = '설정';
     modeBtn = el('button', 'iconbtn');
     modeBtn.addEventListener('click', () => {
-      prefs.mode = isDock() ? 'float' : 'dock';
+      [prefs.mode, prefs.dockFit] = NEXT_MODE[modeState()];
       applyPrefs();
       savePrefs();
     });
@@ -592,25 +675,33 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     let clockLabel, videoLabel, eventsLabel;
     [clockLabel, clockCb] = checkbox('작성 시각 표시', 'showClock');
     [videoLabel, videoCb] = checkbox('재생 시각 표시 (▶ 영상 위치)', 'showVideoTime');
-    [eventsLabel, eventsCb] = checkbox('재생·정지·이동 알림 표시', 'showEvents');
+    [eventsLabel, eventsCb] = checkbox('재생·이동·입퇴장 알림 표시', 'showEvents');
     const copyLink = el('button', 'act', '🔗 초대 링크 복사');
     copyLink.addEventListener('click', async () => (await copyText(getInviteLink())) && flash(copyLink, '✔ 복사됨!'));
     const copyCode = el('button', 'act', '📋 방 코드 복사');
     copyCode.addEventListener('click', async () => (await copyText(getState()?.roomCode ?? '')) && flash(copyCode, '✔ 복사됨!'));
-    const fitLabel = el('label');
-    dockFitSel = el('select');
-    for (const [v, t] of [['scale', '전체 축소'], ['width', '폭만 줄이기']]) {
-      const o = el('option', '', t);
-      o.value = v;
-      dockFitSel.append(o);
-    }
-    dockFitSel.addEventListener('change', () => {
-      prefs.dockFit = dockFitSel.value;
-      applyPrefs();
-      savePrefs();
-    });
-    fitLabel.append(el('span', '', '붙일 때 화면'), dockFitSel);
-    menu.append(opLabel, clockLabel, videoLabel, eventsLabel, copyLink, copyCode, fitLabel);
+    // 채팅 테마: 색을 누르면 채팅(과 화면 안내)만 바뀌고, "전체 적용"은 팝업까지 같은 테마로 맞춘다
+    const themeRow = el('div', 'themes');
+    const themeDots = el('div', 'dots');
+    const renderThemeDots = () =>
+      themeDots.replaceChildren(
+        ...THEME_NAMES.map((name) => {
+          const b = el('button');
+          b.style.background = THEME_DOTS[name];
+          b.title = THEME_LABELS[name];
+          if (name === chatTheme) b.className = 'on';
+          b.addEventListener('click', () => saveThemePrefs({ chat: name }));
+          return b;
+        }),
+      );
+    const themeAll = el('button', 'all', '전체 적용');
+    themeAll.title = '이 테마를 확장 프로그램(팝업)까지 전체에 적용';
+    themeAll.addEventListener('click', () => saveThemePrefs({ ui: chatTheme, chat: chatTheme }));
+    themeRow.append(el('span', '', '테마'), themeDots, themeAll);
+    loadThemePrefs().then((p) => ((chatTheme = p.chat), renderThemeDots()));
+    onThemePrefs((p) => ((chatTheme = p.chat), renderThemeDots()));
+    renderThemeDots();
+    menu.append(opLabel, clockLabel, videoLabel, eventsLabel, themeRow, copyLink, copyCode);
     settingsBtn.addEventListener('click', () => (menu.hidden = !menu.hidden));
 
     list = el('div', 'list');
@@ -756,9 +847,10 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     addMessage(m) {
       build();
       if (m.kind === 'event') {
-        // 재생/일시정지/이동 알림: 안 읽은 수나 토스트에는 포함하지 않는다
+        // 알림 줄: 안 읽은 수에는 포함하지 않는다. 입퇴장만 채팅이 접혀 있을 때 토스트로 알려 준다.
         renderEvent(m);
         scrollToBottom(false);
+        if (prefs.collapsed && prefs.showEvents && (m.action === 'join' || m.action === 'leave')) onNotify(eventText(m));
         return;
       }
       const mine = m.userId === getState()?.userId;

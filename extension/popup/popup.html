@@ -3,103 +3,119 @@
 <head>
   <meta charset="utf-8">
   <title>같이보기</title>
-  <style>
-    body { width: 300px; margin: 0; padding: 14px; font: 14px/1.4 system-ui, -apple-system, "Malgun Gothic", sans-serif; color: #222; }
-    h1 { font-size: 15px; margin: 0 0 10px; }
-    button { white-space: nowrap; font: inherit; cursor: pointer; border: 0; border-radius: 6px; padding: 7px 12px; background: #4f7cff; color: #fff; }
-    button.sub { background: #e4e7ee; color: #222; }
-    button:disabled { opacity: .5; cursor: default; }
-    input, select { font: inherit; padding: 6px 8px; border: 1px solid #c9ced8; border-radius: 6px; }
-    input { width: 110px; text-transform: uppercase; letter-spacing: 2px; }
-    .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
-    .code { font-size: 26px; font-weight: 700; letter-spacing: 4px; }
-    .muted { color: #777; font-size: 12px; }
-    .error { color: #c62828; font-size: 13px; margin-top: 8px; }
-    ul { list-style: none; padding: 0; margin: 6px 0; }
-    li { padding: 3px 0; }
-    details { margin-top: 12px; border-top: 1px solid #e4e7ee; padding-top: 8px; }
-    summary { cursor: pointer; font-weight: 600; }
-    .preview { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
-    .av { width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; }
-    .grid { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 8px; }
-    .grid button { background: #f1f3f8; color: #222; padding: 2px 5px; font-size: 18px; border-radius: 6px; }
-    .grid button.sel { outline: 2px solid #4f7cff; }
-    #pickerBox .ep { width: 100%; }
-    #pickerBox { margin: 4px 0 8px; }
-    .grid .sw { width: 22px; height: 22px; padding: 0; border-radius: 50%; border: 1px solid rgba(0,0,0,.15); }
-    #pname { width: 100%; text-transform: none; letter-spacing: 0; }
-    [hidden] { display: none !important; }
-  </style>
+  <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-  <h1 id="title"></h1>
-
-  <section id="lobby" hidden>
-    <div class="row"><button id="create">방 만들기</button></div>
-    <div class="row">
-      <input id="code" maxlength="6" placeholder="방 코드" autocomplete="off">
-      <button id="join" class="sub">참가</button>
+  <header class="top">
+    <div class="brand">
+      <div class="logo">☁️</div>
+      <div>
+        <h1 id="title"></h1>
+        <p class="tagline">같이 보면 더 재밌어요 🍿</p>
+      </div>
     </div>
-    <div class="muted">영상이 있는 탭에서 열어주세요.</div>
-  </section>
+  </header>
 
-  <section id="room" hidden>
-    <div class="muted">방 코드 · <span id="conn"></span></div>
-    <div class="code" id="roomCode"></div>
-    <div class="row">
-      <button id="copy">초대 링크 복사</button>
-      <button id="copyCode" class="sub">코드 복사</button>
-    </div>
-    <div class="row"><button id="leave" class="sub">방 나가기</button></div>
-    <div class="row" id="modeRow">
-      <label for="mode">조작</label>
-      <select id="mode">
-        <option value="everyone">모두 조작</option>
-        <option value="host_only">방장만 조작</option>
-      </select>
-    </div>
-    <div class="muted" id="modeInfo" hidden></div>
-    <div class="row" id="countdownRow">
-      <button id="countdown">카운트다운 시작</button>
-      <select id="seconds">
-        <option value="3">3초</option>
-        <option value="5">5초</option>
-        <option value="10">10초</option>
-      </select>
-    </div>
-    <div class="muted" id="waitInfo" hidden></div>
-    <div class="muted">참가자 <span id="count"></span></div>
-    <ul id="people"></ul>
-  </section>
+  <main>
+    <!-- 방이 없을 때 -->
+    <section id="lobby" class="card" hidden>
+      <button id="create" class="btn primary big">🎬 방 만들기</button>
+      <div class="or">또는 코드로 참가</div>
+      <div class="join">
+        <input id="code" maxlength="6" placeholder="방 코드 6자리" autocomplete="off" spellcheck="false">
+        <button id="join" class="btn">참가</button>
+      </div>
+      <p class="hint">영상이 있는 탭에서 열어 주세요 👀</p>
+    </section>
 
-  <details id="profileBox">
-    <summary>내 프로필</summary>
-    <div class="preview"><span class="av" id="pav"></span><b id="pnamePreview"></b></div>
-    <div class="row"><input id="pname" maxlength="16" placeholder="이름을 입력하면 저장돼요 (최대 16자)" autocomplete="off"></div>
-    <div class="muted">프사 (이모지 또는 사진)</div>
-    <div class="grid" id="emojiGrid"></div>
-    <div class="row">
-      <button id="moreEmoji" class="sub">＋ 모든 이모지</button>
-      <button id="upload" class="sub">사진 올리기</button>
-      <button id="clearPhoto" class="sub" hidden>사진 지우기</button>
-      <input type="file" id="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
-    </div>
-    <div id="pickerBox" hidden></div>
-    <div class="muted">사진은 64×64로 줄여 20KB 이하로 만들어 방 참가자에게만 전달돼요. 서버에 저장되지 않아요.</div>
-    <div class="error" id="perror"></div>
-    <div class="muted">프사 배경색</div>
-    <div class="grid" id="bgGrid"></div>
-    <div class="muted">채팅 색</div>
-    <div class="grid" id="colorGrid"></div>
-  </details>
+    <!-- 방에 있을 때 -->
+    <section id="room" hidden>
+      <div class="card">
+        <div class="roomhead">
+          <span class="label">🏠 방 코드 <span class="status" id="conn"></span></span>
+          <button id="leave" class="btn ghost small">나가기 👋</button>
+        </div>
+        <div class="code" id="roomCode"></div>
+        <div class="row nowrap">
+          <button id="copy" class="btn primary">🔗 링크 복사</button>
+          <button id="copyCode" class="btn">📋 코드 복사</button>
+        </div>
+      </div>
 
-  <details id="syncBox">
-    <summary>동기화 설정</summary>
-    <label class="row" style="gap:6px"><input type="checkbox" id="adDetect" style="width:auto"> 광고 구간은 동기화에서 제외</label>
-    <div class="muted">90초보다 짧은 영상을 광고로 보고, 광고 중에는 서로의 재생/일시정지/시크를 주고받지 않아요. 짧은 영상으로 테스트할 때는 꺼 주세요.</div>
-  </details>
+      <div class="card" style="margin-top:12px">
+        <h2>🧑‍🤝‍🧑 같이 보는 사람 <span class="count" id="count"></span></h2>
+        <ul class="people" id="people"></ul>
+      </div>
 
-  <div class="error" id="error"></div>
+      <div class="card" id="hostBox" style="margin-top:12px">
+        <h2>🎮 조작 권한</h2>
+        <div class="seg" id="modeSeg">
+          <button data-mode="everyone">🙌 모두 조작</button>
+          <button data-mode="host_only">👑 방장만</button>
+        </div>
+        <div class="row nowrap" id="countdownRow">
+          <select id="seconds" aria-label="카운트다운 초">
+            <option value="3">3초</option>
+            <option value="5">5초</option>
+            <option value="10">10초</option>
+          </select>
+          <button id="countdown" class="btn primary">⏱️ 카운트다운 시작</button>
+        </div>
+      </div>
+      <p class="note" id="modeInfo" hidden style="text-align:center"></p>
+      <p class="wait" id="waitInfo" hidden style="margin-top:12px"></p>
+    </section>
+
+    <details class="card" id="profileBox">
+      <summary>🎨 내 프로필</summary>
+      <div class="inner">
+        <div class="preview"><span class="av" id="pav"></span><span id="pnamePreview"></span></div>
+        <input id="pname" maxlength="16" placeholder="닉네임을 입력하면 저장돼요 (최대 16자)" autocomplete="off">
+        <div class="sub">프사 (이모지 또는 사진)</div>
+        <div class="grid" id="emojiGrid"></div>
+        <div class="row nowrap">
+          <button id="moreEmoji" class="btn small">＋ 모든 이모지</button>
+          <button id="upload" class="btn small">📷 사진 올리기</button>
+          <button id="clearPhoto" class="btn small" hidden>지우기</button>
+          <input type="file" id="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+        </div>
+        <div id="pickerBox" hidden></div>
+        <div class="note">사진은 64×64로 줄여 20KB 이하로 만들어 방 참가자에게만 전달돼요. 서버에 저장되지 않아요.</div>
+        <div class="error" id="perror"></div>
+        <div class="sub">프사 배경색</div>
+        <div class="grid" id="bgGrid"></div>
+        <div class="sub">닉네임(채팅) 색</div>
+        <div class="grid" id="colorGrid"></div>
+      </div>
+    </details>
+
+    <details class="card" id="themeBox">
+      <summary>🌈 테마</summary>
+      <div class="inner">
+        <div class="themerow">
+          <div class="tlabel">확장 프로그램<small>이 창</small></div>
+          <div class="dots" id="uiDots"></div>
+          <button class="btn small" id="uiAll" title="이 테마를 채팅까지 전체에 적용">전체 적용</button>
+        </div>
+        <div class="themerow">
+          <div class="tlabel">채팅·화면 안내<small>영상 페이지 안</small></div>
+          <div class="dots" id="chatDots"></div>
+          <button class="btn small" id="chatAll" title="이 테마를 확장 프로그램 전체에 적용">전체 적용</button>
+        </div>
+        <div class="note" style="margin:0">색을 누르면 그 부분만 바뀌어요. "전체 적용"은 눌러 둔 테마를 둘 다에 적용해요.</div>
+      </div>
+    </details>
+
+    <details class="card" id="syncBox">
+      <summary>⚙️ 동기화 설정</summary>
+      <div class="inner">
+        <label class="check"><input type="checkbox" id="adDetect"> 광고 구간은 동기화에서 제외</label>
+        <div class="note" style="margin:0">90초보다 짧은 영상을 광고로 보고, 광고 중에는 서로의 재생/일시정지/시크를 주고받지 않아요. 짧은 영상으로 테스트할 때는 꺼 주세요.</div>
+      </div>
+    </details>
+
+    <div class="error" id="error"></div>
+  </main>
   <script type="module" src="popup.js"></script>
 </body>
 </html>
