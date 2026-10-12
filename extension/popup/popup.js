@@ -187,6 +187,20 @@ $('copy').addEventListener('click', async () => {
   setTimeout(() => ($('copy').textContent = '🔗 링크 복사'), 1500);
 });
 
+// ---------- 진단 정보: 현재 탭의 최근 동작 기록을 클립보드로 ----------
+$('copyDiag').addEventListener('click', async () => {
+  const label = $('copyDiag').textContent;
+  try {
+    const tab = await activeTab();
+    const reply = await chrome.tabs.sendMessage(tab.id, { cmd: CMD.DIAG });
+    await navigator.clipboard.writeText(reply.text);
+    $('copyDiag').textContent = '✅ 복사됨!';
+  } catch {
+    $('copyDiag').textContent = '이 탭에는 기록이 없어요';
+  }
+  setTimeout(() => ($('copyDiag').textContent = label), 1800);
+});
+
 // ---------- 동기화 설정: 광고 구간 제외 ----------
 chrome.storage.local.get('syncPrefs').then((r) => ($('adDetect').checked = r.syncPrefs?.adDetect !== false));
 $('adDetect').addEventListener('change', async (e) => {

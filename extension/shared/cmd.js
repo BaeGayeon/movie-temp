@@ -4,6 +4,7 @@ export const CMD = {
   GET_STATE: 'get_state',
   REGISTER: 'register', // content 가 로드될 때
   GET_FONT: 'get_font', // content -> background: 내장 SUIT 글꼴(base64)
+  DIAG: 'diag', // popup -> content(최상위 프레임): 최근 동작 기록(진단용)을 돌려받는다
   HAS_VIDEO: 'has_video', // popup -> background(탭에 영상이 있는지 물음) / background -> content(영상이 있는 프레임만 true 로 응답)
   CREATE_ROOM: 'create_room',
   JOIN_ROOM: 'join_room',
