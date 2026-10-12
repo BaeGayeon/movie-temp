@@ -273,7 +273,7 @@
   // ---------- 로컬 이벤트 → 서버 ----------
   let lastBlockedToast = 0;
 
-  function onLocal(action) {
+  function onLocal(action, silent = false) {
     if (inAd || Date.now() < adGraceUntil) return; // 광고 중의 조작은 방에 보내지도, 방 상태로 되돌리지도 않는다
     // 소스가 바뀌는 중(메타데이터 전, duration NaN): 광고로 바뀌는 순간의 play(0초) 같은 이벤트가 방 전체를 되감지 않도록 무시
     if (video && Number.isNaN(video.duration)) return;
@@ -294,7 +294,7 @@
       time: video.currentTime,
       updatedAt: serverNow(),
     };
-    send({ cmd: CMD.VIDEO_EVENT, action, time: video.currentTime, sentAt: Date.now() });
+    send({ cmd: CMD.VIDEO_EVENT, action, time: video.currentTime, sentAt: Date.now(), silent });
   }
 
   const onPlay = () => !consume('play') && onLocal('play');
@@ -372,7 +372,7 @@
       case CMD.SEED:
         state = m.state;
         // 방을 만든 사람: 내 영상이 이미 재생 중이어도 서버의 초기 상태(정지, 0초)로 되돌리지 않고, 내 상태를 방에 알린다
-        if (video) onLocal(video.paused ? 'pause' : 'play');
+        if (video) onLocal(video.paused ? 'pause' : 'play', true); // 방 시작 상태는 채팅 알림으로 띄우지 않는다
         break;
       case CMD.REMOTE_VIDEO:
         state = m.state;
