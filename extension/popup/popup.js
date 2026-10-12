@@ -1,6 +1,12 @@
 import { APP_NAME } from '../config.js';
 import { CMD } from '../shared/cmd.js';
 import { COLOR_PALETTE, MAX_NAME_LENGTH } from '../shared/protocol.js';
+import { renderAvatar, fileToAvatarDataUrl } from '../shared/avatar.js';
+import { createEmojiPicker, EMOJI_PICKER_CSS } from '../shared/emoji-picker.js';
+
+const pickerStyle = document.createElement('style');
+pickerStyle.textContent = EMOJI_PICKER_CSS;
+document.head.append(pickerStyle);
 
 const $ = (id) => document.getElementById(id);
 $('title').textContent = APP_NAME;
@@ -62,6 +68,12 @@ $('countdown').addEventListener('click', () =>
 $('leave').addEventListener('click', () => chrome.runtime.sendMessage({ cmd: CMD.LEAVE_ROOM }));
 $('mode').addEventListener('change', (e) => chrome.runtime.sendMessage({ cmd: CMD.SET_MODE, mode: e.target.value }));
 
+$('copyCode').addEventListener('click', async () => {
+  await navigator.clipboard.writeText(state.roomCode);
+  $('copyCode').textContent = '복사됨!';
+  setTimeout(() => ($('copyCode').textContent = '코드 복사'), 1500);
+});
+
 $('copy').addEventListener('click', async () => {
   const tab = await activeTab();
   try {
@@ -95,16 +107,16 @@ function swatches(container, colors, current, onPick) {
 }
 
 function renderProfile() {
-  $('pav').textContent = profile.avatar.value;
-  $('pav').style.background = profile.avatar.bg;
+  renderAvatar($('pav'), profile.avatar, 34);
+  $('clearPhoto').hidden = profile.avatar.kind !== 'image';
   $('pnamePreview').textContent = profile.name || '(이름 없음: 임시 이름 사용)';
   $('pnamePreview').style.color = profile.color;
   $('emojiGrid').replaceChildren(
     ...AVATARS.map((e) => {
       const b = document.createElement('button');
       b.textContent = e;
-      if (e === profile.avatar.value) b.className = 'sel';
-      b.addEventListener('click', () => update({ avatar: { ...profile.avatar, value: e } }));
+      if (profile.avatar.kind === 'emoji' && e === profile.avatar.value) b.className = 'sel';
+      b.addEventListener('click', () => update({ avatar: { ...profile.avatar, kind: 'emoji', value: e } }));
       return b;
     }),
   );
@@ -126,6 +138,34 @@ function update(patch) {
 }
 
 $('pname').addEventListener('input', (e) => update({ name: e.target.value }));
+
+// 모든 이모지 선택기
+let picker = null;
+$('moreEmoji').addEventListener('click', () => {
+  const box = $('pickerBox');
+  if (!picker) {
+    picker = createEmojiPicker({ onPick: (e) => update({ avatar: { ...profile.avatar, kind: 'emoji', value: e } }) });
+    box.append(picker.el);
+  }
+  box.hidden = !box.hidden;
+  if (!box.hidden) picker.reset();
+});
+
+// 사진 업로드: 서버가 아니라 내 컴퓨터에서 64x64 로 줄여 프로필에 포함한다
+$('upload').addEventListener('click', () => $('file').click());
+$('file').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  $('perror').textContent = '';
+  if (!file) return;
+  try {
+    const url = await fileToAvatarDataUrl(file);
+    update({ avatar: { kind: 'image', value: url, bg: profile.avatar.bg } });
+  } catch (err) {
+    $('perror').textContent = err.message?.includes('20KB') ? err.message : '이미지를 불러올 수 없어요. 다른 사진을 골라 주세요.';
+  }
+});
+$('clearPhoto').addEventListener('click', () => update({ avatar: { kind: 'emoji', value: AVATARS[0], bg: profile.avatar.bg } }));
 
 async function loadProfile() {
   const saved = (await chrome.storage.local.get('profile')).profile;

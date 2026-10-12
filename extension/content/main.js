@@ -24,7 +24,12 @@
   const chat = isTop
     ? createChat({
         getState: () => state,
-        onSend: (text) => send({ cmd: CMD.CHAT_SEND, text }),
+        onSend: (text) => send({ cmd: CMD.CHAT_SEND, text, videoTime: roomTimeNow() }),
+        getInviteLink: () => {
+          const u = new URL(location.href);
+          u.searchParams.set('wp', state?.roomCode ?? '');
+          return u.toString();
+        },
         onTyping: (isTyping) => send({ cmd: CMD.TYPING_SEND, isTyping }),
         onReaction: (emoji) => send({ cmd: CMD.REACTION_SEND, emoji }),
         onNotify: (text) => ui.toast(text, 4000),
@@ -36,6 +41,15 @@
 
   const active = () => !!state?.roomCode;
   const serverNow = () => Date.now() + (state?.serverOffset ?? 0);
+  // 방의 현재 재생 위치(초). 채팅에 "어느 장면에서 쓴 말인지" 붙이는 데 쓴다.
+  // 영상이 다른 프레임에 있어도 되도록 서버 기준 타임라인(마지막 상태 + 경과 시간)으로 계산한다.
+  const roomTimeNow = () => {
+    if (!active()) return undefined;
+    const v = state.video;
+    const now = serverNow();
+    const t = v.playing && v.updatedAt <= now ? v.time + (now - v.updatedAt) / 1000 : v.time;
+    return Math.round(Math.max(0, t) * 10) / 10;
+  };
   const canControl = () => state.mode === 'everyone' || state.hostId === state.userId;
   const send = (msg) => chrome.runtime.sendMessage(msg).catch(() => {});
 
@@ -197,6 +211,12 @@
       return;
     }
     log('local', action, '전송', video.currentTime.toFixed(1));
+    // background 는 자기 쪽 미러만 갱신하므로, 내 조작도 여기 상태에 반영해 둔다(채팅의 재생 시각, 싱크 보정 기준)
+    state.video = {
+      playing: action === 'seek' ? state.video.playing : action === 'play',
+      time: video.currentTime,
+      updatedAt: serverNow(),
+    };
     send({ cmd: CMD.VIDEO_EVENT, action, time: video.currentTime, sentAt: Date.now() });
   }
 

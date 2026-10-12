@@ -17,7 +17,7 @@ export const C2S = {
   CHAT: 'chat',
   TYPING: 'typing',
   REACTION: 'reaction',
-  // 4단계 (미구현)
+  // 4단계 (비밀번호/인원 제한은 보류)
   SET_ROOM_OPTIONS: 'set_room_options',
 };
 
@@ -57,28 +57,52 @@ export const MAX_COUNTDOWN_SECONDS = 10;
 // 3단계: 프로필/채팅/리액션 제한
 export const MAX_NAME_LENGTH = 16;
 export const MAX_CHAT_LENGTH = 300;
+// 리액션 빠른 선택 목록(기본). 서버는 이모지 1개면 무엇이든 허용하고 빈도만 제한한다.
 export const REACTION_EMOJIS = ['❤️', '😂', '😱', '👍', '👏', '🔥', '😢', '🎉'];
 export const DEFAULT_AVATAR_EMOJI = '🙂';
 export const COLOR_PALETTE = ['#ff6b6b', '#ffa94d', '#ffd43b', '#69db7c', '#38d9a9', '#4dabf7', '#9775fa', '#f783ac'];
 const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
-const EMOJI_RE = /\p{Extended_Pictographic}/u;
 const CONTROL_RE = /[\p{C}\u2028\u2029]/u; // 제어/서식 문자(줄바꿈, 제로폭 문자 등)
 
-const segmenter = new Intl.Segmenter();
-const graphemeCount = (str) => [...segmenter.segment(str)].length;
+// 이모지 1개(국기, 키캡, ZWJ 조합 포함) 여부. 이모지는 모두 허용하되 텍스트는 막는다.
+const SINGLE_EMOJI_RE = /^\p{RGI_Emoji}$/v;
+export const isSingleEmoji = (v) => typeof v === 'string' && v.length <= 32 && SINGLE_EMOJI_RE.test(v);
 
-// 프로필 검증: 올바르면 정규화된 profile, 아니면 null. (4단계에서 avatar.kind "image" 추가 예정)
+// 이미지 프사: 클라이언트가 64x64 로 줄여 WebP/JPEG 데이터 URL 로 보낸다. 서버는 형식/크기/파일 헤더를 검증한다.
+export const MAX_AVATAR_IMAGE_BYTES = 20 * 1024;
+const IMAGE_DATA_URL_RE = /^data:image\/(webp|jpeg);base64,([A-Za-z0-9+/]+={0,2})$/;
+export function isValidAvatarImage(value) {
+  if (typeof value !== 'string' || value.length > Math.ceil((MAX_AVATAR_IMAGE_BYTES * 4) / 3) + 64) return false;
+  const m = IMAGE_DATA_URL_RE.exec(value);
+  if (!m) return false;
+  let bin;
+  try {
+    bin = atob(m[2]);
+  } catch {
+    return false;
+  }
+  if (bin.length < 12 || bin.length > MAX_AVATAR_IMAGE_BYTES) return false;
+  const jpeg = bin.charCodeAt(0) === 0xff && bin.charCodeAt(1) === 0xd8 && bin.charCodeAt(2) === 0xff;
+  const webp = bin.startsWith('RIFF') && bin.slice(8, 12) === 'WEBP';
+  return m[1] === 'jpeg' ? jpeg : webp; // 선언한 형식과 실제 파일 헤더가 일치해야 한다
+}
+
+// 프로필 검증: 올바르면 정규화된 profile, 아니면 null.
 export function validateProfile(p) {
   if (!p || typeof p !== 'object') return null;
   if (typeof p.name !== 'string') return null;
   const name = p.name.trim();
   if (name.length < 1 || name.length > MAX_NAME_LENGTH || CONTROL_RE.test(name)) return null;
   const a = p.avatar;
-  if (!a || typeof a !== 'object' || a.kind !== 'emoji') return null;
-  if (typeof a.value !== 'string' || a.value.length > 16 || graphemeCount(a.value) !== 1 || !EMOJI_RE.test(a.value)) return null;
-  if (typeof a.bg !== 'string' || !HEX_COLOR_RE.test(a.bg)) return null;
+  if (!a || typeof a !== 'object') return null;
+  if (a.kind === 'emoji') {
+    if (!isSingleEmoji(a.value)) return null;
+  } else if (a.kind === 'image') {
+    if (!isValidAvatarImage(a.value)) return null;
+  } else return null;
+  if (typeof a.bg !== 'string' || !HEX_COLOR_RE.test(a.bg)) return null; // 이미지일 때는 로딩 전 대체 색
   if (typeof p.color !== 'string' || !HEX_COLOR_RE.test(p.color)) return null;
-  return { name, avatar: { kind: 'emoji', value: a.value, bg: a.bg.toLowerCase() }, color: p.color.toLowerCase() };
+  return { name, avatar: { kind: a.kind, value: a.value, bg: a.bg.toLowerCase() }, color: p.color.toLowerCase() };
 }
 export const MODES = ['host_only', 'everyone'];
 
@@ -140,12 +164,14 @@ const validators = {
     if (typeof m.text !== 'string') return null;
     const text = m.text.replace(/[\r\n\t]+/g, ' ').trim();
     if (text.length < 1 || text.length > MAX_CHAT_LENGTH || /[\p{Cc}\u2028\u2029]/u.test(text)) return null;
-    return { type: m.type, text };
+    // videoTime: 보낸 시점의 영상 재생 위치(초). 선택 사항
+    if (m.videoTime !== undefined && !isTime(m.videoTime)) return null;
+    return m.videoTime === undefined ? { type: m.type, text } : { type: m.type, text, videoTime: m.videoTime };
   },
 
   [C2S.TYPING]: (m) => (typeof m.isTyping === 'boolean' ? { type: m.type, isTyping: m.isTyping } : null),
 
-  [C2S.REACTION]: (m) => (REACTION_EMOJIS.includes(m.emoji) ? { type: m.type, emoji: m.emoji } : null),
+  [C2S.REACTION]: (m) => (isSingleEmoji(m.emoji) ? { type: m.type, emoji: m.emoji } : null),
 
   [C2S.SYNC_REPORT]: (m) =>
     isTime(m.time) && typeof m.playing === 'boolean' && isNum(m.sentAt)
@@ -153,10 +179,11 @@ const validators = {
       : null,
 };
 
-export const MAX_MESSAGE_BYTES = 4096; // 1단계 메시지 상한. 4단계(이미지 프사)에서 타입별로 조정한다.
+export const MAX_MESSAGE_BYTES = 4096; // 일반 메시지 상한
+export const MAX_PROFILE_MESSAGE_BYTES = 40 * 1024; // profile_update 만 이미지 프사(20KB, base64 ~27KB) 때문에 크다
 
 export function parseMessage(raw) {
-  if (typeof raw !== 'string' || raw.length > MAX_MESSAGE_BYTES) return null;
+  if (typeof raw !== 'string' || raw.length > MAX_PROFILE_MESSAGE_BYTES) return null;
   let m;
   try {
     m = JSON.parse(raw);
@@ -164,6 +191,7 @@ export function parseMessage(raw) {
     return null;
   }
   if (!m || typeof m !== 'object' || Array.isArray(m)) return null;
+  if (raw.length > MAX_MESSAGE_BYTES && m.type !== C2S.PROFILE_UPDATE) return null;
   const validate = validators[m.type];
   return validate ? validate(m) : null;
 }

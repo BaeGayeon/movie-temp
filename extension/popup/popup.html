@@ -6,12 +6,12 @@
   <style>
     body { width: 300px; margin: 0; padding: 14px; font: 14px/1.4 system-ui, -apple-system, "Malgun Gothic", sans-serif; color: #222; }
     h1 { font-size: 15px; margin: 0 0 10px; }
-    button { font: inherit; cursor: pointer; border: 0; border-radius: 6px; padding: 7px 12px; background: #4f7cff; color: #fff; }
+    button { white-space: nowrap; font: inherit; cursor: pointer; border: 0; border-radius: 6px; padding: 7px 12px; background: #4f7cff; color: #fff; }
     button.sub { background: #e4e7ee; color: #222; }
     button:disabled { opacity: .5; cursor: default; }
     input, select { font: inherit; padding: 6px 8px; border: 1px solid #c9ced8; border-radius: 6px; }
     input { width: 110px; text-transform: uppercase; letter-spacing: 2px; }
-    .row { display: flex; gap: 8px; align-items: center; margin: 8px 0; }
+    .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
     .code { font-size: 26px; font-weight: 700; letter-spacing: 4px; }
     .muted { color: #777; font-size: 12px; }
     .error { color: #c62828; font-size: 13px; margin-top: 8px; }
@@ -24,6 +24,8 @@
     .grid { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 8px; }
     .grid button { background: #f1f3f8; color: #222; padding: 2px 5px; font-size: 18px; border-radius: 6px; }
     .grid button.sel { outline: 2px solid #4f7cff; }
+    #pickerBox .ep { width: 100%; }
+    #pickerBox { margin: 4px 0 8px; }
     .grid .sw { width: 22px; height: 22px; padding: 0; border-radius: 50%; border: 1px solid rgba(0,0,0,.15); }
     #pname { width: 100%; text-transform: none; letter-spacing: 0; }
     [hidden] { display: none !important; }
@@ -46,8 +48,9 @@
     <div class="code" id="roomCode"></div>
     <div class="row">
       <button id="copy">초대 링크 복사</button>
-      <button id="leave" class="sub">나가기</button>
+      <button id="copyCode" class="sub">코드 복사</button>
     </div>
+    <div class="row"><button id="leave" class="sub">방 나가기</button></div>
     <div class="row" id="modeRow">
       <label for="mode">조작</label>
       <select id="mode">
@@ -73,8 +76,17 @@
     <summary>내 프로필</summary>
     <div class="preview"><span class="av" id="pav"></span><b id="pnamePreview"></b></div>
     <div class="row"><input id="pname" maxlength="16" placeholder="이름을 입력하면 저장돼요 (최대 16자)" autocomplete="off"></div>
-    <div class="muted">프사</div>
+    <div class="muted">프사 (이모지 또는 사진)</div>
     <div class="grid" id="emojiGrid"></div>
+    <div class="row">
+      <button id="moreEmoji" class="sub">＋ 모든 이모지</button>
+      <button id="upload" class="sub">사진 올리기</button>
+      <button id="clearPhoto" class="sub" hidden>사진 지우기</button>
+      <input type="file" id="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+    </div>
+    <div id="pickerBox" hidden></div>
+    <div class="muted">사진은 64×64로 줄여 20KB 이하로 만들어 방 참가자에게만 전달돼요. 서버에 저장되지 않아요.</div>
+    <div class="error" id="perror"></div>
     <div class="muted">프사 배경색</div>
     <div class="grid" id="bgGrid"></div>
     <div class="muted">채팅 색</div>

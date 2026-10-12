@@ -44,7 +44,7 @@ export function createLayer(css, { passEvents = false } = {}) {
   };
 
   document.addEventListener('fullscreenchange', () => host && ensure());
-  return { ensure, remove: () => host?.remove() };
+  return { ensure, remove: () => host?.remove(), get host() { return host; } };
 }
 
 export function createUI() {

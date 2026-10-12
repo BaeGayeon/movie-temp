@@ -170,16 +170,21 @@ export class RoomManager {
     const found = this.#find(conn);
     if (!found) return;
     const { room, p } = found;
+    // 이미지 프로필은 크기가 커서 방 전체에 증폭 전파되므로 더 엄격히 제한(이모지는 느슨하게)
+    const image = profile.avatar.kind === 'image';
+    if (!(image ? this.#take(p, 'profileImage', 3, 0.2) : this.#take(p, 'profile', 10, 2))) return;
     Object.assign(p, profile);
     room.profiles.set(p.id, profile);
     this.#broadcast(room, { type: S2C.PROFILE_UPDATED, user: pub(p) });
   }
 
   // 채팅: 메시지에는 userId 만 붙이고 방 전체(본인 포함)에 전파. 사용자당 빈도 제한.
-  chat(conn, text) {
+  chat(conn, text, videoTime) {
     const found = this.#find(conn);
     if (!found || !this.#take(found.p, 'chat', 5, 1.5)) return; // 버스트 5개, 평균 초당 1.5개
-    this.#broadcast(found.room, { type: S2C.CHAT, userId: found.p.id, text, sentAt: this.now() });
+    const msg = { type: S2C.CHAT, userId: found.p.id, text, sentAt: this.now() };
+    if (videoTime !== undefined) msg.videoTime = videoTime; // 보낸 시점의 재생 위치(초)
+    this.#broadcast(found.room, msg);
   }
 
   typing(conn, isTyping) {
