@@ -60,12 +60,18 @@ const CONN = {
   disconnected: ['🔴 끊김 · 재연결 중', 'bad'],
 };
 
+let curTabId = null; // 지금 보고 있는 탭
 function render() {
   const inRoom = !!state?.roomCode;
+  // 방은 한 탭에만 묶인다: 다른 탭에서 연 팝업에서는 방 UI 대신 "어디서 하는 중인지"만 보여준다
+  const here = inRoom && state.tabId === curTabId;
+  const elsewhere = inRoom && !here;
   $('lobby').hidden = inRoom;
-  $('room').hidden = !inRoom;
+  $('room').hidden = !here;
+  $('elsewhere').hidden = !elsewhere;
+  $('elsewhereSite').textContent = state?.site || '다른 탭';
   $('error').textContent = state?.error ?? '';
-  if (!inRoom) return;
+  if (!here) return;
 
   // 방 코드: 글자마다 칩으로
   $('roomCode').replaceChildren(
@@ -129,12 +135,12 @@ setInterval(checkVideo, 1500);
 
 $('create').addEventListener('click', async () => {
   const tab = await activeTab();
-  chrome.runtime.sendMessage({ cmd: CMD.CREATE_ROOM, tabId: tab?.id });
+  chrome.runtime.sendMessage({ cmd: CMD.CREATE_ROOM, tabId: tab?.id, site: tab?.url });
 });
 
 $('join').addEventListener('click', async () => {
   const tab = await activeTab();
-  chrome.runtime.sendMessage({ cmd: CMD.JOIN_ROOM, roomCode: $('code').value, tabId: tab?.id });
+  chrome.runtime.sendMessage({ cmd: CMD.JOIN_ROOM, roomCode: $('code').value, tabId: tab?.id, site: tab?.url });
 });
 
 $('countdown').addEventListener('click', () =>
@@ -148,6 +154,13 @@ $('chatToggle').addEventListener('click', async () => {
   await chrome.storage.local.set({ chatPrefs: { ...chatPrefs, hidden: !chatPrefs?.hidden } });
 });
 chrome.storage.onChanged.addListener((ch) => ch.chatPrefs && paintChatToggle(!!ch.chatPrefs.newValue?.hidden));
+$('leaveElsewhere').addEventListener('click', () => chrome.runtime.sendMessage({ cmd: CMD.LEAVE_ROOM }));
+$('goRoom').addEventListener('click', async () => {
+  try {
+    const tab = await chrome.tabs.update(state.tabId, { active: true });
+    await chrome.windows.update(tab.windowId, { focused: true });
+  } catch {}
+});
 $('leave').addEventListener('click', () => chrome.runtime.sendMessage({ cmd: CMD.LEAVE_ROOM }));
 $('modeSeg').addEventListener('click', (e) => {
   const b = e.target.closest('button[data-mode]');
@@ -312,6 +325,7 @@ chrome.runtime.onMessage.addListener((m) => {
   }
 });
 
+curTabId = (await activeTab())?.id ?? null;
 state = await chrome.runtime.sendMessage({ cmd: CMD.GET_STATE });
 render();
 checkVideo();

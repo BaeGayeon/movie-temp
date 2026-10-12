@@ -28,6 +28,15 @@
       <p class="hint" id="noVideo" hidden>이 페이지에서는 영상을 찾지 못했어요</p>
     </section>
 
+    <!-- 다른 탭/창에서 이미 방에 있을 때 -->
+    <section id="elsewhere" class="card" hidden>
+      <div class="elsewhere-title">🔒 <span id="elsewhereSite"></span>에서 같이 보는 중</div>
+      <div class="row nowrap">
+        <button id="goRoom" class="btn primary small">그 탭으로 이동</button>
+        <button id="leaveElsewhere" class="btn small">나가기</button>
+      </div>
+    </section>
+
     <!-- 방에 있을 때: 카드마다 접었다 펼 수 있다(펼침 상태는 기억한다) -->
     <section id="room" hidden>
       <details class="card" data-fold="room" open>
