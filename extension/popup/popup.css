@@ -146,8 +146,8 @@ button:focus-visible, summary:focus-visible { outline: none; box-shadow: 0 0 0 2
 .ic { display: inline-block; line-height: 1; margin-right: .4em; vertical-align: -.08em; }
 summary > .ic { margin-right: .45em; }
 .btn, .status, .badge, .count, .seg button, .wait { line-height: 1.3; }
-.preview .av { line-height: 1; padding-top: 4px; }
-.pav { line-height: 1; padding-top: 2px; }
+.preview .av { line-height: 1; padding-top: 1px; }
+.pav { line-height: 1; padding-top: 1px; }
 .grid .sw.rainbow.has { background: var(--custom); position: relative; }
 .grid .sw.rainbow.has::after { content: ''; position: absolute; right: -4px; top: -4px; width: 11px; height: 11px; border-radius: 50%; border: 2px solid var(--surface);
   background: conic-gradient(#ff6b6b, #ffd36b, #7be495, #6bc8ff, #b48cff, #ff6bd0, #ff6b6b); }

@@ -193,7 +193,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
   try {
     chrome.storage.local.get('chatPrefs').then((r) => {
       prefs = { ...DEFAULT_PREFS, ...(r.chatPrefs ?? {}) };
-      prefs.dockFit = 'width'; // 붙이기는 폭 줄이기 하나만(영상이 줄지 않는 사이트는 자동으로 전체 축소)
+      if (!r.chatPrefs?.v) prefs.dockFit = 'width'; // 예전 설정은 폭만 줄이기로(전체 축소는 모드 버튼으로 고른다)
       prefs.v = 2;
       if (built) applyPrefs();
     });
@@ -314,12 +314,13 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
 
   const isDock = () => prefs.mode === 'dock';
   // 창 모드는 버튼 하나로 3단 순환: 떠 있는 창 -> 오른쪽에 붙이기(화면 전체 축소) -> 오른쪽에 붙이기(폭만 줄이기) -> 처음으로
-  const modeState = () => (isDock() ? 'dock-width' : 'float');
+  const modeState = () => (!isDock() ? 'float' : prefs.dockFit === 'scale' ? 'dock-scale' : 'dock-width');
   const MODE_UI = {
-    float: ['❐', '떠 있는 창 · 클릭하면 오른쪽에 붙여요'],
-    'dock-width': ['◨', '오른쪽에 붙임 · 클릭하면 떠 있는 창으로'],
+    float: ['❐', '떠 있는 창 · 클릭하면 오른쪽에 붙여요(폭만 줄이기)'],
+    'dock-width': ['◫', '오른쪽에 붙임: 폭만 줄이기 · 클릭하면 화면 전체 축소로'],
+    'dock-scale': ['◨', '오른쪽에 붙임: 화면 전체 축소 · 클릭하면 떠 있는 창으로'],
   };
-  const NEXT_MODE = { float: ['dock', 'width'], 'dock-width': ['float', 'width'] };
+  const NEXT_MODE = { float: ['dock', 'width'], 'dock-width': ['dock', 'scale'], 'dock-scale': ['float', 'width'] };
 
   function applyPrefs() {
     const vw = window.innerWidth;
