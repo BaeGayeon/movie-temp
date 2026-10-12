@@ -28,24 +28,29 @@ function adOnScreen() {
 export function createNetflixAdapter() {
   const base = createDefaultAdapter();
   let seq = 0;
+  let apiPos = null; // { sec, at } — 다리가 알려준 실제 재생 위치
+  setInterval(async () => {
+    const r = await ask('time');
+    if (r.ok) apiPos = { sec: r.ms / 1000, at: Date.now() };
+  }, 250);
   // 넷플릭스 API 는 비동기라서 play()/pause() 직후에도 video.paused 가 바로 바뀌지 않는다.
   // 시크할 때 사이트가 pause -> seek -> play 를 연달아 보내므로, 방금 내린 명령을 "의도한 상태"로 잠깐 기억해 둔다.
   let intent = null; // { paused, until }
   const remember = (paused) => (intent = { paused, until: Date.now() + 1500 });
 
-  // 다리에 요청하고 성공 여부(true/false)를 받는다. 응답이 없으면 false.
+  // 다리에 요청하고 { ok, ms } 를 받는다. 응답이 없으면 { ok: false }.
   function ask(op, ms) {
     return new Promise((resolve) => {
       const id = ++seq;
-      const done = (ok) => {
+      const done = (reply) => {
         window.removeEventListener('message', on);
         clearTimeout(timer);
-        resolve(ok);
+        resolve(reply);
       };
       const on = (e) => {
-        if (e.source === window && e.data?.__bmt === 'nf-r' && e.data.id === id) done(!!e.data.ok);
+        if (e.source === window && e.data?.__bmt === 'nf-r' && e.data.id === id) done({ ok: !!e.data.ok, ms: e.data.ms });
       };
-      const timer = setTimeout(() => done(false), REPLY_MS);
+      const timer = setTimeout(() => done({ ok: false }), REPLY_MS);
       window.addEventListener('message', on);
       window.postMessage({ __bmt: 'nf', id, op, ms }, '*');
     });
@@ -68,17 +73,27 @@ export function createNetflixAdapter() {
 
     async play(video) {
       remember(false);
-      if (!(await ask('play'))) await video.play();
+      if (!(await ask('play')).ok) await video.play();
     },
 
     pause(video) {
       remember(true);
-      ask('pause').then((ok) => ok || video.pause());
+      ask('pause').then((r) => r.ok || video.pause());
+    },
+
+    // 실제 재생 위치(초). <video>.currentTime 은 광고가 지나간 뒤 등에 넷플릭스의 실제 위치와 어긋나는 일이 있어(예: 43:30 인데 0:33),
+    // 넷플릭스 플레이어 API 의 위치를 0.25초마다 받아 두고 재생 중이면 경과 시간을 더해서 쓴다. 값이 없으면 <video> 값을 쓴다.
+    position(video) {
+      if (apiPos && Date.now() - apiPos.at < 2000) return apiPos.sec + (video.paused ? 0 : (Date.now() - apiPos.at) / 1000);
+      return video.currentTime;
     },
 
     // 이동은 반드시 넷플릭스 API 로. 다리가 없으면 아무것도 하지 않는다(직접 currentTime 을 바꾸면 오류 화면이 뜬다).
     seek(_video, t) {
-      ask('seek', t * 1000);
+      apiPos = { sec: t, at: Date.now() }; // 이동 직후 위치를 바로 반영(다음 조회까지 이전 위치로 판단하지 않도록)
+      ask('seek', t * 1000).then((r) => {
+        if (!r.ok) apiPos = null; // 이동에 실패했으면 낙관적 값을 버린다
+      });
     },
   };
 }

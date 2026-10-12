@@ -17,6 +17,7 @@
     const d = e.data;
     if (e.source !== window || !d || d.__bmt !== 'nf' || typeof d.id !== 'number') return;
     let ok = false;
+    let ms;
     try {
       const p = player();
       if (p) {
@@ -29,9 +30,12 @@
         } else if (d.op === 'pause') {
           p.pause();
           ok = true;
+        } else if (d.op === 'time') {
+          ms = p.getCurrentTime(); // 넷플릭스가 보는 실제 재생 위치(ms). <video>.currentTime 은 광고 뒤 등에 어긋날 수 있다
+          ok = Number.isFinite(ms);
         }
       }
     } catch {}
-    window.postMessage({ __bmt: 'nf-r', id: d.id, ok }, '*');
+    window.postMessage({ __bmt: 'nf-r', id: d.id, ok, ms }, '*');
   });
 })();
