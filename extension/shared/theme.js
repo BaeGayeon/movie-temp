@@ -3,28 +3,29 @@
 //  - 페이지 안 UI(채팅, 토스트 등 shadow DOM :host): 영상에서 시선을 뺏지 않도록 같은 다크를 더 차분하게(채도·대비·장식을 줄임)
 
 const POPUP = {
-  bg: '#12161c', surface: '#1c222b', 'surface-2': '#252d39', 'surface-3': '#303a49',
-  border: '#2a3340', 'border-2': '#354052', 'border-3': '#46546a',
+  // 차콜 바탕 + 하늘색 포인트(채팅의 무채색과 같이 켜 둬도 튀지 않게)
+  bg: '#15171a', surface: '#1e2124', 'surface-2': '#272b30', 'surface-3': '#32373d',
+  border: '#2a2e33', 'border-2': '#363b42', 'border-3': '#474e57',
   accent: '#4f9dff', 'accent-light': '#78b4ff', 'accent-dark': '#2a6fcc', 'accent-ink': '#8ec1ff', 'on-accent': '#ffffff',
-  ink: '#e7ecf3', 'ink-soft': '#93a0b3', placeholder: '#6c7a8e',
-  'head-1': '#2b3b54', 'head-2': '#1d2838', 'head-ink': '#eaf2ff', 'head-shadow': 'none', 'head-chip': 'rgba(255,255,255,.12)',
-  'warn-bg': '#3a3115', 'warn-ink': '#ffd97a', 'warn-border': '#6b5a1f', yellow: '#ffd36a',
+  ink: '#e6e9ed', 'ink-soft': '#9199a3', placeholder: '#6e7782',
+  'head-1': '#2d3844', 'head-2': '#1f252b', 'head-ink': '#eaf2ff', 'head-shadow': 'none', 'head-chip': 'rgba(255,255,255,.12)',
+  'warn-bg': '#363018', 'warn-ink': '#ffd97a', 'warn-border': '#6b5a1f', yellow: '#ffd36a',
   pink: '#ff7d9d', danger: '#ff6b81',
-  shadow: '0 6px 18px rgba(0,0,0,.4)', 'shadow-lg': '0 10px 30px rgba(0,0,0,.55)', 'btn-shadow': 'rgba(79,157,255,.25)',
+  shadow: '0 6px 18px rgba(0,0,0,.4)', 'shadow-lg': '0 10px 30px rgba(0,0,0,.55)', 'btn-shadow': 'rgba(79,157,255,.2)',
 };
 
 // 채팅/영상 위 안내: 장식 없이 차분하게. 테두리는 배경에 가깝게, 강조색은 채도를 낮춰서 쓴다.
 const CALM = {
   // 채팅/영상 위 안내는 무채색(회색조). 포인트 색은 닉네임(사용자가 고른 색)만.
-  bg: '#161616', surface: '#1e1e1e', 'surface-2': '#272727', 'surface-3': '#313131',
-  border: '#242424', 'border-2': '#2e2e2e', 'border-3': '#404040',
+  bg: '#17181a', surface: '#1f2022', 'surface-2': '#292a2d', 'surface-3': '#333437',
+  border: '#27282a', 'border-2': '#303134', 'border-3': '#424347',
   accent: '#5a5a5a', 'accent-light': '#6e6e6e', 'accent-dark': '#444444', 'accent-ink': '#c4c4c4', 'on-accent': '#f2f2f2',
-  ink: '#e3e3e3', 'ink-soft': '#8f8f8f', placeholder: '#6a6a6a',
-  'head-1': '#1e1e1e', 'head-2': '#1e1e1e', 'head-ink': '#e3e3e3', 'head-shadow': 'none', 'head-chip': 'rgba(255,255,255,.08)',
-  'warn-bg': '#2a2a2a', 'warn-ink': '#d0d0d0', 'warn-border': '#444444', yellow: '#d0d0d0',
+  ink: '#e4e5e7', 'ink-soft': '#919296', placeholder: '#6c6d71',
+  'head-1': '#1f2022', 'head-2': '#1f2022', 'head-ink': '#e4e5e7', 'head-shadow': 'none', 'head-chip': 'rgba(255,255,255,.08)',
+  'warn-bg': '#2a2b2d', 'warn-ink': '#d2d3d5', 'warn-border': '#444548', yellow: '#d2d3d5',
   pink: '#b85c68', danger: '#d46a76',
   shadow: '0 4px 14px rgba(0,0,0,.35)', 'shadow-lg': '0 10px 28px rgba(0,0,0,.5)', 'btn-shadow': 'rgba(0,0,0,.25)',
-  'bubble-me': '#383838', // 내 말풍선
+  'bubble-me': '#3a3b3e', // 내 말풍선
 };
 
 const decls = (t) => Object.entries(t).map(([k, v]) => `--${k}:${v};`).join('');

@@ -129,6 +129,14 @@ $('join').addEventListener('click', async () => {
 $('countdown').addEventListener('click', () =>
   chrome.runtime.sendMessage({ cmd: CMD.COUNTDOWN_START, seconds: Number($('seconds').value) }),
 );
+// 채팅 숨기기/보이기: 채팅 설정(chatPrefs.hidden)을 바꾸면 방 화면의 채팅이 따라간다
+const paintChatToggle = (hidden) => ($('chatToggle').textContent = hidden ? '💬 채팅 보이기' : '💬 채팅 숨기기');
+chrome.storage.local.get('chatPrefs').then((r) => paintChatToggle(!!r.chatPrefs?.hidden));
+$('chatToggle').addEventListener('click', async () => {
+  const { chatPrefs } = await chrome.storage.local.get('chatPrefs');
+  await chrome.storage.local.set({ chatPrefs: { ...chatPrefs, hidden: !chatPrefs?.hidden } });
+});
+chrome.storage.onChanged.addListener((ch) => ch.chatPrefs && paintChatToggle(!!ch.chatPrefs.newValue?.hidden));
 $('leave').addEventListener('click', () => chrome.runtime.sendMessage({ cmd: CMD.LEAVE_ROOM }));
 $('modeSeg').addEventListener('click', (e) => {
   const b = e.target.closest('button[data-mode]');
