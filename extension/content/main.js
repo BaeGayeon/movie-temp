@@ -15,6 +15,7 @@
   const TOKEN_TTL = 1500; // 원격 동작이 일으킨 이벤트를 무시하는 유효 시간(ms)
   const REPORT_MS = 5000; // 재생 중 위치 보고/보정 주기
   const BUFFER_DEBOUNCE_MS = 500; // 이 시간 넘게 멈춰 있어야 버퍼링으로 보고
+  const AD_EVENTS = ['durationchange', 'loadedmetadata', 'emptied']; // 같은 <video> 에서 광고 <-> 본편이 바뀌는 신호
 
   const isTop = window === window.top;
   const log = (...a) => console.log('[bmt]', isTop ? 'top' : 'iframe', ...a); // 진단용 로그
@@ -39,6 +40,51 @@
   let state = null; // background 의 공개 상태 (방에 묶인 탭에서만 채워짐)
   let video = null;
 
+  // ---------- 광고 구간 ----------
+  // 광고는 사용자마다 다른 영상이다. 광고 중에 서로의 재생/일시정지/시크를 주고받으면 한쪽 광고가 멈추거나 되감겨서,
+  // 광고 구간에서는 동기화를 완전히 끄고(보내지도, 받지도 않음) 광고가 끝나면 방 상태에 다시 맞춘다.
+  const AD_GRACE_MS = 1500; // 광고가 끝난 직후, 사이트가 본편을 스스로 시작/시크하는 이벤트를 방에 보내지 않는 시간
+  let adGraceUntil = 0;
+  let adDetect = true; // 팝업 "동기화 설정"에서 끌 수 있음(짧은 영상으로 테스트할 때)
+  let inAd = false;
+  try {
+    chrome.storage.local.get('syncPrefs').then((r) => {
+      adDetect = r.syncPrefs?.adDetect !== false;
+      evalAd();
+    });
+    chrome.storage.onChanged.addListener((changes) => {
+      if (changes.syncPrefs) {
+        adDetect = changes.syncPrefs.newValue?.adDetect !== false;
+        evalAd();
+      }
+    });
+  } catch {}
+
+  function setAdNotice(on) {
+    if (isTop) ui.showAd(on ? '광고 중이라 같이보기 동기화를 잠시 멈췄어요' : null);
+  }
+
+  function evalAd() {
+    const next = adDetect && !!video && !!adapter.isAd?.(video);
+    if (next === inAd) return;
+    inAd = next;
+    if (!inAd) adGraceUntil = Date.now() + AD_GRACE_MS;
+    log(inAd ? '광고 구간 시작: 동기화 중지' : '광고 구간 끝: 방 상태에 다시 맞춤');
+    clearTimeout(startTimer);
+    clearTimeout(bufferTimer);
+    setAdNotice(inAd);
+    if (inAd) {
+      setRate(1);
+      if (bufferingReported) {
+        bufferingReported = false;
+        send({ cmd: CMD.BUFFERING, isBuffering: false }); // 광고가 버퍼링으로 방 전체를 멈춰 세우지 않도록
+      }
+    } else {
+      applyRoomVideo(); // 본편으로 돌아왔으니 방 상태(다른 사람의 위치)에 맞춘다
+    }
+  }
+  setInterval(evalAd, 1000);
+
   const active = () => !!state?.roomCode;
   const serverNow = () => Date.now() + (state?.serverOffset ?? 0);
   // 채팅에 "어느 장면에서 쓴 말인지" 붙이는 재생 위치(초).
@@ -47,8 +93,10 @@
   //  3) 둘 다 없으면 방 타임라인(마지막 재생/정지/시크 이벤트 + 경과 시간)
   // 방 타임라인만 쓰면, 영상을 이미 재생 중인 상태에서 방에 들어왔을 때 이벤트가 없어 0:00 으로 나온다.
   const currentVideoTime = () => {
+    if (inAd) return undefined; // 광고 중의 위치는 장면 정보로 의미가 없다
     if (video) return Math.round(video.currentTime * 10) / 10;
     if (framePos && Date.now() - framePos.at < 5000) {
+      if (framePos.ad) return undefined;
       return Math.round((framePos.t + (framePos.playing ? (Date.now() - framePos.at) / 1000 : 0)) * 10) / 10;
     }
     return roomTimeNow();
@@ -58,12 +106,13 @@
     window.addEventListener('message', (e) => {
       const d = e.data;
       if (e.source !== window && d && d.__bmt === 'pos' && Number.isFinite(d.t) && d.t >= 0) {
-        framePos = { t: d.t, playing: !!d.playing, at: Date.now() };
+        framePos = { t: d.t, playing: !!d.playing, ad: !!d.ad, at: Date.now() };
+        setAdNotice(!!d.ad); // 영상이 iframe 안에 있어도 최상위 프레임에서 안내를 보여준다
       }
     });
   } else {
     setInterval(() => {
-      if (video && active()) window.top.postMessage({ __bmt: 'pos', t: video.currentTime, playing: !video.paused }, '*');
+      if (video && active()) window.top.postMessage({ __bmt: 'pos', t: video.currentTime, playing: !video.paused, ad: inAd }, '*');
     }, 1000);
   }
 
@@ -126,7 +175,7 @@
   // updatedAt 이 미래면 "그 시각에 재생 시작" 예약(카운트다운/버퍼링 후 재개) 이므로 그때까지 멈춰 둔다.
   function applyRoomVideo() {
     clearTimeout(startTimer);
-    if (!video || !active()) return;
+    if (!video || !active() || inAd) return;
     const v = state.video;
     const now = serverNow();
     if (v.playing && v.updatedAt > now) {
@@ -134,7 +183,7 @@
       setPlaying(false);
       setRate(1);
       startTimer = setTimeout(() => {
-        setPlaying(true);
+        if (!inAd) setPlaying(true);
       }, v.updatedAt - now);
       return;
     }
@@ -146,7 +195,7 @@
 
   function applyRemote(msg) {
     clearTimeout(startTimer);
-    if (!video) return;
+    if (!video || inAd) return;
     if (msg.action === 'sync') {
       correctDrift(); // 방장 위치로 기준점이 갱신됨: 시크 없이 부드럽게 맞춘다
       return;
@@ -170,7 +219,7 @@
   //  - 2초 초과: 시크
   // 방장은 기준점 자체이므로 보정하지 않는다.
   function correctDrift() {
-    if (!video || !active() || video.paused || state.hostId === state.userId) return setRate(1);
+    if (!video || !active() || inAd || video.paused || state.hostId === state.userId) return setRate(1);
     const v = state.video;
     const now = serverNow();
     if (!v.playing || v.updatedAt > now) return setRate(1);
@@ -188,7 +237,7 @@
   }
 
   function reportAndCorrect() {
-    if (!video || !active()) return;
+    if (!video || !active() || inAd) return;
     if (!video.paused) {
       send({ cmd: CMD.SYNC_REPORT, time: video.currentTime, playing: true, sentAt: Date.now() });
     }
@@ -202,7 +251,7 @@
   let bufferTimer = null;
 
   function onWaiting() {
-    if (!active() || bufferingReported || !state.video.playing) return;
+    if (!active() || inAd || bufferingReported || !state.video.playing) return;
     clearTimeout(bufferTimer);
     bufferTimer = setTimeout(() => {
       if (video && active() && !video.paused && video.readyState < 3) {
@@ -225,6 +274,9 @@
   let lastBlockedToast = 0;
 
   function onLocal(action) {
+    if (inAd || Date.now() < adGraceUntil) return; // 광고 중의 조작은 방에 보내지도, 방 상태로 되돌리지도 않는다
+    // 소스가 바뀌는 중(메타데이터 전, duration NaN): 광고로 바뀌는 순간의 play(0초) 같은 이벤트가 방 전체를 되감지 않도록 무시
+    if (video && Number.isNaN(video.duration)) return;
     if (!active()) return log('local', action, '무시: 방에 묶인 탭이 아님/방 없음');
     if (!canControl()) {
       // 방장 전용 모드: 보내지 않고 방 상태로 되돌린다
@@ -260,6 +312,8 @@
     v.addEventListener('seeked', onSeeked);
     v.addEventListener('waiting', onWaiting);
     for (const t of ['playing', 'canplay']) v.addEventListener(t, onReady);
+    for (const t of AD_EVENTS) v.addEventListener(t, evalAd);
+    evalAd();
     applyRoomVideo(); // 영상이 교체/뒤늦게 나타나도 방 상태에 맞춘다
   }
 
@@ -270,7 +324,12 @@
     video.removeEventListener('seeked', onSeeked);
     video.removeEventListener('waiting', onWaiting);
     for (const t of ['playing', 'canplay']) video.removeEventListener(t, onReady);
+    for (const t of AD_EVENTS) video.removeEventListener(t, evalAd);
     video = null;
+    if (inAd) {
+      inAd = false;
+      setAdNotice(false);
+    }
     bufferingReported = false;
     clearTimeout(startTimer);
     ui.hideClickPrompt();
@@ -340,7 +399,8 @@
             ui.toast('모두 준비됐어요. 곧 함께 재생해요');
           }
         }
-        break;      case CMD.CHAT:
+        break;
+      case CMD.CHAT:
         chat?.addMessage(m.msg);
         break;
       case CMD.TYPING_EVENT:

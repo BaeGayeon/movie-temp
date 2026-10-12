@@ -93,6 +93,12 @@
     <div class="grid" id="colorGrid"></div>
   </details>
 
+  <details id="syncBox">
+    <summary>동기화 설정</summary>
+    <label class="row" style="gap:6px"><input type="checkbox" id="adDetect" style="width:auto"> 광고 구간은 동기화에서 제외</label>
+    <div class="muted">90초보다 짧은 영상을 광고로 보고, 광고 중에는 서로의 재생/일시정지/시크를 주고받지 않아요. 짧은 영상으로 테스트할 때는 꺼 주세요.</div>
+  </details>
+
   <div class="error" id="error"></div>
   <script type="module" src="popup.js"></script>
 </body>

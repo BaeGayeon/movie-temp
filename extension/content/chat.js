@@ -168,18 +168,40 @@ export function createChat({ getState, getInviteLink, onSend, onTyping, onReacti
   };
 
   // ---------- 페이지 분할(오른쪽에 붙이기) ----------
-  // 사이트 화면을 채팅 왼쪽 영역에 맞춘다. 두 가지 방식:
-  //  - 'scale'(기본): <html> 전체를 비율대로 축소(transform). 영상이 vw/fixed 로 화면 전체에 깔린 OTT 사이트에서도
-  //    영상이 함께 작아진다. 대신 화면 아래쪽에 빈 영역이 생기고 글자도 같이 작아진다.
-  //  - 'width': <html> 폭만 줄임. 레이아웃이 반응형인 사이트에서는 자연스럽지만, vw/fixed 요소는 줄어들지 않고 채팅 아래에 깔린다.
-  const FIT_PROPS = ['width', 'transform', 'transform-origin', 'min-height'];
+  // 사이트 화면을 채팅 왼쪽 영역에 맞춘다. 방식은 두 가지(설정 "붙일 때 화면"):
+  //  - 'scale'(기본) "전체 축소": 영상이 vw/fixed 로 화면 전체에 깔린 OTT 사이트에서도 영상이 함께 줄어든다.
+  //      · 스크롤이 없는 페이지(시청 화면): <html> 에 transform 을 걸어 비율대로 줄이고 세로 가운데에 놓는다.
+  //      · 스크롤되는 페이지: transform 은 fixed 요소를 문서에 묶어 스크롤에 딸려 나가게 하므로(영상이 사라짐) CSS zoom 을 쓴다.
+  //        zoom 은 fixed 가 화면에 고정된 채 함께 줄어든다(세로 가운데 정렬은 안 됨: 위쪽 정렬).
+  //  - 'width' "폭만 줄이기": <html> 폭만 줄임. 반응형 사이트에서는 자연스럽지만 vw/fixed 요소는 줄지 않고 채팅 아래에 깔린다.
+  const FIT_PROPS = ['width', 'transform', 'transform-origin', 'min-height', 'zoom'];
   let savedStyles = null; // 원래 <html> 인라인 스타일(복구용)
+  let fitMode = null; // 'transform' | 'zoom' | 'width' — 붙인 동안 유지(스크롤이 생기면 transform -> zoom 으로만 바뀜)
+
+  const clearFit = (html) => {
+    for (const p of FIT_PROPS) html.style.removeProperty(p);
+  };
+  // 우리가 건 스타일이 없는 상태에서 문서가 스크롤되는지 잰다
+  const isScrollable = (html) => {
+    clearFit(html);
+    return window.scrollY > 0 || html.scrollHeight > window.innerHeight + 2;
+  };
+  function onScrollWhileScaled() {
+    // 스크롤이 생기면(페이지가 늘어나거나 사용자가 스크롤) transform 은 fixed 영상을 깨뜨리므로 zoom 으로 바꾼다
+    if (fitMode === 'transform' && window.scrollY > 0) {
+      fitMode = 'zoom';
+      applyPrefs();
+    }
+  }
+
   function setPageInset(px, fit) {
     const html = document.documentElement;
     if (px <= 0) {
+      window.removeEventListener('scroll', onScrollWhileScaled);
+      fitMode = null;
       if (!savedStyles) return;
+      clearFit(html);
       for (const p of FIT_PROPS) {
-        html.style.removeProperty(p);
         const [v, prio] = savedStyles[p];
         if (v) html.style.setProperty(p, v, prio);
       }
@@ -190,15 +212,26 @@ export function createChat({ getState, getInviteLink, onSend, onTyping, onReacti
       savedStyles = {};
       for (const p of FIT_PROPS) savedStyles[p] = [html.style.getPropertyValue(p), html.style.getPropertyPriority(p)];
     }
-    for (const p of FIT_PROPS) html.style.removeProperty(p); // 방식을 바꿀 때 이전 흔적 제거
-    if (fit === 'width') {
-      html.style.setProperty('width', `calc(100% - ${px}px)`, 'important');
+    if (fit === 'width') fitMode = 'width';
+    else if (!fitMode || fitMode === 'width') fitMode = isScrollable(html) ? 'zoom' : 'transform';
+    clearFit(html);
+
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const scale = Math.max(0.3, (vw - px) / vw);
+    const set = (name, value) => html.style.setProperty(name, value, 'important');
+    if (fitMode === 'width') {
+      set('width', `calc(100% - ${px}px)`);
+    } else if (fitMode === 'zoom') {
+      set('zoom', String(scale));
+      set('width', `${vw}px`); // zoom 이 곱해져 화면 폭이 (vw - px) 가 된다
     } else {
-      const scale = Math.max(0.3, (window.innerWidth - px) / window.innerWidth);
-      html.style.setProperty('transform', `scale(${scale})`, 'important');
-      html.style.setProperty('transform-origin', '0 0', 'important');
-      html.style.setProperty('min-height', '100vh', 'important'); // fixed 요소 기준 높이를 화면 높이로
+      set('transform', `translate(0, ${(vh - vh * scale) / 2}px) scale(${scale})`); // 세로 가운데
+      set('transform-origin', '0 0');
+      set('min-height', '100vh'); // fixed 요소 기준 높이를 화면 높이로
     }
+    window.removeEventListener('scroll', onScrollWhileScaled);
+    if (fitMode === 'transform') window.addEventListener('scroll', onScrollWhileScaled, { passive: true });
   }
 
   const isDock = () => prefs.mode === 'dock';
