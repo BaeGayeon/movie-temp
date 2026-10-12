@@ -3,7 +3,7 @@
 //  - 메시지 옆에 작성 시각 / 재생 시각 표시(설정에서 각각 켜고 끔)
 //  - 방 코드·초대 링크 복사, 이모지 전체 선택(채팅 입력, 리액션)
 import { createLayer } from './ui.js';
-import { REACTION_EMOJIS } from '../shared/protocol.js';
+import { REACTION_GROUPS } from '../shared/protocol.js';
 import { renderAvatar } from '../shared/avatar.js';
 import { createEmojiPicker, EMOJI_PICKER_CSS } from '../shared/emoji-picker.js';
 
@@ -49,6 +49,7 @@ const CSS = `
 
   .typing { min-height: 18px; padding: 0 10px 2px; font-size: 12px; color: #aab; }
   .reacts { display: flex; gap: 0; padding: 2px 6px; flex-wrap: wrap; align-items: center; }
+  .reacts .grp { display: flex; margin-right: 8px; } /* 감정이 비슷한 것끼리 묶고 묶음 사이에 간격 */
   .reacts button { background: transparent; font-size: 17px; border-radius: 8px; padding: 2px 4px; }
   .reacts button:hover { background: rgba(255,255,255,.15); }
   .form { display: flex; gap: 6px; padding: 6px 8px 8px; align-items: center; }
@@ -79,11 +80,13 @@ const CSS = `
   .pop[hidden] { display: none; }
 
   .floats { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
-  .float { position: absolute; bottom: 14%; display: flex; flex-direction: column; align-items: center; animation: rise 2.8s ease-out forwards; }
-  .float .e { font-size: 44px; filter: drop-shadow(0 2px 6px rgba(0,0,0,.5)); }
-  .float .n { font-size: 11px; background: rgba(0,0,0,.55); border-radius: 8px; padding: 0 6px; }
-  @keyframes rise { 0% { transform: translateY(0) scale(.6); opacity: 0; } 12% { transform: translateY(-20px) scale(1.1); opacity: 1; }
-    100% { transform: translateY(-38vh) scale(1); opacity: 0; } }
+  /* --size: 이모지 크기(영상 폭에 비례), --rise: 떠오르는 높이(영상 높이에 비례), --dx: 좌우로 흔들리는 폭 */
+  .float { position: absolute; display: flex; flex-direction: column; align-items: center; animation: rise 2.8s ease-out forwards; }
+  .float .e { font-size: var(--size, 44px); line-height: 1.1; filter: drop-shadow(0 2px 6px rgba(0,0,0,.5)); }
+  .float .n { font-size: var(--nsize, 11px); background: rgba(0,0,0,.55); border-radius: 8px; padding: 0 6px; white-space: nowrap; }
+  @keyframes rise { 0% { transform: translate(0, 0) scale(.6); opacity: 0; }
+    12% { transform: translate(calc(var(--dx, 0px) * .2), calc(var(--rise, 300px) * -.06)) scale(1.1); opacity: 1; }
+    100% { transform: translate(var(--dx, 0px), calc(var(--rise, 300px) * -1)) scale(1); opacity: 0; } }
 ` + EMOJI_PICKER_CSS;
 
 const DEFAULT_PREFS = {
@@ -143,8 +146,8 @@ async function copyText(text) {
 }
 
 // getState(): 최신 background 상태. getInviteLink(): 현재 페이지 + ?wp=코드
-// onSend(text) / onTyping(bool) / onReaction(emoji) / onNotify(text)
-export function createChat({ getState, getInviteLink, onSend, onTyping, onReaction, onNotify }) {
+// getReactionArea(): 리액션이 퍼질 영역(영상의 화면상 사각형, 없으면 null). onSend(text) / onTyping(bool) / onReaction(emoji) / onNotify(text)
+export function createChat({ getState, getInviteLink, getReactionArea, onSend, onTyping, onReaction, onNotify }) {
   const mount = createLayer(CSS, { topLayer: true }); // 페이지 축소(transform)의 영향을 받지 않도록 최상위 레이어에
   let built = false;
   let prefs = { ...DEFAULT_PREFS };
@@ -311,9 +314,10 @@ export function createChat({ getState, getInviteLink, onSend, onTyping, onReacti
       if (!keepOpen) closePicker();
     };
     pop.hidden = false;
+    picker.focusSearch(); // 열자마자 바로 검색어를 입력할 수 있게
     const r = anchor.getBoundingClientRect();
     const w = 288;
-    const h = 270;
+    const h = 300;
     pop.style.left = `${clamp(r.right - w, 8, window.innerWidth - w - 8)}px`;
     const above = r.top - h - 8;
     pop.style.top = `${above >= 8 ? above : Math.min(r.bottom + 8, window.innerHeight - h - 8)}px`;
@@ -321,11 +325,15 @@ export function createChat({ getState, getInviteLink, onSend, onTyping, onReacti
 
   function reactionRow() {
     const row = el('div', 'reacts');
-    for (const emoji of REACTION_EMOJIS) {
-      const b = el('button', '', emoji);
-      b.title = '리액션';
-      b.addEventListener('click', () => onReaction(emoji));
-      row.append(b);
+    for (const group of REACTION_GROUPS) {
+      const grp = el('div', 'grp');
+      for (const emoji of group) {
+        const b = el('button', '', emoji);
+        b.title = '리액션';
+        b.addEventListener('click', () => onReaction(emoji));
+        grp.append(b);
+      }
+      row.append(grp);
     }
     const more = el('button', '', '＋');
     more.title = '모든 이모지';
@@ -452,7 +460,7 @@ export function createChat({ getState, getInviteLink, onSend, onTyping, onReacti
   // ---------- 재생/일시정지/시간 이동 알림 ----------
   const lastEvent = new Map(); // userId -> { entry, at } — 연속 이벤트 합치기용
   function eventText(m) {
-    const who = m.userId === getState()?.userId ? '내가' : `${profileOf(m.userId).name}님이`;
+    const who = `${profileOf(m.userId).name}님이`; // 내 동작도 "내가" 가 아니라 닉네임으로
     const t = fmtVideo(m.time);
     if (m.action === 'play') return `▶ ${who} 재생했어요 · ${t}`;
     if (m.action === 'pause') return `⏸ ${who} 일시정지했어요 · ${t}`;
@@ -680,6 +688,7 @@ export function createChat({ getState, getInviteLink, onSend, onTyping, onReacti
     pop = el('div', 'pop');
     pop.hidden = true;
     picker = createEmojiPicker({ onPick: (emoji) => picker.onPick?.(emoji) });
+    picker.onEscape = closePicker;
     pop.append(picker.el);
     wrap.addEventListener('pointerdown', (e) => {
       if (!pop.hidden && !e.composedPath().includes(pop) && e.target !== popAnchor) closePicker();
@@ -786,12 +795,32 @@ export function createChat({ getState, getInviteLink, onSend, onTyping, onReacti
       renderTyping();
     },
 
+    // 리액션을 영상 전체에 걸쳐 흩뿌려 띄운다. 크기와 떠오르는 높이는 영상(화면 축소/창 크기 포함)에 비례한다.
     showReaction(userId, emoji) {
       build();
       mount.ensure();
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      let a = getReactionArea?.();
+      if (!a || a.width < 80 || a.height < 60) {
+        // 영상 위치를 모를 때(iframe 안 영상 등): 채팅에 가려지지 않는 화면 영역 전체
+        const docked = isDock() && !prefs.collapsed && !document.fullscreenElement;
+        a = { left: 0, top: 0, width: docked ? vw - prefs.dockWidth : vw, height: vh };
+      }
+      const left = Math.max(0, a.left);
+      const top = Math.max(0, a.top);
+      const w = Math.max(40, Math.min(vw, a.left + a.width) - left);
+      const h = Math.max(40, Math.min(vh, a.top + a.height) - top);
+      const size = clamp(w * 0.05, 20, 60) * (0.85 + Math.random() * 0.35);
+
       while (floats.childElementCount >= MAX_FLOATS) floats.firstChild.remove();
       const f = el('div', 'float');
-      f.style.left = `${22 + Math.random() * 40}%`; // 영상이 있을 법한 가운데 영역
+      f.style.setProperty('--size', `${size.toFixed(1)}px`);
+      f.style.setProperty('--nsize', `${clamp(size * 0.28, 9, 14).toFixed(1)}px`);
+      f.style.setProperty('--rise', `${(h * 0.62).toFixed(0)}px`);
+      f.style.setProperty('--dx', `${((Math.random() - 0.5) * size * 2.5).toFixed(0)}px`);
+      f.style.left = `${(left + size * 0.4 + Math.random() * Math.max(0, w - size * 2.4)).toFixed(0)}px`;
+      f.style.top = `${(top + h * 0.78 - size).toFixed(0)}px`;
       f.append(el('span', 'e', emoji), el('span', 'n', profileOf(userId).name));
       floats.append(f);
       setTimeout(() => f.remove(), 2900);

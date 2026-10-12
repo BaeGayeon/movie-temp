@@ -31,6 +31,11 @@
           u.searchParams.set('wp', state?.roomCode ?? '');
           return u.toString();
         },
+        // 리액션이 퍼질 영역: 영상의 화면상 사각형(화면 축소/창 크기가 반영됨). 최상위 프레임에 영상이 없으면 null
+        getReactionArea: () => {
+          const r = video?.getBoundingClientRect();
+          return r && r.width > 80 ? { left: r.left, top: r.top, width: r.width, height: r.height } : null;
+        },
         onTyping: (isTyping) => send({ cmd: CMD.TYPING_SEND, isTyping }),
         onReaction: (emoji) => send({ cmd: CMD.REACTION_SEND, emoji }),
         onNotify: (text) => ui.toast(text, 4000),
@@ -392,7 +397,7 @@
         applyRoomVideo(); // 대기 중이면 멈추고, 모두 준비되면 예약된 시각에 함께 재개
         if (isTop) {
           const names = state.waitingIds.map((id) =>
-            id === state.userId ? '나' : (state.participants.find((p) => p.id === id)?.name ?? '누군가'),
+            state.participants.find((p) => p.id === id)?.name ?? '누군가', // 내 이름도 "나" 대신 닉네임으로
           );
           ui.showWaiting(names.length ? `${names.join(', ')} 님이 버퍼링 중이에요. 기다리는 중…` : null);
           if (!names.length && state.video.playing && state.video.updatedAt > serverNow()) {
