@@ -17,6 +17,7 @@ const freshRoom = () => ({
   video: { playing: false, time: 0, updatedAt: 0 },
   waitingIds: [], // 버퍼링 중이라 모두가 기다리는 참가자
   chat: [], // 최근 채팅(새로고침 후 복구용). content 에는 REGISTER 응답으로만 전달
+  known: {}, // 방에 있었던 사람들의 프로필(userId -> { name, avatar, color }). 나간 뒤에도 지난 메시지에 닉네임/프사를 보여주기 위함
   serverOffset: 0, // 서버 시각 - 로컬 시각
 });
 
@@ -102,10 +103,27 @@ function syncProfile() {
 
 // 누가 재생/일시정지/시간 이동을 했는지 채팅창에 알린다(채팅 기록에도 남겨 새로고침 후에도 보이게 한다)
 function pushVideoNotice(fromId, action, time) {
-  const entry = { kind: 'event', userId: fromId, action, time, sentAt: Date.now() };
+  pushEvent({ kind: 'event', userId: fromId, action, time, sentAt: Date.now() });
+}
+
+// 입장/퇴장도 채팅 알림으로 남긴다. 나간 사람은 곧 참가자 목록에서 빠지므로 그때의 닉네임을 같이 저장한다.
+function pushMembershipNotice(user, action) {
+  pushEvent({ kind: 'event', userId: user.id, action, name: user.name, sentAt: Date.now() });
+}
+
+function pushEvent(entry) {
   room.chat.push(entry);
   room.chat = room.chat.slice(-MAX_CHAT_HISTORY);
   sendToTab({ cmd: CMD.CHAT, msg: entry });
+}
+
+const MAX_KNOWN = 50;
+function remember(user) {
+  if (!user?.id) return;
+  const { id, name, avatar, color } = user;
+  delete room.known[id]; // 최근에 본 순서로 유지
+  room.known[id] = { name, avatar, color };
+  for (const k of Object.keys(room.known).slice(0, Math.max(0, Object.keys(room.known).length - MAX_KNOWN))) delete room.known[k];
 }
 
 function nameOf(id) {
@@ -207,7 +225,8 @@ function handleServer(m) {
       justCreated = true;
       break;
 
-    case S2C.ROOM_STATE:
+    case S2C.ROOM_STATE: {
+      const entering = !room.roomCode; // 재접속(같은 방 복귀)이 아니라 처음 들어온 것
       room = {
         ...room,
         roomCode: m.roomCode,
@@ -218,6 +237,7 @@ function handleServer(m) {
         waitingIds: m.waitingIds ?? [],
         serverOffset: m.serverNow - Date.now(),
       };
+      for (const p of room.participants) remember(p);
       clockSamples = [];
       syncProfile();
       lastError = null;
@@ -226,19 +246,26 @@ function handleServer(m) {
       // 입장/재접속: 서버 상태에 맞춘다. 방을 방금 만든 사람은 반대로 내 영상의 현재 상태로 방을 시작한다.
       sendToTab({ cmd: justCreated ? CMD.SEED : CMD.SYNC, state: publicState() });
       justCreated = false;
+      if (entering) {
+        const me = room.participants.find((p) => p.id === userId);
+        if (me) pushMembershipNotice(me, 'join');
+      }
       break;
+    }
 
     case S2C.PARTICIPANT_JOINED:
       if (!room.participants.some((p) => p.id === m.user.id)) room.participants.push(m.user);
+      remember(m.user);
       persist();
       broadcast();
-      toast(`${m.user.name}님이 입장했어요`);
+      pushMembershipNotice(m.user, 'join'); // 채팅창에 표시(채팅이 접혀 있으면 토스트)
       break;
 
     case S2C.PROFILE_UPDATED: {
       const i = room.participants.findIndex((p) => p.id === m.user.id);
       if (i >= 0) room.participants[i] = m.user;
       else room.participants.push(m.user);
+      remember(m.user);
       persist();
       broadcast();
       break;
@@ -263,7 +290,7 @@ function handleServer(m) {
       break;
 
     case S2C.PARTICIPANT_LEFT:
-      toast(`${nameOf(m.user.id)}님이 퇴장했어요`);
+      pushMembershipNotice({ id: m.user.id, name: nameOf(m.user.id) }, 'leave');
       room.participants = room.participants.filter((p) => p.id !== m.user.id);
       persist();
       broadcast();
@@ -365,12 +392,25 @@ function enterRoom(msg, tabId) {
   broadcast();
 }
 
+// 내장 SUIT 글꼴(페이지 안 UI 용). 서비스 워커는 페이지 CSP 의 영향을 받지 않는다.
+let fontBase64 = null;
+async function getFontBase64() {
+  if (fontBase64) return fontBase64;
+  const bytes = new Uint8Array(await (await fetch(chrome.runtime.getURL('fonts/SUIT-Variable.woff2'))).arrayBuffer());
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return (fontBase64 = btoa(bin));
+}
+
 async function onCommand(m, sender) {
   await ready;
   const fromTab = sender.tab?.id;
   switch (m.cmd) {
     case CMD.GET_STATE:
       return publicState();
+
+    case CMD.GET_FONT:
+      return { data: await getFontBase64() };
 
     case CMD.REGISTER:
       return room.roomCode && fromTab === room.tabId

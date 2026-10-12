@@ -4,8 +4,9 @@
   window.__bmtLoaded = true;
 
   const load = (path) => import(chrome.runtime.getURL(path));
-  const [{ CMD }, { createDefaultAdapter }, { createUI }, { createChat }] = await Promise.all([
+  const [{ CMD }, { ensureSuitFont }, { createDefaultAdapter }, { createUI }, { createChat }] = await Promise.all([
     load('shared/cmd.js'),
+    load('shared/font.js'),
     load('content/adapters/default.js'),
     load('content/ui.js'),
     load('content/chat.js'),
@@ -366,6 +367,7 @@
           ui.showWaiting(null);
           chat?.hide();
         } else if (chat) {
+          ensureSuitFont(); // 채팅/안내 글꼴(처음 한 번만 불러온다)
           chat.show();
           chat.refreshProfiles();
         }
@@ -424,6 +426,7 @@
   const reply = await chrome.runtime.sendMessage({ cmd: CMD.REGISTER }).catch(() => null);
   state = reply?.state ?? null;
   if (chat && active()) {
+    ensureSuitFont();
     chat.show();
     chat.loadHistory(reply.chat ?? []);
   }

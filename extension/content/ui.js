@@ -1,23 +1,31 @@
+import { SHADOW_THEME_CSS, loadThemePrefs, onThemePrefs } from '../shared/theme.js';
+
 // 토스트, 초대 배너, "클릭하세요" 안내. 모든 텍스트는 textContent 로만 넣는다.
 
 const CSS = `
   :host { all: initial; }
-  .wrap { position: fixed; inset: 0; pointer-events: none; font: 14px/1.4 system-ui, -apple-system, "Malgun Gothic", sans-serif; }
+  ${SHADOW_THEME_CSS}
+  .wrap { position: fixed; inset: 0; pointer-events: none; font: 14px/1.45 var(--font); color: var(--ink); }
   .toasts { position: absolute; top: 64px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 8px; align-items: center; }
-  .toast { background: rgba(20,20,24,.92); color: #fff; padding: 8px 14px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,.4); }
-  .banner { position: absolute; top: 16px; left: 50%; transform: translateX(-50%); pointer-events: auto;
-    background: #1f2430; color: #fff; padding: 10px 14px; border-radius: 10px; display: flex; gap: 10px; align-items: center;
-    box-shadow: 0 4px 16px rgba(0,0,0,.5); }
-  button { font: inherit; cursor: pointer; border: 0; border-radius: 6px; padding: 6px 12px; background: #4f7cff; color: #fff; }
-  button.sub { background: #3a4050; }
-  .count { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-    font-size: 160px; font-weight: 800; color: #fff; text-shadow: 0 4px 24px rgba(0,0,0,.7); }
+  .toast { background: var(--surface); color: var(--ink); border: 2px solid var(--border-3); padding: 8px 18px; border-radius: 999px;
+    box-shadow: var(--shadow-lg); font-weight: 600; animation: pop .25s ease; }
+  .banner { position: absolute; top: 16px; left: 50%; transform: translateX(-50%); pointer-events: auto; background: var(--surface); color: var(--ink);
+    border: 2px solid var(--border-3); padding: 8px 10px 8px 18px; border-radius: 999px; display: flex; gap: 10px; align-items: center;
+    box-shadow: var(--shadow-lg); font-weight: 600; animation: pop-x .25s ease; }
+  button { font: inherit; font-weight: 700; cursor: pointer; border: 0; border-radius: 999px; padding: 6px 14px; color: var(--on-accent);
+    background: linear-gradient(180deg, var(--accent-light), var(--accent)); box-shadow: 0 2px 0 var(--accent-dark); }
+  button:active { transform: translateY(1px); }
+  button.sub { background: var(--surface-2); color: var(--accent-ink); box-shadow: none; }
+  .count { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 160px; font-weight: 900; color: #fff;
+    -webkit-text-stroke: 10px var(--accent); paint-order: stroke fill; text-shadow: 0 10px 30px var(--btn-shadow); animation: pop .3s ease; }
   .count.go { font-size: 90px; }
-  .ad { position: absolute; bottom: 140px; left: 50%; transform: translateX(-50%); background: rgba(80,60,0,.92); color: #ffe9a8;
-    padding: 8px 16px; border-radius: 20px; box-shadow: 0 2px 8px rgba(0,0,0,.4); }
-  .waiting { position: absolute; bottom: 90px; left: 50%; transform: translateX(-50%); background: rgba(20,20,24,.92);
-    color: #fff; padding: 8px 16px; border-radius: 20px; box-shadow: 0 2px 8px rgba(0,0,0,.4); }
-  .click { position: absolute; pointer-events: auto; transform: translate(-50%, -50%); font-size: 16px; padding: 12px 20px; }
+  .ad { position: absolute; bottom: 140px; left: 50%; transform: translateX(-50%); background: var(--warn-bg); color: var(--warn-ink); border: 2px solid var(--warn-border);
+    padding: 8px 18px; border-radius: 999px; box-shadow: var(--shadow); font-weight: 600; white-space: nowrap; }
+  .waiting { position: absolute; bottom: 90px; left: 50%; transform: translateX(-50%); background: var(--surface); color: var(--accent-ink); border: 2px solid var(--border-3);
+    padding: 8px 18px; border-radius: 999px; box-shadow: var(--shadow); font-weight: 600; white-space: nowrap; }
+  .click { position: absolute; pointer-events: auto; transform: translate(-50%, -50%); font-size: 16px; padding: 12px 22px; box-shadow: 0 3px 0 var(--accent-dark), var(--shadow-lg); }
+  @keyframes pop-x { from { transform: translate(-50%, -6px) scale(.94); opacity: 0; } to { transform: translateX(-50%); opacity: 1; } }
+  @keyframes pop { from { transform: translateY(-6px) scale(.94); opacity: 0; } to { transform: none; opacity: 1; } }
 `;
 
 // 전체화면에서는 전체화면 요소 안에 붙여야 보이므로, 전체화면이 바뀔 때마다 부모를 옮긴다.
@@ -26,19 +34,35 @@ const CSS = `
 //
 // topLayer: true 이면 Popover API 로 브라우저 최상위 레이어(top layer)에 올린다. 최상위 레이어 요소는 조상(<html>)에
 // transform(화면 축소)이 걸려 있어도 영향을 받지 않아, "오른쪽에 붙이기"에서 페이지만 줄고 채팅은 그대로 유지된다.
+// 테마: 저장된 'themePrefs.chat' 을 모든 레이어(토스트, 채팅 등)에 적용한다. 팝업에서 바꾸면 실시간으로 반영된다.
+const layers = new Set();
+let currentTheme = 'sky';
+const applyTheme = () => layers.forEach((l) => l.host && (l.host.dataset.theme = currentTheme));
+loadThemePrefs().then((p) => {
+  currentTheme = p.chat;
+  applyTheme();
+});
+onThemePrefs((p) => {
+  currentTheme = p.chat;
+  applyTheme();
+});
+
 export function createLayer(css, { passEvents = false, topLayer = false } = {}) {
   let host = null;
   let root = null;
+  const api = { ensure: null, remove: () => host?.remove(), get host() { return host; } };
+  layers.add(api);
 
   const parent = () => {
     const fs = document.fullscreenElement;
     return fs && !['VIDEO', 'IFRAME', 'IMG'].includes(fs.tagName) ? fs : document.documentElement;
   };
 
-  const ensure = () => {
+  api.ensure = () => {
     if (!host) {
       host = document.createElement('div');
       host.style.cssText = `all: initial; position: fixed; inset: 0; z-index: 2147483647; pointer-events: ${passEvents ? 'auto' : 'none'};`;
+      host.dataset.theme = currentTheme;
       root = host.attachShadow({ mode: 'closed' });
       const style = document.createElement('style');
       style.textContent = css;
@@ -54,8 +78,8 @@ export function createLayer(css, { passEvents = false, topLayer = false } = {}) 
     return root;
   };
 
-  document.addEventListener('fullscreenchange', () => host && ensure());
-  return { ensure, remove: () => host?.remove(), get host() { return host; } };
+  document.addEventListener('fullscreenchange', () => host && api.ensure());
+  return api;
 }
 
 export function createUI() {

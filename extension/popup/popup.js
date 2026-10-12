@@ -3,10 +3,38 @@ import { CMD } from '../shared/cmd.js';
 import { COLOR_PALETTE, MAX_NAME_LENGTH } from '../shared/protocol.js';
 import { renderAvatar, fileToAvatarDataUrl } from '../shared/avatar.js';
 import { createEmojiPicker, EMOJI_PICKER_CSS } from '../shared/emoji-picker.js';
+import { ROOT_THEME_CSS, THEME_NAMES, THEME_LABELS, THEME_DOTS, loadThemePrefs, saveThemePrefs, onThemePrefs, readableTextOn } from '../shared/theme.js';
 
-const pickerStyle = document.createElement('style');
-pickerStyle.textContent = EMOJI_PICKER_CSS;
-document.head.append(pickerStyle);
+// 디자인 토큰(테마)과 이모지 선택기 스타일 주입
+const themeStyle = document.createElement('style');
+themeStyle.textContent = `${ROOT_THEME_CSS} ${EMOJI_PICKER_CSS}`;
+document.head.append(themeStyle);
+
+// ---------- 테마: 확장 프로그램(이 창)과 채팅을 따로 고르거나, "전체 적용"으로 한 번에 ----------
+let themePrefs = await loadThemePrefs();
+function renderTheme() {
+  document.documentElement.dataset.theme = themePrefs.ui;
+  for (const [target, id] of [['ui', 'uiDots'], ['chat', 'chatDots']]) {
+    document.getElementById(id).replaceChildren(
+      ...THEME_NAMES.map((name) => {
+        const b = document.createElement('button');
+        b.style.background = THEME_DOTS[name];
+        b.title = THEME_LABELS[name];
+        b.setAttribute('aria-label', THEME_LABELS[name]);
+        if (themePrefs[target] === name) b.className = 'on';
+        b.addEventListener('click', () => saveThemePrefs({ [target]: name }));
+        return b;
+      }),
+    );
+  }
+}
+document.getElementById('uiAll').addEventListener('click', () => saveThemePrefs({ ui: themePrefs.ui, chat: themePrefs.ui }));
+document.getElementById('chatAll').addEventListener('click', () => saveThemePrefs({ ui: themePrefs.chat, chat: themePrefs.chat }));
+onThemePrefs((p) => {
+  themePrefs = p;
+  renderTheme();
+});
+renderTheme();
 
 const $ = (id) => document.getElementById(id);
 $('title').textContent = APP_NAME;
@@ -18,7 +46,11 @@ async function activeTab() {
   return tab;
 }
 
-const CONN_LABEL = { connected: '연결됨', connecting: '연결 중…', disconnected: '끊김 (재연결 중)' };
+const CONN = {
+  connected: ['🟢 연결됨', ''],
+  connecting: ['🟡 연결 중…', 'warn'],
+  disconnected: ['🔴 끊김 · 재연결 중', 'bad'],
+};
 
 function render() {
   const inRoom = !!state?.roomCode;
@@ -27,29 +59,52 @@ function render() {
   $('error').textContent = state?.error ?? '';
   if (!inRoom) return;
 
-  $('roomCode').textContent = state.roomCode;
-  $('conn').textContent = CONN_LABEL[state.connection] ?? '';
-  $('count').textContent = `(${state.participants.length})`;
+  // 방 코드: 글자마다 칩으로
+  $('roomCode').replaceChildren(
+    ...[...state.roomCode].map((ch) => {
+      const c = document.createElement('span');
+      c.textContent = ch;
+      return c;
+    }),
+  );
+  const [connText, connCls] = CONN[state.connection] ?? CONN.disconnected;
+  $('conn').textContent = connText;
+  $('conn').className = `status ${connCls}`;
+  $('count').textContent = `${state.participants.length}명`;
 
-  const people = $('people');
-  people.replaceChildren(
+  // 참가자: 프사 + 닉네임 + 방장/나 표시
+  $('people').replaceChildren(
     ...state.participants.map((p) => {
       const li = document.createElement('li');
-      const tags = [p.id === state.hostId ? '👑' : '', p.id === state.userId ? '(나)' : ''].filter(Boolean);
-      li.textContent = [p.name, ...tags].join(' ');
+      const av = document.createElement('span');
+      av.className = 'pav';
+      renderAvatar(av, p.avatar, 26);
+      const name = document.createElement('span');
+      name.className = 'pname';
+      name.textContent = p.name; // textContent
+      li.append(av, name);
+      if (p.id === state.hostId) li.append(badge('👑 방장', ''));
+      if (p.id === state.userId) li.append(badge('나', 'me'));
       return li;
     }),
   );
 
+  // 방장만: 권한 전환 + 카운트다운. 나머지에게는 현재 권한만 안내
   const isHost = state.hostId === state.userId;
-  $('modeRow').hidden = !isHost;
-  $('mode').value = state.mode;
+  $('hostBox').hidden = !isHost;
+  for (const b of $('modeSeg').querySelectorAll('button')) b.classList.toggle('on', b.dataset.mode === state.mode);
   $('modeInfo').hidden = isHost;
-  $('countdownRow').hidden = !isHost;
+  $('modeInfo').textContent = state.mode === 'host_only' ? '👑 방장만 조작할 수 있어요' : '🙌 모두 조작할 수 있어요';
   const waiting = state.waitingIds.map((id) => state.participants.find((p) => p.id === id)?.name ?? '누군가');
   $('waitInfo').hidden = waiting.length === 0;
-  $('waitInfo').textContent = `⏳ ${waiting.join(', ')} 님을 기다리는 중`;
-  $('modeInfo').textContent = state.mode === 'host_only' ? '방장만 조작할 수 있어요' : '모두 조작할 수 있어요';
+  $('waitInfo').textContent = `⏳ ${waiting.join(', ')} 님을 기다리는 중이에요`;
+}
+
+function badge(text, cls) {
+  const b = document.createElement('span');
+  b.className = `badge ${cls}`;
+  b.textContent = text;
+  return b;
 }
 
 $('create').addEventListener('click', async () => {
@@ -66,12 +121,15 @@ $('countdown').addEventListener('click', () =>
   chrome.runtime.sendMessage({ cmd: CMD.COUNTDOWN_START, seconds: Number($('seconds').value) }),
 );
 $('leave').addEventListener('click', () => chrome.runtime.sendMessage({ cmd: CMD.LEAVE_ROOM }));
-$('mode').addEventListener('change', (e) => chrome.runtime.sendMessage({ cmd: CMD.SET_MODE, mode: e.target.value }));
+$('modeSeg').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-mode]');
+  if (b) chrome.runtime.sendMessage({ cmd: CMD.SET_MODE, mode: b.dataset.mode });
+});
 
 $('copyCode').addEventListener('click', async () => {
   await navigator.clipboard.writeText(state.roomCode);
-  $('copyCode').textContent = '복사됨!';
-  setTimeout(() => ($('copyCode').textContent = '코드 복사'), 1500);
+  $('copyCode').textContent = '✅ 복사됨!';
+  setTimeout(() => ($('copyCode').textContent = '📋 코드 복사'), 1500);
 });
 
 $('copy').addEventListener('click', async () => {
@@ -80,12 +138,12 @@ $('copy').addEventListener('click', async () => {
     const url = new URL(tab.url);
     url.searchParams.set('wp', state.roomCode);
     await navigator.clipboard.writeText(url.toString());
-    $('copy').textContent = '복사됨!';
+    $('copy').textContent = '✅ 복사됨!';
   } catch {
     $('error').textContent = '이 탭의 주소로는 초대 링크를 만들 수 없어요.';
     return;
   }
-  setTimeout(() => ($('copy').textContent = '초대 링크 복사'), 1500);
+  setTimeout(() => ($('copy').textContent = '🔗 링크 복사'), 1500);
 });
 
 // ---------- 동기화 설정: 광고 구간 제외 ----------
@@ -114,10 +172,11 @@ function swatches(container, colors, current, onPick) {
 }
 
 function renderProfile() {
-  renderAvatar($('pav'), profile.avatar, 34);
+  renderAvatar($('pav'), profile.avatar, 38);
   $('clearPhoto').hidden = profile.avatar.kind !== 'image';
-  $('pnamePreview').textContent = profile.name || '(이름 없음: 임시 이름 사용)';
-  $('pnamePreview').style.color = profile.color;
+  $('pnamePreview').textContent = profile.name || '(닉네임 없음: 임시 이름 사용)';
+  $('pnamePreview').style.background = profile.color;
+  $('pnamePreview').style.color = readableTextOn(profile.color);
   $('emojiGrid').replaceChildren(
     ...AVATARS.map((e) => {
       const b = document.createElement('button');
