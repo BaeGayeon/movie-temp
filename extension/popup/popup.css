@@ -151,3 +151,6 @@ summary > .ic { margin-right: .45em; }
 .grid .sw.rainbow.has { background: var(--custom); position: relative; }
 .grid .sw.rainbow.has::after { content: ''; position: absolute; right: -4px; top: -4px; width: 11px; height: 11px; border-radius: 50%; border: 2px solid var(--surface);
   background: conic-gradient(#ff6b6b, #ffd36b, #7be495, #6bc8ff, #b48cff, #ff6bd0, #ff6b6b); }
+.btn:disabled, .join input:disabled { opacity: .45; cursor: not-allowed; }
+.btn:disabled:hover { background: var(--surface-2); }
+.btn.primary:disabled { box-shadow: none; filter: none; transform: none; }

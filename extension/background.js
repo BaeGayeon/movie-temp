@@ -435,6 +435,17 @@ async function getFontBase64() {
   return (fontBase64 = btoa(bin));
 }
 
+// 탭(모든 프레임)에 방과 동기화할 영상이 있는지. 영상이 있는 프레임의 content 만 true 로 응답한다(없으면 응답 없음 -> 거절됨).
+async function tabHasVideo(tabId) {
+  if (tabId == null) return false;
+  try {
+    return (await chrome.tabs.sendMessage(tabId, { cmd: CMD.HAS_VIDEO })) === true;
+  } catch {
+    return false;
+  }
+}
+const NO_VIDEO_MSG = '이 페이지에서 영상을 찾지 못했어요. 영상이 나오는 페이지에서 시도해 주세요.';
+
 async function onCommand(m, sender) {
   await ready;
   const fromTab = sender.tab?.id;
@@ -450,7 +461,15 @@ async function onCommand(m, sender) {
         ? { state: publicState(), chat: room.chat }
         : { state: null, chat: [] };
 
+    case CMD.HAS_VIDEO:
+      return { ok: await tabHasVideo(m.tabId ?? fromTab) };
+
     case CMD.CREATE_ROOM:
+      if (!(await tabHasVideo(m.tabId ?? fromTab))) {
+        lastError = NO_VIDEO_MSG;
+        broadcast();
+        return { ok: false };
+      }
       enterRoom({ type: C2S.CREATE_ROOM, userId }, m.tabId ?? fromTab);
       return { ok: true };
 
@@ -462,6 +481,11 @@ async function onCommand(m, sender) {
         return { ok: false };
       }
       if (roomCode === room.roomCode) return { ok: true };
+      if (!(await tabHasVideo(m.tabId ?? fromTab))) {
+        lastError = NO_VIDEO_MSG;
+        broadcast();
+        return { ok: false };
+      }
       {
         const mem = (await chrome.storage.local.get('roomMemory')).roomMemory;
         pendingRestore = mem?.roomCode === roomCode && Date.now() - mem.at < ROOM_MEMORY_MS ? mem : null;

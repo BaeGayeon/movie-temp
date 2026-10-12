@@ -144,15 +144,20 @@
     return roomTimeNow();
   };
   let framePos = null; // { t, playing, at } — iframe 안 영상이 알려준 위치
+  let frameVid = 0; // iframe 안에 영상이 있다고 마지막으로 알려온 시각
   if (isTop) {
     window.addEventListener('message', (e) => {
       const d = e.data;
+      if (e.source !== window && d && d.__bmt === 'vid') frameVid = Date.now();
       if (e.source !== window && d && d.__bmt === 'pos' && Number.isFinite(d.t) && d.t >= 0) {
         framePos = { t: d.t, playing: !!d.playing, ad: !!d.ad, at: Date.now() };
         setAdNotice(!!d.ad); // 영상이 iframe 안에 있어도 최상위 프레임에서 안내를 보여준다
       }
     });
   } else {
+    setInterval(() => {
+      if (video) window.top.postMessage({ __bmt: 'vid' }, '*');
+    }, 1500);
     setInterval(() => {
       if (video && active()) window.top.postMessage({ __bmt: 'pos', t: video.currentTime, playing: !video.paused, ad: inAd }, '*');
     }, 1000);
@@ -396,8 +401,11 @@
   scan();
 
   // ---------- background 메시지 ----------
-  chrome.runtime.onMessage.addListener((m) => {
+  chrome.runtime.onMessage.addListener((m, _sender, sendResponse) => {
     switch (m.cmd) {
+      case CMD.HAS_VIDEO:
+        if (video) sendResponse(true); // 영상이 없는 프레임은 응답하지 않는다(응답한 프레임이 있으면 그걸 쓴다)
+        break;
       case CMD.STATE:
         state = m.state;
         log('state', state.roomCode ?? '방 없음', state.connection);
@@ -483,7 +491,13 @@
   if (isTop) {
     const code = new URL(location.href).searchParams.get('wp');
     if (code && /^[A-Za-z0-9]{6}$/.test(code) && state?.roomCode !== code.toUpperCase()) {
-      ui.showInvite(code.toUpperCase(), () => send({ cmd: CMD.JOIN_ROOM, roomCode: code }));
+      // 영상이 있는 페이지에서만 초대 안내를 띄운다(영상은 나중에 뜰 수 있으니 찾을 때까지 기다린다. iframe 안 영상은 프레임이 알려준다)
+      const hasVideo = () => !!video || (frameVid && Date.now() - frameVid < 5000);
+      const wait = setInterval(() => {
+        if (!hasVideo()) return;
+        clearInterval(wait);
+        if (state?.roomCode !== code.toUpperCase()) ui.showInvite(code.toUpperCase(), () => send({ cmd: CMD.JOIN_ROOM, roomCode: code }));
+      }, 700);
     }
   }
 })();
