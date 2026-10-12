@@ -189,15 +189,28 @@
   };
 
   // ---------- 원격 상태 적용 ----------
+  let settleTimer = null;
   function seekTo(t) {
     if (!video || Math.abs(video.currentTime - t) < SEEK_THRESHOLD) return;
     expect('seeked');
     adapter.seek(video, t);
+    if (adapter.settleMs) {
+      // 이동 뒤 재생/정지가 어긋나 있으면(어댑터의 명령이 비동기라 상태 확인이 엇갈린 경우) 방 상태로 다시 맞춘다. 위치는 건드리지 않는다.
+      clearTimeout(settleTimer);
+      settleTimer = setTimeout(() => {
+        if (!video || !active() || inAd) return;
+        const v = state.video;
+        if (v.updatedAt > serverNow()) return; // 예약된 시작(카운트다운/버퍼링 재개)은 타이머가 맡는다
+        setPlaying(v.playing);
+      }, adapter.settleMs);
+    }
   }
+
+  const isPaused = () => (adapter.isPaused ? adapter.isPaused(video) : video.paused);
 
   function setPlaying(playing) {
     if (!video) return;
-    if (playing && video.paused) {
+    if (playing && isPaused()) {
       expect('play');
       adapter.play(video).then(
         () => ui.hideClickPrompt(),
@@ -208,7 +221,7 @@
           }
         },
       );
-    } else if (!playing && !video.paused) {
+    } else if (!playing && !isPaused()) {
       expect('pause');
       adapter.pause(video);
     }
