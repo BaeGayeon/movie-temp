@@ -4,10 +4,11 @@
   window.__bmtLoaded = true;
 
   const load = (path) => import(chrome.runtime.getURL(path));
-  const [{ CMD }, { createDefaultAdapter }, { createUI }] = await Promise.all([
+  const [{ CMD }, { createDefaultAdapter }, { createUI }, { createChat }] = await Promise.all([
     load('shared/cmd.js'),
     load('content/adapters/default.js'),
     load('content/ui.js'),
+    load('content/chat.js'),
   ]);
 
   const SEEK_THRESHOLD = 0.5; // 초. 이보다 차이가 작으면 시크하지 않는다
@@ -19,6 +20,16 @@
   const log = (...a) => console.log('[bmt]', isTop ? 'top' : 'iframe', ...a); // 진단용 로그
   const adapter = createDefaultAdapter(); // 4단계에서 호스트별 어댑터 선택
   const ui = createUI();
+  // 채팅/리액션 UI 는 최상위 프레임에만 둔다
+  const chat = isTop
+    ? createChat({
+        getState: () => state,
+        onSend: (text) => send({ cmd: CMD.CHAT_SEND, text }),
+        onTyping: (isTyping) => send({ cmd: CMD.TYPING_SEND, isTyping }),
+        onReaction: (emoji) => send({ cmd: CMD.REACTION_SEND, emoji }),
+        onNotify: (text) => ui.toast(text, 4000),
+      })
+    : null;
 
   let state = null; // background 의 공개 상태 (방에 묶인 탭에서만 채워짐)
   let video = null;
@@ -244,6 +255,10 @@
           ui.hideClickPrompt();
           ui.hideCountdown();
           ui.showWaiting(null);
+          chat?.hide();
+        } else if (chat) {
+          chat.show();
+          chat.refreshProfiles();
         }
         break;
       case CMD.SYNC:
@@ -275,7 +290,16 @@
             ui.toast('모두 준비됐어요. 곧 함께 재생해요');
           }
         }
-        break;      case CMD.TOAST:
+        break;      case CMD.CHAT:
+        chat?.addMessage(m.msg);
+        break;
+      case CMD.TYPING_EVENT:
+        chat?.setTyping(m.userId, m.isTyping);
+        break;
+      case CMD.REACTION_EVENT:
+        chat?.showReaction(m.userId, m.emoji);
+        break;
+      case CMD.TOAST:
         if (isTop) ui.toast(m.text);
         break;
     }
@@ -284,6 +308,10 @@
   // ---------- 시작: 상태 복구 + 초대 링크 ----------
   const reply = await chrome.runtime.sendMessage({ cmd: CMD.REGISTER }).catch(() => null);
   state = reply?.state ?? null;
+  if (chat && active()) {
+    chat.show();
+    chat.loadHistory(reply.chat ?? []);
+  }
   log('로드됨', location.href.slice(0, 60), 'room:', state?.roomCode ?? '없음(이 탭은 방에 묶이지 않음)');
   applyRoomVideo();
 

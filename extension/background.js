@@ -6,6 +6,7 @@ import { CMD } from './shared/cmd.js';
 const PING_MS = 20_000;
 const MAX_BACKOFF_MS = 30_000;
 const MAX_CLOCK_SAMPLES = 5;
+const MAX_CHAT_HISTORY = 100;
 
 const freshRoom = () => ({
   roomCode: null,
@@ -15,10 +16,12 @@ const freshRoom = () => ({
   participants: [],
   video: { playing: false, time: 0, updatedAt: 0 },
   waitingIds: [], // 버퍼링 중이라 모두가 기다리는 참가자
+  chat: [], // 최근 채팅(새로고침 후 복구용). content 에는 REGISTER 응답으로만 전달
   serverOffset: 0, // 서버 시각 - 로컬 시각
 });
 
 let userId = null;
+let profile = null; // { name, avatar, color } — chrome.storage.local 에 저장된 내 프로필
 let room = freshRoom();
 let connection = 'disconnected'; // disconnected | connecting | connected
 let lastError = null;
@@ -33,8 +36,9 @@ let clockSamples = []; // { offset, rtt } — RTT 가 가장 작은 표본을 �
 const ready = init();
 
 async function init() {
-  const saved = await chrome.storage.local.get(['userId', 'room']);
+  const saved = await chrome.storage.local.get(['userId', 'room', 'profile']);
   userId = saved.userId;
+  profile = saved.profile ?? null;
   if (!userId) {
     userId = crypto.randomUUID();
     await chrome.storage.local.set({ userId });
@@ -54,7 +58,8 @@ async function init() {
 // ---------- 상태 ----------
 
 function publicState() {
-  return { ...room, userId, connection, error: lastError };
+  const { chat, ...rest } = room;
+  return { ...rest, userId, connection, error: lastError };
 }
 
 function persist() {
@@ -79,6 +84,19 @@ function sendToTab(msg, tabId = room.tabId) {
 
 function toast(text) {
   sendToTab({ cmd: CMD.TOAST, text });
+}
+
+// 저장된 내 프로필이 서버에 등록된 것과 다르면 (입장/재접속 직후) 등록한다
+function syncProfile() {
+  const me = room.participants.find((p) => p.id === userId);
+  if (!profile || !me) return;
+  const same =
+    me.name === profile.name &&
+    me.color === profile.color &&
+    me.avatar?.kind === profile.avatar.kind &&
+    me.avatar?.value === profile.avatar.value &&
+    me.avatar?.bg === profile.avatar.bg;
+  if (!same) rawSend({ type: C2S.PROFILE_UPDATE, profile });
 }
 
 function nameOf(id) {
@@ -188,6 +206,7 @@ function handleServer(m) {
         serverOffset: m.serverNow - Date.now(),
       };
       clockSamples = [];
+      syncProfile();
       lastError = null;
       persist();
       broadcast();
@@ -199,6 +218,30 @@ function handleServer(m) {
       persist();
       broadcast();
       toast(`${m.user.name}님이 입장했어요`);
+      break;
+
+    case S2C.PROFILE_UPDATED: {
+      const i = room.participants.findIndex((p) => p.id === m.user.id);
+      if (i >= 0) room.participants[i] = m.user;
+      else room.participants.push(m.user);
+      persist();
+      broadcast();
+      break;
+    }
+
+    case S2C.CHAT:
+      room.chat.push({ userId: m.userId, text: m.text, sentAt: m.sentAt });
+      room.chat = room.chat.slice(-MAX_CHAT_HISTORY);
+      persist();
+      sendToTab({ cmd: CMD.CHAT, msg: { userId: m.userId, text: m.text, sentAt: m.sentAt } });
+      break;
+
+    case S2C.TYPING:
+      sendToTab({ cmd: CMD.TYPING_EVENT, userId: m.userId, isTyping: m.isTyping });
+      break;
+
+    case S2C.REACTION:
+      sendToTab({ cmd: CMD.REACTION_EVENT, userId: m.userId, emoji: m.emoji });
       break;
 
     case S2C.PARTICIPANT_LEFT:
@@ -310,7 +353,9 @@ async function onCommand(m, sender) {
       return publicState();
 
     case CMD.REGISTER:
-      return { state: room.roomCode && fromTab === room.tabId ? publicState() : null };
+      return room.roomCode && fromTab === room.tabId
+        ? { state: publicState(), chat: room.chat }
+        : { state: null, chat: [] };
 
     case CMD.CREATE_ROOM:
       enterRoom({ type: C2S.CREATE_ROOM, userId }, m.tabId ?? fromTab);
@@ -335,6 +380,26 @@ async function onCommand(m, sender) {
     case CMD.SET_MODE:
       if (MODES.includes(m.mode) && room.hostId === userId) rawSend({ type: C2S.SET_PERMISSION, mode: m.mode });
       return { ok: true };
+
+    case CMD.SET_PROFILE:
+      if (m.profile?.name && m.profile.avatar && m.profile.color) {
+        profile = { name: m.profile.name, avatar: m.profile.avatar, color: m.profile.color };
+        await chrome.storage.local.set({ profile });
+        if (room.roomCode) rawSend({ type: C2S.PROFILE_UPDATE, profile });
+      }
+      return { ok: true };
+
+    case CMD.CHAT_SEND:
+      if (room.roomCode && fromTab === room.tabId) rawSend({ type: C2S.CHAT, text: String(m.text ?? '') });
+      return;
+
+    case CMD.TYPING_SEND:
+      if (room.roomCode && fromTab === room.tabId) rawSend({ type: C2S.TYPING, isTyping: !!m.isTyping });
+      return;
+
+    case CMD.REACTION_SEND:
+      if (room.roomCode && fromTab === room.tabId) rawSend({ type: C2S.REACTION, emoji: m.emoji });
+      return;
 
     case CMD.COUNTDOWN_START:
       if (room.roomCode && room.hostId === userId) {
