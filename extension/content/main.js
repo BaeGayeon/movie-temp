@@ -496,7 +496,7 @@
       const wait = setInterval(() => {
         if (!hasVideo()) return;
         clearInterval(wait);
-        if (state?.roomCode !== code.toUpperCase()) ui.showInvite(code.toUpperCase(), () => send({ cmd: CMD.JOIN_ROOM, roomCode: code }));
+        if (state?.roomCode !== code.toUpperCase()) ui.showInvite(code.toUpperCase(), () => send({ cmd: CMD.JOIN_ROOM, roomCode: code, site: location.hostname }));
       }, 700);
     }
   }

@@ -11,6 +11,7 @@ const MAX_CHAT_HISTORY = 200; // 채팅 + 재생/정지/이동 알림
 const freshRoom = () => ({
   roomCode: null,
   tabId: null, // 방에 묶인 탭: 이 탭의 영상만 동기화한다
+  site: null, // 방이 열린 사이트(도메인). 다른 창에서 같은 확장을 열었을 때 "어디서 하는 중인지" 보여주는 용도
   roomPage: null, // 그 탭이 방에서 보여준 페이지(origin+path). 이 페이지를 벗어나면 방에서 나간다
   hostId: null,
   mode: 'everyone',
@@ -416,10 +417,11 @@ function leaveRoom(notifyServer = true) {
   sendToTab({ cmd: CMD.STATE, state: publicState() }, tabId);
 }
 
-function enterRoom(msg, tabId) {
+function enterRoom(msg, tabId, site = null) {
   if (room.roomCode) leaveRoom();
   lastError = null;
   room.tabId = tabId ?? null;
+  room.site = site;
   persist();
   sendOrQueue(msg);
   broadcast();
@@ -444,6 +446,20 @@ async function tabHasVideo(tabId) {
     return false;
   }
 }
+// 이미 다른 탭에서 방에 있으면 새 방을 만들거나 참가할 수 없다(조용히 기존 방을 떠나지 않는다)
+function busyElsewhere(tabId) {
+  if (!room.roomCode || tabId === room.tabId) return false;
+  lastError = `이미 ${room.site || '다른 탭'}에서 같이보기 중이에요. 먼저 그 방에서 나가 주세요.`;
+  broadcast();
+  return true;
+}
+const siteOf = (v) => {
+  try {
+    return typeof v === 'string' && v ? new URL(v.includes('://') ? v : `https://${v}`).hostname.slice(0, 100) : null;
+  } catch {
+    return null;
+  }
+};
 const NO_VIDEO_MSG = '이 페이지에서 영상을 찾지 못했어요. 영상이 나오는 페이지에서 시도해 주세요.';
 
 async function onCommand(m, sender) {
@@ -465,12 +481,13 @@ async function onCommand(m, sender) {
       return { ok: await tabHasVideo(m.tabId ?? fromTab) };
 
     case CMD.CREATE_ROOM:
+      if (busyElsewhere(m.tabId ?? fromTab)) return { ok: false };
       if (!(await tabHasVideo(m.tabId ?? fromTab))) {
         lastError = NO_VIDEO_MSG;
         broadcast();
         return { ok: false };
       }
-      enterRoom({ type: C2S.CREATE_ROOM, userId }, m.tabId ?? fromTab);
+      enterRoom({ type: C2S.CREATE_ROOM, userId }, m.tabId ?? fromTab, siteOf(m.site));
       return { ok: true };
 
     case CMD.JOIN_ROOM: {
@@ -481,6 +498,7 @@ async function onCommand(m, sender) {
         return { ok: false };
       }
       if (roomCode === room.roomCode) return { ok: true };
+      if (busyElsewhere(m.tabId ?? fromTab)) return { ok: false };
       if (!(await tabHasVideo(m.tabId ?? fromTab))) {
         lastError = NO_VIDEO_MSG;
         broadcast();
@@ -490,7 +508,7 @@ async function onCommand(m, sender) {
         const mem = (await chrome.storage.local.get('roomMemory')).roomMemory;
         pendingRestore = mem?.roomCode === roomCode && Date.now() - mem.at < ROOM_MEMORY_MS ? mem : null;
       }
-      enterRoom({ type: C2S.JOIN_ROOM, roomCode, userId }, m.tabId ?? fromTab);
+      enterRoom({ type: C2S.JOIN_ROOM, roomCode, userId }, m.tabId ?? fromTab, siteOf(m.site));
       return { ok: true };
     }
 
@@ -501,6 +519,7 @@ async function onCommand(m, sender) {
     case CMD.ROOM_PAGE:
       if (room.roomCode && fromTab === room.tabId && typeof m.page === 'string' && m.page.length < 500) {
         room.roomPage = m.page;
+        room.site = siteOf(m.page) ?? room.site;
         persist();
         broadcast();
       }
