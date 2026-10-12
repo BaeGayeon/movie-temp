@@ -19,6 +19,7 @@ const CSS = `
   .panel { position: absolute; pointer-events: auto; display: flex; flex-direction: column;
     background: var(--bg); border: 1px solid var(--border-2); border-radius: 16px; box-shadow: var(--shadow-lg); overflow: hidden; }
   .panel.dock { border-radius: 0; border-width: 0; box-shadow: none; }
+  .panel.side { border-width: 0 0 0 1px; }
   .panel[hidden], .dock-bubble[hidden] { display: none; }
   .head { position: relative; display: flex; align-items: center; gap: 4px; padding: 6px 8px 6px 12px; user-select: none; color: var(--head-ink);
     background: var(--surface); border-bottom: 1px solid var(--border); }
@@ -54,8 +55,8 @@ const CSS = `
   .text { word-break: break-word; white-space: pre-wrap; background: var(--surface-2); border-radius: 4px 12px 12px 12px; padding: 6px 11px; }
   .msg.me .text { background: var(--bubble-me); border-radius: 12px 4px 12px 12px; }
   /* 줄글/간단 모드: 말풍선 없이 왼쪽 정렬. 줄글 = 프사 | 이름·시각 / 내용, 간단 = 이름·시각 / 내용(프사 없음) */
-  .list.plain, .list.compact { gap: 14px; }
-  .list.compact { gap: 10px; }
+  .list.plain .msg { margin-bottom: 6px; } /* 안내 문구와의 간격은 말풍선 모드와 같게(.list 의 gap) */
+  .list.compact .msg { margin-bottom: 2px; }
   .list.plain .msg, .list.plain .msg.me, .list.compact .msg, .list.compact .msg.me { flex-direction: row; gap: 10px; }
   .list.compact .av { display: none; }
   .list.plain .body, .list.plain .msg.me .body, .list.compact .body, .list.compact .msg.me .body { flex: 1; max-width: none; align-items: flex-start; gap: 3px; }
@@ -121,8 +122,8 @@ const CSS = `
 
 const DEFAULT_PREFS = {
   collapsed: false,
-  opacity: 1,
-  mode: 'float', // 'float' = 떠 있는 창, 'dock' = 화면 오른쪽에 붙이기
+  opacities: { float: 0.85, side: 0.85, dock: 1 }, // 창 모드마다 따로 기억하는 불투명도(투명도 = 1 - 값)
+  mode: 'float', // 'float' = 떠 있는 창, 'side' = 오른쪽에 띄우기(영상은 그대로), 'dock' = 오른쪽에 붙이기(영상 축소)
   width: 300,
   height: 420,
   dockWidth: 340,
@@ -192,6 +193,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
   try {
     chrome.storage.local.get('chatPrefs').then((r) => {
       prefs = { ...DEFAULT_PREFS, ...(r.chatPrefs ?? {}) };
+      prefs.opacities = { ...DEFAULT_PREFS.opacities, ...(r.chatPrefs?.opacities ?? {}) };
       prefs.v = 2;
       if (built) applyPrefs();
     });
@@ -313,21 +315,23 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     fsTimer = setInterval(fsSweep, 1000); // 나중에 생기는 요소(메뉴 등)도
   }
 
-  const isDock = () => prefs.mode === 'dock';
+  const isDock = () => prefs.mode === 'dock' || prefs.mode === 'side'; // 오른쪽 가장자리에 세로로 꽉 차는 배치
+  const isShrink = () => prefs.mode === 'dock'; // 영상(페이지)을 줄이는 배치
   // 창 모드는 버튼 하나로 전환: 떠 있는 창 <-> 오른쪽에 붙이기
-  const modeState = () => (isDock() ? 'dock' : 'float');
+  const modeState = () => (prefs.mode === 'dock' || prefs.mode === 'side' ? prefs.mode : 'float');
   const MODE_UI = {
-    float: ['❐', '떠 있는 창 · 클릭하면 오른쪽에 붙여요'],
-    dock: ['◨', '오른쪽에 붙임 · 클릭하면 떠 있는 창으로'],
+    float: ['❐', '떠 있는 창 · 클릭하면 오른쪽에 띄워요(영상은 그대로)'],
+    side: ['◧', '오른쪽에 띄움(영상은 그대로) · 클릭하면 영상을 줄여서 붙여요'],
+    dock: ['◨', '오른쪽에 붙임(영상 축소) · 클릭하면 떠 있는 창으로'],
   };
-  const NEXT_MODE = { float: 'dock', dock: 'float' };
+  const NEXT_MODE = { float: 'side', side: 'dock', dock: 'float' };
 
   function applyPrefs() {
     const vw = window.innerWidth;
     const vh = window.innerHeight;
-    prefs.opacity = clamp(prefs.opacity, 0.3, 1);
-    panel.style.opacity = String(prefs.opacity);
-    opacity.value = String(prefs.opacity);
+    const op = clamp(prefs.opacities[modeState()], 0.3, 1);
+    panel.style.opacity = String(op);
+    opacity.value = String(+(1 - op).toFixed(2)); // 슬라이더는 투명도(오른쪽일수록 투명)
     clockCb.checked = prefs.showClock;
     videoCb.checked = prefs.showVideoTime;
     eventsCb.checked = prefs.showEvents;
@@ -338,6 +342,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     panel.hidden = prefs.collapsed || prefs.hidden;
     bubbleBox.hidden = !prefs.collapsed || prefs.hidden;
     panel.classList.toggle('dock', isDock());
+    panel.classList.toggle('side', prefs.mode === 'side');
     panel.classList.toggle('free', !isDock()); // (리액션 애니메이션 클래스 .float 와 이름이 겹치면 안 된다)
     const [icon, tip] = MODE_UI[modeState()];
     modeBtn.textContent = icon;
@@ -348,7 +353,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
       prefs.dockWidth = clamp(prefs.dockWidth, MIN_W, Math.min(600, vw - 200));
       Object.assign(panel.style, { left: 'auto', right: '0', top: '0', width: `${prefs.dockWidth}px`, height: '100%' });
       // 전체화면에서는 페이지를 줄일 수 없으니 영상 위에 겹쳐서 보여준다
-      if (!prefs.collapsed && !prefs.hidden && !document.fullscreenElement) inset = prefs.dockWidth;
+      if (isShrink() && !prefs.collapsed && !prefs.hidden && !document.fullscreenElement) inset = prefs.dockWidth;
     } else {
       prefs.width = clamp(prefs.width, MIN_W, Math.max(MIN_W, vw - 2 * EDGE));
       prefs.height = clamp(prefs.height, MIN_H, Math.max(MIN_H, vh - 2 * EDGE));
@@ -365,7 +370,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
       });
     }
     setPageInset(built && mount.host?.isConnected ? inset : 0);
-    fitFullscreen(isDock() && !prefs.collapsed && !prefs.hidden && built && mount.host?.isConnected ? prefs.dockWidth : 0);
+    fitFullscreen(isShrink() && !prefs.collapsed && !prefs.hidden && built && mount.host?.isConnected ? prefs.dockWidth : 0);
     if (!prefs.collapsed && !prefs.hidden) {
       unread = 0;
       renderBadge();
@@ -689,12 +694,12 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     menu.hidden = true;
     opacity = el('input');
     opacity.type = 'range';
-    opacity.min = '0.3';
-    opacity.max = '1';
+    opacity.min = '0';
+    opacity.max = '0.7';
     opacity.step = '0.05';
     opacity.addEventListener('input', () => {
-      prefs.opacity = Number(opacity.value);
-      panel.style.opacity = String(prefs.opacity);
+      prefs.opacities[modeState()] = +(1 - Number(opacity.value)).toFixed(2); // 지금 창 모드에만 적용
+      panel.style.opacity = String(prefs.opacities[modeState()]);
     });
     opacity.addEventListener('change', savePrefs);
     const opLabel = el('label');
@@ -924,7 +929,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
       let a = getReactionArea?.();
       if (!a || a.width < 80 || a.height < 60) {
         // 영상 위치를 모를 때(iframe 안 영상 등): 채팅에 가려지지 않는 화면 영역 전체
-        const docked = isDock() && !prefs.collapsed && !prefs.hidden && !document.fullscreenElement;
+        const docked = isShrink() && !prefs.collapsed && !prefs.hidden && !document.fullscreenElement;
         a = { left: 0, top: 0, width: docked ? vw - prefs.dockWidth : vw, height: vh };
       }
       const left = Math.max(0, a.left);
