@@ -8,7 +8,7 @@ export const C2S = {
   VIDEO: 'video',
   SET_PERMISSION: 'set_permission',
   PING: 'ping',
-  // 2단계 (미구현)
+  // 2단계
   COUNTDOWN_START: 'countdown_start',
   BUFFERING: 'buffering',
   SYNC_REPORT: 'sync_report',
@@ -32,7 +32,7 @@ export const S2C = {
   MODE_CHANGED: 'mode_changed', // SPEC 추가: 권한 모드 변경 알림
   ERROR: 'error',
   PONG: 'pong',
-  // 2단계 (미구현)
+  // 2단계
   COUNTDOWN: 'countdown',
   BUFFER_STATE: 'buffer_state',
   SERVER_TIME: 'server_time',
@@ -50,6 +50,9 @@ export const ERR = {
 };
 
 export const VIDEO_ACTIONS = ['play', 'pause', 'seek'];
+// 서버 -> 클라이언트 video 메시지에만 쓰는 action: 방장의 실제 위치로 기준점을 갱신(부드러운 보정용)
+export const VIDEO_ACTION_SYNC = 'sync';
+export const MAX_COUNTDOWN_SECONDS = 10;
 export const MODES = ['host_only', 'everyone'];
 
 export const ROOM_CODE_RE = /^[A-Z0-9]{6}$/;
@@ -84,7 +87,27 @@ const validators = {
 
   [C2S.SET_PERMISSION]: (m) => (MODES.includes(m.mode) ? { type: m.type, mode: m.mode } : null),
 
-  [C2S.PING]: (m) => ({ type: m.type }),
+  [C2S.PING]: (m) => (isNum(m.clientTime) ? { type: m.type, clientTime: m.clientTime } : { type: m.type }),
+
+  [C2S.COUNTDOWN_START]: (m) =>
+    Number.isInteger(m.seconds) && m.seconds >= 1 && m.seconds <= MAX_COUNTDOWN_SECONDS
+      ? { type: m.type, seconds: m.seconds }
+      : null,
+
+  [C2S.BUFFERING]: (m) => {
+    if (typeof m.isBuffering !== 'boolean') return null;
+    const out = { type: m.type, isBuffering: m.isBuffering };
+    if (m.time !== undefined) {
+      if (!isTime(m.time)) return null;
+      out.time = m.time;
+    }
+    return out;
+  },
+
+  [C2S.SYNC_REPORT]: (m) =>
+    isTime(m.time) && typeof m.playing === 'boolean' && isNum(m.sentAt)
+      ? { type: m.type, time: m.time, playing: m.playing, sentAt: m.sentAt }
+      : null,
 };
 
 export const MAX_MESSAGE_BYTES = 4096; // 1단계 메시지 상한. 4단계(이미지 프사)에서 타입별로 조정한다.

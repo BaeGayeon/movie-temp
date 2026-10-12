@@ -12,6 +12,8 @@
 
   const SEEK_THRESHOLD = 0.5; // 초. 이보다 차이가 작으면 시크하지 않는다
   const TOKEN_TTL = 1500; // 원격 동작이 일으킨 이벤트를 무시하는 유효 시간(ms)
+  const REPORT_MS = 5000; // 재생 중 위치 보고/보정 주기
+  const BUFFER_DEBOUNCE_MS = 500; // 이 시간 넘게 멈춰 있어야 버퍼링으로 보고
 
   const isTop = window === window.top;
   const log = (...a) => console.log('[bmt]', isTop ? 'top' : 'iframe', ...a); // 진단용 로그
@@ -22,6 +24,7 @@
   let video = null;
 
   const active = () => !!state?.roomCode;
+  const serverNow = () => Date.now() + (state?.serverOffset ?? 0);
   const canControl = () => state.mode === 'everyone' || state.hostId === state.userId;
   const send = (msg) => chrome.runtime.sendMessage(msg).catch(() => {});
 
@@ -63,18 +66,42 @@
     }
   }
 
-  // 서버가 저장한 마지막 영상 상태에 맞춘다 (재생 중이면 경과 시간 보정)
+  let startTimer = null;
+
+  function setRate(r) {
+    if (video && video.playbackRate !== r) video.playbackRate = r;
+  }
+
+  // 서버가 저장한 마지막 영상 상태에 맞춘다 (재생 중이면 경과 시간 보정).
+  // updatedAt 이 미래면 "그 시각에 재생 시작" 예약(카운트다운/버퍼링 후 재개) 이므로 그때까지 멈춰 둔다.
   function applyRoomVideo() {
+    clearTimeout(startTimer);
     if (!video || !active()) return;
     const v = state.video;
-    const elapsed = v.playing ? Math.max(0, (Date.now() + state.serverOffset - v.updatedAt) / 1000) : 0;
+    const now = serverNow();
+    if (v.playing && v.updatedAt > now) {
+      seekTo(v.time);
+      setPlaying(false);
+      setRate(1);
+      startTimer = setTimeout(() => {
+        setPlaying(true);
+      }, v.updatedAt - now);
+      return;
+    }
+    const elapsed = v.playing ? Math.max(0, (now - v.updatedAt) / 1000) : 0;
     seekTo(v.time + elapsed);
     setPlaying(v.playing);
+    if (!v.playing) setRate(1);
   }
 
   function applyRemote(msg) {
-    log('remote', msg.action, msg.time.toFixed(1), video ? '적용' : '무시: video 없음');
+    clearTimeout(startTimer);
     if (!video) return;
+    if (msg.action === 'sync') {
+      correctDrift(); // 방장 위치로 기준점이 갱신됨: 시크 없이 부드럽게 맞춘다
+      return;
+    }
+    setRate(1);
     if (msg.action === 'play') {
       seekTo(msg.time);
       setPlaying(true);
@@ -84,6 +111,64 @@
     } else {
       seekTo(msg.time);
     }
+  }
+
+  // ---------- 싱크 자동 보정 ----------
+  // 기준 위치(서버의 마지막 상태 + 경과 시간)와 내 위치의 차이로 보정한다.
+  //  - 차이 작음(0.3초 미만): 그대로
+  //  - 0.3~2초: playbackRate 를 0.95~1.05 범위에서 미세 조정
+  //  - 2초 초과: 시크
+  // 방장은 기준점 자체이므로 보정하지 않는다.
+  function correctDrift() {
+    if (!video || !active() || video.paused || state.hostId === state.userId) return setRate(1);
+    const v = state.video;
+    const now = serverNow();
+    if (!v.playing || v.updatedAt > now) return setRate(1);
+    const expected = v.time + (now - v.updatedAt) / 1000;
+    const diff = video.currentTime - expected; // 양수: 내가 앞서 있음
+    const abs = Math.abs(diff);
+    if (abs < 0.3) setRate(1);
+    else if (abs <= 2) {
+      const d = Math.min(0.05, Math.max(0.02, abs / 10));
+      setRate(diff > 0 ? 1 - d : 1 + d);
+    } else {
+      setRate(1);
+      seekTo(expected);
+    }
+  }
+
+  function reportAndCorrect() {
+    if (!video || !active()) return;
+    if (!video.paused) {
+      send({ cmd: CMD.SYNC_REPORT, time: video.currentTime, playing: true, sentAt: Date.now() });
+    }
+    correctDrift();
+    if (bufferingReported && video.readyState >= 3) onReady(); // 버퍼링 해소 이벤트를 놓친 경우 대비
+  }
+  setInterval(reportAndCorrect, REPORT_MS);
+
+  // ---------- 버퍼링 보고 ----------
+  let bufferingReported = false;
+  let bufferTimer = null;
+
+  function onWaiting() {
+    if (!active() || bufferingReported || !state.video.playing) return;
+    clearTimeout(bufferTimer);
+    bufferTimer = setTimeout(() => {
+      if (video && active() && !video.paused && video.readyState < 3) {
+        bufferingReported = true;
+        log('버퍼링 시작 보고');
+        send({ cmd: CMD.BUFFERING, isBuffering: true, time: video.currentTime });
+      }
+    }, BUFFER_DEBOUNCE_MS);
+  }
+
+  function onReady() {
+    clearTimeout(bufferTimer);
+    if (!bufferingReported) return;
+    bufferingReported = false;
+    log('버퍼링 해소 보고');
+    send({ cmd: CMD.BUFFERING, isBuffering: false });
   }
 
   // ---------- 로컬 이벤트 → 서버 ----------
@@ -117,6 +202,8 @@
     v.addEventListener('play', onPlay);
     v.addEventListener('pause', onPause);
     v.addEventListener('seeked', onSeeked);
+    v.addEventListener('waiting', onWaiting);
+    for (const t of ['playing', 'canplay']) v.addEventListener(t, onReady);
     applyRoomVideo(); // 영상이 교체/뒤늦게 나타나도 방 상태에 맞춘다
   }
 
@@ -125,7 +212,11 @@
     video.removeEventListener('play', onPlay);
     video.removeEventListener('pause', onPause);
     video.removeEventListener('seeked', onSeeked);
+    video.removeEventListener('waiting', onWaiting);
+    for (const t of ['playing', 'canplay']) video.removeEventListener(t, onReady);
     video = null;
+    bufferingReported = false;
+    clearTimeout(startTimer);
     ui.hideClickPrompt();
   }
 
@@ -149,7 +240,11 @@
       case CMD.STATE:
         state = m.state;
         log('state', state.roomCode ?? '방 없음', state.connection);
-        if (!active()) ui.hideClickPrompt();
+        if (!active()) {
+          ui.hideClickPrompt();
+          ui.hideCountdown();
+          ui.showWaiting(null);
+        }
         break;
       case CMD.SYNC:
         state = m.state;
@@ -157,9 +252,30 @@
         break;
       case CMD.REMOTE_VIDEO:
         state = m.state;
+        if (isTop && m.msg.action !== 'sync') ui.hideCountdown();
         applyRemote(m.msg);
         break;
-      case CMD.TOAST:
+      case CMD.COUNTDOWN:
+        state = m.state;
+        applyRoomVideo(); // 시작 시각까지 멈춰 두고 예약 재생
+        if (isTop) {
+          ui.showWaiting(null);
+          ui.showCountdown(state.video.updatedAt, serverNow);
+        }
+        break;
+      case CMD.BUFFER:
+        state = m.state;
+        applyRoomVideo(); // 대기 중이면 멈추고, 모두 준비되면 예약된 시각에 함께 재개
+        if (isTop) {
+          const names = state.waitingIds.map((id) =>
+            id === state.userId ? '나' : (state.participants.find((p) => p.id === id)?.name ?? '누군가'),
+          );
+          ui.showWaiting(names.length ? `${names.join(', ')} 님이 버퍼링 중이에요. 기다리는 중…` : null);
+          if (!names.length && state.video.playing && state.video.updatedAt > serverNow()) {
+            ui.toast('모두 준비됐어요. 곧 함께 재생해요');
+          }
+        }
+        break;      case CMD.TOAST:
         if (isTop) ui.toast(m.text);
         break;
     }
