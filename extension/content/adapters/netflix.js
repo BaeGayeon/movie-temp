@@ -4,6 +4,27 @@ import { createDefaultAdapter } from './default.js';
 
 const REPLY_MS = 400;
 
+// 넷플릭스 광고(광고 포함 요금제)는 영상 길이만으로는 알 수 없는 경우가 있어 화면의 광고 표시도 같이 본다.
+// 광고 정보 영역(data-uia 에 ads 가 들어간 요소)이나 "광고 1/2", "Ad · 0:15" 같은 짧은 글자를 찾는다.
+const AD_SELECTOR = '[data-uia="ads-info-container"], [data-uia*="ads-info"], [data-uia*="ad-break"], [data-uia="ad-countdown"]';
+const AD_TEXT = /^(광고|ad|ads)\s*[·•:|-]?\s*(\d+\s*(\/|of|중)\s*\d+|\d+:\d{2}|\d+)$/i;
+let lastScan = { at: 0, ad: false };
+function adOnScreen() {
+  const now = Date.now();
+  if (now - lastScan.at < 500) return lastScan.ad;
+  let ad = !!document.querySelector(AD_SELECTOR);
+  if (!ad) {
+    for (const e of document.querySelectorAll('.watch-video *')) {
+      if (e.childElementCount === 0 && e.textContent.length <= 20 && AD_TEXT.test(e.textContent.trim())) {
+        ad = true;
+        break;
+      }
+    }
+  }
+  lastScan = { at: now, ad };
+  return ad;
+}
+
 export function createNetflixAdapter() {
   const base = createDefaultAdapter();
   let seq = 0;
@@ -33,6 +54,10 @@ export function createNetflixAdapter() {
   return {
     ...base,
     name: 'netflix',
+
+    isAd(video) {
+      return base.isAd(video) || adOnScreen();
+    },
 
     // 이동/재생 명령이 반영될 때까지 걸리는 시간(ms) 뒤에 방 상태(재생/정지)를 다시 확인한다
     settleMs: 900,
