@@ -25,7 +25,7 @@ const CSS = `
     background: var(--surface); border-bottom: 1px solid var(--border); }
   .panel.free .head { cursor: move; }
   .head .title { font-weight: 700; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .iconbtn { background: transparent; font-size: 15px; padding: 2px 6px; border-radius: 8px; color: var(--ink-soft); }
+  .iconbtn { display: inline-flex; align-items: center; background: transparent; font-size: 15px; padding: 2px 6px; border-radius: 8px; color: var(--ink-soft); }
   .iconbtn:hover { background: var(--head-chip); color: var(--ink); }
 
   .menu { position: absolute; top: calc(100% + 6px); left: 8px; right: 8px; margin-left: auto; max-width: 240px; max-height: calc(100vh - 80px); overflow-y: auto; z-index: 5; background: var(--surface); color: var(--ink); border: 1px solid var(--border-3);
@@ -63,6 +63,7 @@ const CSS = `
   .list.plain .name, .list.plain .msg.me .name, .list.compact .name, .list.compact .msg.me .name { flex-direction: row; }
   .list.plain .text, .list.plain .msg.me .text, .list.compact .text, .list.compact .msg.me .text { background: none; padding: 0; border-radius: 0; }
   .sys { align-self: center; text-align: center; color: var(--ink-soft); font-size: 12px; padding: 0 8px; max-width: 100%; } /* 안내 문구: 어느 모드에서나 가운데, 말풍선 없이 글만 */
+  .sys .ev-name { font-weight: 600; }
   .no-events .sys { display: none; }
   .empty { color: var(--ink-soft); text-align: center; padding: 18px 0; font-size: 13px; }
 
@@ -319,10 +320,27 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
   const isShrink = () => prefs.mode === 'dock'; // 영상(페이지)을 줄이는 배치
   // 창 모드는 버튼 하나로 전환: 떠 있는 창 <-> 오른쪽에 붙이기
   const modeState = () => (prefs.mode === 'dock' || prefs.mode === 'side' ? prefs.mode : 'float');
+  // 모드 아이콘(모두 속이 빈 선 그림): 떠 있는 창 / 오른쪽에 띄우기(영상 위에 겹침, 점선) / 오른쪽에 붙이기(화면 분할)
+  const ICONS = {
+    float: [['rect', { x: 2, y: 3, width: 16, height: 12, rx: 2.5 }], ['rect', { x: 9, y: 8, width: 7, height: 5, rx: 1.5 }]],
+    side: [['rect', { x: 2, y: 3, width: 16, height: 12, rx: 2.5 }], ['rect', { x: 11.5, y: 3, width: 6.5, height: 12, rx: 2.5, 'stroke-dasharray': '2 1.6' }]],
+    dock: [['rect', { x: 2, y: 3, width: 16, height: 12, rx: 2.5 }], ['path', { d: 'M12 3v12' }]],
+  };
+  function modeIcon(kind) {
+    const NS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(NS, 'svg');
+    for (const [k, v] of Object.entries({ width: 18, height: 18, viewBox: '0 0 20 18', fill: 'none', stroke: 'currentColor', 'stroke-width': 1.7, 'stroke-linecap': 'round' })) svg.setAttribute(k, v);
+    for (const [tag, attrs] of ICONS[kind]) {
+      const n = document.createElementNS(NS, tag);
+      for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
+      svg.append(n);
+    }
+    return svg;
+  }
   const MODE_UI = {
-    float: ['❐', '떠 있는 창 · 클릭하면 오른쪽에 띄워요(영상은 그대로)'],
-    side: ['◧', '오른쪽에 띄움(영상은 그대로) · 클릭하면 영상을 줄여서 붙여요'],
-    dock: ['◨', '오른쪽에 붙임(영상 축소) · 클릭하면 떠 있는 창으로'],
+    float: ['float', '떠 있는 창 · 클릭하면 오른쪽에 띄워요(영상은 그대로)'],
+    side: ['side', '오른쪽에 띄움(영상은 그대로) · 클릭하면 영상을 줄여서 붙여요'],
+    dock: ['dock', '오른쪽에 붙임(영상 축소) · 클릭하면 떠 있는 창으로'],
   };
   const NEXT_MODE = { float: 'side', side: 'dock', dock: 'float' };
 
@@ -345,7 +363,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     panel.classList.toggle('side', prefs.mode === 'side');
     panel.classList.toggle('free', !isDock()); // (리액션 애니메이션 클래스 .float 와 이름이 겹치면 안 된다)
     const [icon, tip] = MODE_UI[modeState()];
-    modeBtn.textContent = icon;
+    modeBtn.replaceChildren(modeIcon(icon));
     modeBtn.title = tip;
 
     let inset = 0;
@@ -587,18 +605,31 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
 
   // ---------- 재생/일시정지/시간 이동 알림 ----------
   const lastEvent = new Map(); // userId -> { entry, at } — 연속 이벤트 합치기용
-  function eventText(m) {
+  function eventParts(m) {
     // 입장/퇴장: 알고 있는(방에 있거나 있었던) 사람의 현재 닉네임을 우선 쓰고, 모르면 알림이 만들어질 때 저장한 닉네임(m.name)을 쓴다
     const st = getState();
     const known = st?.participants?.find((x) => x.id === m.userId) ?? st?.known?.[m.userId];
-    const name = m.action === 'join' || m.action === 'leave' ? (known?.name ?? m.name ?? '알 수 없음') : profileOf(m.userId).name;
-    const who = `${name}님이`; // 내 동작도 "내가" 가 아니라 닉네임으로
-    if (m.action === 'join') return `🎈 ${who} 입장했어요`;
-    if (m.action === 'leave') return `👋 ${who} 퇴장했어요`;
+    const isMembership = m.action === 'join' || m.action === 'leave';
+    const name = isMembership ? (known?.name ?? m.name ?? '알 수 없음') : profileOf(m.userId).name; // 내 동작도 "내가" 가 아니라 닉네임으로
+    const color = isMembership ? known?.color : profileOf(m.userId).color;
+    if (m.action === 'join') return { icon: '🎈', name, color, rest: '님이 입장했어요' };
+    if (m.action === 'leave') return { icon: '👋', name, color, rest: '님이 퇴장했어요' };
     const t = fmtVideo(m.time);
-    if (m.action === 'play') return `▶ ${who} 재생했어요 · ${t}`;
-    if (m.action === 'pause') return `⏸ ${who} 일시정지했어요 · ${t}`;
-    return `⏩ ${who} ${t} 위치로 이동했어요`; // 이동(+재생)은 한 가지 문구로
+    if (m.action === 'play') return { icon: '▶', name, color, rest: `님이 재생했어요 · ${t}` };
+    if (m.action === 'pause') return { icon: '⏸', name, color, rest: `님이 일시정지했어요 · ${t}` };
+    return { icon: '⏩', name, color, rest: `님이 ${t} 위치로 이동했어요` }; // 이동(+재생)은 한 가지 문구로
+  }
+  // 토스트 등 글자만 필요한 곳
+  const eventText = (m) => {
+    const e = eventParts(m);
+    return `${e.icon} ${e.name}${e.rest}`;
+  };
+  // 안내 줄: 닉네임 부분만 그 사람의 글자색(채팅과 같은 파스텔 보정)
+  function fillEvent(row, m) {
+    const e = eventParts(m);
+    const nm = el('span', 'ev-name', e.name);
+    if (e.color) nm.style.color = pastelize(e.color);
+    row.replaceChildren(`${e.icon} `, nm, e.rest);
   }
 
   function renderEvent(m) {
@@ -616,14 +647,14 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
       else if (n === 'pause' && a === 'pause') merged = 'pause';
       if (merged) {
         Object.assign(prev.entry, { action: merged, time: m.time, sentAt: m.sentAt });
-        prev.entry.el.textContent = eventText(prev.entry);
+        fillEvent(prev.entry.el, prev.entry);
         prev.at = m.sentAt;
         return prev.entry.el;
       }
     }
     const row = el('div', 'sys');
     const entry = { ...m, el: row };
-    row.textContent = eventText(entry);
+    fillEvent(row, entry);
     list.append(row);
     messages.push(entry);
     lastEvent.set(m.userId, { entry, at: m.sentAt });
