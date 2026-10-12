@@ -8,6 +8,21 @@ const REPLY_MS = 400;
 // 광고 정보 영역(data-uia 에 ads 가 들어간 요소)이나 "광고 1/2", "Ad · 0:15" 같은 짧은 글자를 찾는다.
 const AD_SELECTOR = '[data-uia="ads-info-container"], [data-uia*="ads-info"], [data-uia*="ad-break"], [data-uia="ad-countdown"]';
 const AD_TEXT = /^(광고|ad|ads)\s*[·•:|-]?\s*(\d+\s*(\/|of|중)\s*\d+|\d+:\d{2}|\d+)$/i;
+// 진단용: 넷플릭스 재생바 쪽에 보이는 시간 글자(남은 시간 등)와 그 요소 이름. 실제 본편 위치와 영상 시간이 어긋날 때 비교하는 용도.
+const TIME_TEXT = /^-?\d{1,2}:\d{2}(:\d{2})?$/;
+function uiTimes() {
+  const out = [];
+  for (const e of document.querySelectorAll('.watch-video *')) {
+    if (e.childElementCount === 0 && TIME_TEXT.test(e.textContent.trim())) {
+      out.push(`${e.textContent.trim()}@${e.getAttribute('data-uia') || e.tagName.toLowerCase()}`);
+      if (out.length >= 4) break;
+    }
+  }
+  const bar = document.querySelector('[data-uia="timeline-bar"], [data-uia="timeline"]');
+  const now = bar?.getAttribute('aria-valuenow') ?? bar?.querySelector('[aria-valuenow]')?.getAttribute('aria-valuenow');
+  if (now != null) out.push(`bar=${now}`);
+  return out;
+}
 let lastScan = { at: 0, ad: false };
 function adOnScreen() {
   const now = Date.now();
@@ -57,7 +72,7 @@ export function createNetflixAdapter() {
 
     // 진단 기록용: 어댑터가 아는 값
     debug() {
-      return { adOnScreen: lastScan.ad };
+      return { adOnScreen: lastScan.ad, ui: uiTimes() };
     },
 
     isAd(video) {
