@@ -55,6 +55,7 @@ export function createLayer(css, { passEvents = false, topLayer = false } = {}) 
     shown = true;
     if (!host) {
       host = document.createElement('div');
+      host.setAttribute('data-bmt-layer', ''); // 사이트 단축키로 키 입력이 새지 않게 content/keyguard.js 가 구분하는 표시
       host.style.cssText = `all: initial; position: fixed; inset: 0; z-index: 2147483647; pointer-events: ${passEvents ? 'auto' : 'none'};`;
       root = host.attachShadow({ mode: 'closed' });
       const style = document.createElement('style');

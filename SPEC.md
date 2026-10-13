@@ -274,3 +274,4 @@ watchparty/                (이 저장소 루트)
 67. 스토어 빌드: `node tools/build-store.mjs --server wss://...` 가 `dist/store` 와 zip 을 만든다(SERVER_URL 교체 + 개발용 주소 제거). 앱 이름은 그대로 `config.js`/manifest `name` 에서만 관리한다.
 68. 영상이 없거나 지원하지 않는 사이트의 팝업/오류 문구에 지원 사이트 이름을 알려 준다.
 69. 스토어 문구(요약, 상세 설명, 단일 목적, 권한 사유, 데이터 사용 공개): `docs/store-listing.md`.
+70. 채팅 입력 중 키(스페이스, f, 방향키 등)가 사이트 단축키로 새지 않게 한다. `content/keyguard.js`(document_start)가 페이지 스크립트보다 먼저 window capture 단계에서, 우리 레이어(`data-bmt-layer`)에서 온 키를 끊는다. 끊기 전에 `window.__bmtKeyHook` 으로 채팅 입력칸(엔터 전송)에 먼저 넘긴다.

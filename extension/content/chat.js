@@ -790,13 +790,19 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     input.maxLength = 300;
     input.autocomplete = 'off';
     // 사이트의 단축키(스페이스=재생 등)가 입력 중에 동작하지 않도록 키 이벤트를 여기서 끊는다
+    // (content/keyguard.js 가 페이지보다 먼저 capture 단계에서 끊는다. 그 경우 입력칸 리스너까지 못 오므로 같은 처리를 keyguard 가 부른다)
     for (const t of ['keydown', 'keyup', 'keypress']) input.addEventListener(t, (e) => e.stopPropagation());
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) {
-        e.preventDefault();
-        submit();
-      }
-    });
+    let lastSubmitEvent = null;
+    const onInputKey = (e) => {
+      if (e.type !== 'keydown' || e.key !== 'Enter' || e.isComposing || e.keyCode === 229 || lastSubmitEvent === e) return;
+      lastSubmitEvent = e; // 같은 키 이벤트로 두 번 전송되지 않게
+      e.preventDefault();
+      submit();
+    };
+    input.addEventListener('keydown', onInputKey);
+    window.__bmtKeyHook = (e) => {
+      if (e.composedPath?.()[0] === input || input.getRootNode().activeElement === input) onInputKey(e);
+    };
     input.addEventListener('input', noteTyping);
     const emo = el('button', 'emo', '😊');
     emo.title = '이모지';
