@@ -32,7 +32,7 @@ node tools/build-store.mjs --server wss://bae-movie-temp-server.onrender.com
 허용 사이트는 `extension/manifest.json` 의 `content_scripts[0].matches`(와 `web_accessible_resources` 의 `matches`) 한 곳에서 관리한다. 사이트를 추가하면 두 곳에 같이 넣는다.
 개발 중에는 `extension/` 폴더를 그대로 로드하면 된다(`localhost` 페이지와 `file://` 에서도 동작).
 
-**3. 스토어 등록**: 문구와 권한 사유는 `docs/store-listing.md`. 개인정보처리방침 URL 은 `https://서버주소/privacy`. 방침 맨 아래 문의 이메일(`server/public/privacy.html`)은 직접 적어 넣는다.
+**3. 스토어 등록**: 문구와 권한 사유는 `docs/store-listing.md`. 개인정보처리방침 URL 은 `https://서버주소/privacy`. 방침 맨 아래 문의 이메일은 `server/public/privacy.html` 에서 바꾼다.
 
 ## 크롬에 확장 프로그램 로드
 

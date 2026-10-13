@@ -7,7 +7,7 @@
 - 이름: bae-movie-temp (배무템)
 - 카테고리: 소셜 및 커뮤니케이션 (또는 엔터테인먼트)
 - 언어: 한국어
-- 개인정보처리방침 URL: `https://<서버주소>/privacy` (서버가 제공한다. 문의 이메일은 `server/public/privacy.html` 에 직접 적을 것)
+- 개인정보처리방침 URL: `https://<서버주소>/privacy` (서버가 제공한다. 문의 이메일은 `server/public/privacy.html` 맨 아래)
 
 ## 요약 (132자 이내)
 
