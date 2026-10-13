@@ -794,12 +794,31 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     for (const t of ['keydown', 'keyup', 'keypress']) input.addEventListener(t, (e) => e.stopPropagation());
     let lastSubmitEvent = null;
     const onInputKey = (e) => {
+      if (e.type === 'keydown' && (e.key === 'Tab' || e.key === 'Escape')) userMovedFocusAt = Date.now(); // 사용자가 직접 입력칸을 벗어나려는 키
       if (e.type !== 'keydown' || e.key !== 'Enter' || e.isComposing || e.keyCode === 229 || lastSubmitEvent === e) return;
       lastSubmitEvent = e; // 같은 키 이벤트로 두 번 전송되지 않게
       e.preventDefault();
       submit();
     };
     input.addEventListener('keydown', onInputKey);
+    // 입력 중에 사이트(플레이어)가 스스로 다른 요소로 포커스를 가져가 커서가 사라지는 경우가 있다(재생/정지, 컨트롤 표시 등).
+    // 사용자가 마우스로 다른 곳을 누르거나 Tab/Esc 로 나간 게 아니면(최근 0.5초 안에 없으면) 입력칸으로 포커스를 되돌린다.
+    let userMovedFocusAt = 0;
+    for (const t of ['pointerdown', 'mousedown', 'touchstart']) window.addEventListener(t, () => (userMovedFocusAt = Date.now()), true);
+    let refocusAt = [];
+    input.addEventListener('blur', () => {
+      const now = Date.now();
+      if (now - userMovedFocusAt < 500 || !document.hasFocus() || !input.isConnected || input.hidden) return;
+      refocusAt = refocusAt.filter((t) => now - t < 1000);
+      if (refocusAt.length >= 5) return; // 사이트와 포커스를 다투는 경우를 대비한 상한
+      refocusAt.push(now);
+      const [s, en] = [input.selectionStart, input.selectionEnd];
+      setTimeout(() => {
+        if (!input.isConnected || Date.now() - userMovedFocusAt < 500) return;
+        input.focus({ preventScroll: true });
+        try { input.setSelectionRange(s, en); } catch {}
+      }, 0);
+    });
     window.__bmtKeyHook = (e) => {
       if (e.composedPath?.()[0] === input || input.getRootNode().activeElement === input) onInputKey(e);
     };
