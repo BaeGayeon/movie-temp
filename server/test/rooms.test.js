@@ -80,6 +80,13 @@ async function joinRoom(code) {
   return { c, state: await c.next('room_state') };
 }
 
+test('GET /privacy: 개인정보처리방침 페이지', async () => {
+  const res = await fetch(`http://127.0.0.1:${port}/privacy`);
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get('content-type'), /text\/html/);
+  assert.match(await res.text(), /개인정보처리방침/);
+});
+
 test('GET /health', async () => {
   const res = await fetch(`http://127.0.0.1:${port}/health`);
   assert.equal(res.status, 200);
