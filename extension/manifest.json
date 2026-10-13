@@ -24,8 +24,11 @@
   "content_scripts": [
     {
       "matches": [
-        "http://*/*",
-        "https://*/*",
+        "*://*.coupangplay.com/*",
+        "*://*.netflix.com/*",
+        "*://*.wavve.com/*",
+        "*://*.tving.com/*",
+        "http://localhost/*",
         "file:///*"
       ],
       "js": [
@@ -53,7 +56,12 @@
         "content/adapters/*.js"
       ],
       "matches": [
-        "<all_urls>"
+        "*://*.coupangplay.com/*",
+        "*://*.netflix.com/*",
+        "*://*.wavve.com/*",
+        "*://*.tving.com/*",
+        "http://localhost/*",
+        "file:///*"
       ]
     }
   ],
