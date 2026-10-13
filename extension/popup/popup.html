@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>같이보기</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <div class="logo">☁️</div>
+      <div>
+        <h1><span id="title"></span> <small id="titleKo"></small></h1>
+        <p class="tagline">같이 보면 더 재밌어요 🍿</p>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- 방이 없을 때 -->
+    <section id="lobby" class="card" hidden>
+      <button id="create" class="btn primary big">🎬 방 만들기</button>
+      <div class="or">또는 코드로 참가</div>
+      <div class="join">
+        <input id="code" maxlength="6" placeholder="방 코드 6자리" autocomplete="off" spellcheck="false">
+        <button id="join" class="btn">참가</button>
+      </div>
+      <p class="hint" id="noVideo" hidden>이 페이지에서는 영상을 찾지 못했어요</p>
+    </section>
+
+    <!-- 다른 탭/창에서 이미 방에 있을 때 -->
+    <section id="elsewhere" class="card" hidden>
+      <div class="elsewhere-title">🔒 <span id="elsewhereSite"></span>에서 같이 보는 중</div>
+      <div class="row nowrap">
+        <button id="goRoom" class="btn primary small">그 탭으로 이동</button>
+        <button id="leaveElsewhere" class="btn small">나가기</button>
+      </div>
+    </section>
+
+    <!-- 방에 있을 때: 카드마다 접었다 펼 수 있다(펼침 상태는 기억한다) -->
+    <section id="room" hidden>
+      <details class="card" data-fold="room" open>
+        <summary>🏠 방 코드 <span class="status" id="conn"></span></summary>
+        <div class="inner">
+          <div class="code" id="roomCode"></div>
+          <div class="row nowrap">
+            <button id="copy" class="btn primary">🔗 링크 복사</button>
+            <button id="copyCode" class="btn">📋 코드 복사</button>
+          </div>
+          <div class="row nowrap">
+            <button id="chatToggle" class="btn small">💬 채팅 숨기기</button>
+            <button id="leave" class="btn ghost small">나가기 👋</button>
+          </div>
+        </div>
+      </details>
+
+      <details class="card" data-fold="people" open>
+        <summary>🧑‍🤝‍🧑 같이 보는 사람 <span class="count" id="count"></span></summary>
+        <div class="inner"><ul class="people" id="people"></ul></div>
+      </details>
+
+      <details class="card" id="hostBox" data-fold="host" open>
+        <summary>🎮 조작 권한</summary>
+        <div class="inner">
+          <div class="seg" id="modeSeg">
+            <button data-mode="everyone">🙌 모두 조작</button>
+            <button data-mode="host_only">👑 방장만</button>
+          </div>
+          <div class="row nowrap" id="countdownRow">
+            <select id="seconds" aria-label="카운트다운 초">
+              <option value="3">3초</option>
+              <option value="5">5초</option>
+              <option value="10">10초</option>
+            </select>
+            <button id="countdown" class="btn primary">⏱️ 카운트다운 시작</button>
+          </div>
+        </div>
+      </details>
+      <p class="wait" id="waitInfo" hidden></p>
+    </section>
+
+    <details class="card" id="profileBox" data-fold="profile">
+      <summary>🎨 내 프로필</summary>
+      <div class="inner">
+        <div class="preview"><span class="av" id="pav"></span><span id="pnamePreview"></span></div>
+        <input id="pname" maxlength="16" placeholder="닉네임 (최대 16자)" autocomplete="off">
+        <div class="sub">프사</div>
+        <div class="grid" id="emojiGrid"></div>
+        <div class="row nowrap">
+          <button id="moreEmoji" class="btn small">＋ 모든 이모지</button>
+          <button id="upload" class="btn small">📷 사진 올리기</button>
+          <button id="clearPhoto" class="btn small" hidden>지우기</button>
+          <input type="file" id="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+        </div>
+        <div id="pickerBox" hidden></div>
+        <div class="error" id="perror"></div>
+        <div class="sub">프사 배경색</div>
+        <div class="grid" id="bgGrid"></div>
+        <div id="bgPicker" hidden></div>
+        <div class="sub">닉네임 색</div>
+        <div class="grid" id="colorGrid"></div>
+        <div id="colorPicker" hidden></div>
+      </div>
+    </details>
+
+    <details class="card" id="syncBox" data-fold="sync">
+      <summary>⚙️ 동기화 설정</summary>
+      <div class="inner">
+        <label class="check" title="90초보다 짧은 영상은 광고로 보고, 광고 중에는 재생·일시정지·이동을 주고받지 않아요"><input type="checkbox" id="adDetect"> 광고 구간은 동기화에서 제외</label>
+        <button id="copyDiag" class="btn small" title="재생 위치/광고/주고받은 동작의 최근 기록을 복사해요. 문제가 생겼을 때 붙여 넣어 알려 주세요">🛠 진단 정보 복사</button>
+      </div>
+    </details>
+
+    <div class="error" id="error"></div>
+  </main>
+  <script type="module" src="popup.js"></script>
+</body>
+</html>
