@@ -1,28 +1,21 @@
 // 넷플릭스 어댑터. 재생/정지/이동은 페이지 안의 다리(content/netflix-main.js)를 거쳐 넷플릭스 플레이어 API 로 한다.
 // (<video>.currentTime 을 직접 바꾸면 넷플릭스가 오류 M7375 를 낸다.) 다리가 응답하지 않으면 <video> 를 직접 조작한다(정지/재생만).
+//
+// 넷플릭스의 시간 두 가지(진단 기록과 화면으로 확인):
+//  - 본편 위치: 화면 재생바가 보여 주는 위치. 플레이어 API 의 seek(ms) 도 이 값으로 받는다.
+//  - 영상 시간: <video>.currentTime. 광고가 지나가면 광고 때 시간에 이어져 본편 위치와 달라지고(예: 화면 39:39, 영상 시간 0:27),
+//    가까운 위치로 이동해도 그 차이가 그대로 남는다(멀리 이동하면 다시 같아지기도 한다).
+// 그래서 main.js 는 "본편 위치 - 영상 시간" 차이(timeOffset)를 재서 쓴다. 재는 방법은 두 가지:
+//  1) 우리가 API 로 이동시킨 경우: 이동한 위치(본편)와 이동 직후의 영상 시간의 차이
+//  2) 화면 재생바의 남은 시간이 보이는 경우: 영상 길이 - 남은 시간 = 본편 위치(uiContentTime)
 import { createDefaultAdapter } from './default.js';
 
 const REPLY_MS = 400;
 
-// 넷플릭스 광고(광고 포함 요금제)는 영상 길이만으로는 알 수 없는 경우가 있어 화면의 광고 표시도 같이 본다.
+// 넷플릭스 광고(광고 포함 요금제)는 영상 길이(본편 길이 그대로)로는 알 수 없어서 화면의 광고 표시를 본다.
 // 광고 정보 영역(data-uia 에 ads 가 들어간 요소)이나 "광고 1/2", "Ad · 0:15" 같은 짧은 글자를 찾는다.
 const AD_SELECTOR = '[data-uia="ads-info-container"], [data-uia*="ads-info"], [data-uia*="ad-break"], [data-uia="ad-countdown"]';
 const AD_TEXT = /^(광고|ad|ads)\s*[·•:|-]?\s*(\d+\s*(\/|of|중)\s*\d+|\d+:\d{2}|\d+)$/i;
-// 진단용: 넷플릭스 재생바 쪽에 보이는 시간 글자(남은 시간 등)와 그 요소 이름. 실제 본편 위치와 영상 시간이 어긋날 때 비교하는 용도.
-const TIME_TEXT = /^-?\d{1,2}:\d{2}(:\d{2})?$/;
-function uiTimes() {
-  const out = [];
-  for (const e of document.querySelectorAll('.watch-video *')) {
-    if (e.childElementCount === 0 && TIME_TEXT.test(e.textContent.trim())) {
-      out.push(`${e.textContent.trim()}@${e.getAttribute('data-uia') || e.tagName.toLowerCase()}`);
-      if (out.length >= 4) break;
-    }
-  }
-  const bar = document.querySelector('[data-uia="timeline-bar"], [data-uia="timeline"]');
-  const now = bar?.getAttribute('aria-valuenow') ?? bar?.querySelector('[aria-valuenow]')?.getAttribute('aria-valuenow');
-  if (now != null) out.push(`bar=${now}`);
-  return out;
-}
 let lastScan = { at: 0, ad: false };
 function adOnScreen() {
   const now = Date.now();
@@ -40,6 +33,30 @@ function adOnScreen() {
   return ad;
 }
 
+// 재생바의 시간 글자("1:12:16" 같은 남은 시간). 재생바(컨트롤)가 보일 때만 있다.
+const TIME_TEXT = /^-?(\d{1,2}):(\d{2})(?::(\d{2}))?$/;
+const parseTime = (s) => {
+  const m = TIME_TEXT.exec(s);
+  if (!m) return null;
+  return m[3] != null ? +m[1] * 3600 + +m[2] * 60 + +m[3] : +m[1] * 60 + +m[2];
+};
+function timeLabels() {
+  const out = [];
+  for (const e of document.querySelectorAll('.watch-video *')) {
+    if (e.childElementCount !== 0) continue;
+    const text = e.textContent.trim();
+    if (!TIME_TEXT.test(text) || e.closest(AD_SELECTOR)) continue;
+    out.push({ text, uia: e.getAttribute('data-uia') || e.closest('[data-uia]')?.getAttribute('data-uia') || e.tagName.toLowerCase() });
+    if (out.length >= 4) break;
+  }
+  return out;
+}
+// 남은 시간 글자를 고른다: 이름에 time/remaining 이 들어간 것 우선, 없으면 첫 번째 시간 글자
+function remainingLabel() {
+  const labels = timeLabels();
+  return labels.find((l) => /remaining|time/i.test(l.uia)) ?? labels[0] ?? null;
+}
+
 export function createNetflixAdapter() {
   const base = createDefaultAdapter();
   let seq = 0;
@@ -48,7 +65,7 @@ export function createNetflixAdapter() {
   let intent = null; // { paused, until }
   const remember = (paused) => (intent = { paused, until: Date.now() + 1500 });
 
-  // 다리에 요청하고 { ok, ms } 를 받는다. 응답이 없으면 { ok: false }.
+  // 다리에 요청하고 { ok } 를 받는다. 응답이 없으면 { ok: false }.
   function ask(op, ms) {
     return new Promise((resolve) => {
       const id = ++seq;
@@ -58,7 +75,7 @@ export function createNetflixAdapter() {
         resolve(reply);
       };
       const on = (e) => {
-        if (e.source === window && e.data?.__bmt === 'nf-r' && e.data.id === id) done({ ok: !!e.data.ok, ms: e.data.ms });
+        if (e.source === window && e.data?.__bmt === 'nf-r' && e.data.id === id) done({ ok: !!e.data.ok });
       };
       const timer = setTimeout(() => done({ ok: false }), REPLY_MS);
       window.addEventListener('message', on);
@@ -70,39 +87,24 @@ export function createNetflixAdapter() {
     ...base,
     name: 'netflix',
 
-    // 진단 기록용: 어댑터가 아는 값
-    debug() {
-      return { adOnScreen: lastScan.ad, ui: uiTimes() };
-    },
-
-    isAd(video) {
-      return base.isAd(video) || adOnScreen();
-    },
-
-    // 이동/재생 명령이 반영될 때까지 걸리는 시간(ms) 뒤에 방 상태(재생/정지)를 다시 확인한다
-    settleMs: 900,
-
-    isPaused(video) {
-      return intent && Date.now() < intent.until ? intent.paused : video.paused;
-    },
-
-    async play(video) {
-      remember(false);
-      if (!(await ask('play')).ok) await video.play();
-    },
-
-    pause(video) {
-      remember(true);
-      ask('pause').then((r) => r.ok || video.pause());
-    },
-
-    // 광고가 끝난 직후 넷플릭스의 <video> 시간은 광고 때 시간에 이어져 본편 위치와 다르다(화면은 원래 장면).
-    // main.js 가 광고가 끝나면 방의 위치로 한 번 이동시켜 다시 맞추게 한다(이동하면 영상 시간이 본편 위치와 같아진다).
+    // 광고가 끝나면 main.js 가 방의 위치로 한 번 이동시켜 본편 위치와 영상 시간의 차이를 다시 잰다
     reseekAfterAd: true,
+    // seek(t) 의 t 는 본편 위치(화면 재생바 기준). 이동 직후 영상 시간과 비교해 차이를 잴 수 있다
+    contentSeek: true,
 
-    // 진단 기록용: 어댑터가 아는 값
+    // 화면 재생바로 본 본편 위치(초). 재생바가 안 보이거나 광고 중이면 null.
+    uiContentTime(video) {
+      if (adOnScreen()) return null;
+      const label = remainingLabel();
+      const dur = video.duration;
+      const v = label && parseTime(label.text);
+      if (v == null || !Number.isFinite(dur) || v > dur) return null;
+      return dur - v; // 넷플릭스는 기본으로 남은 시간을 보여 준다
+    },
+
+    // 진단 기록용
     debug() {
-      return { adOnScreen: lastScan.ad };
+      return { adOnScreen: lastScan.ad, ui: timeLabels().map((l) => `${l.text}@${l.uia}`) };
     },
 
     isAd(video) {
@@ -126,14 +128,7 @@ export function createNetflixAdapter() {
       ask('pause').then((r) => r.ok || video.pause());
     },
 
-    // 실제 재생 위치(초). <video>.currentTime 은 광고가 지나간 뒤 등에 넷플릭스의 실제 위치와 어긋나는 일이 있어(예: 43:30 인데 0:33),
-    // 넷플릭스 플레이어 API 의 위치를 0.25초마다 받아 두고 재생 중이면 경과 시간을 더해서 쓴다. 값이 없으면 <video> 값을 쓴다.
-    position(video) {
-      if (apiPos && Date.now() - apiPos.at < 2000) return apiPos.sec + (video.paused ? 0 : (Date.now() - apiPos.at) / 1000);
-      return video.currentTime;
-    },
-
-    // 이동은 반드시 넷플릭스 API 로. 다리가 없으면 아무것도 하지 않는다(직접 currentTime 을 바꾸면 오류 화면이 뜬다).
+    // 이동은 반드시 넷플릭스 API 로(t = 본편 위치). 다리가 없으면 아무것도 하지 않는다(직접 currentTime 을 바꾸면 오류 화면이 뜬다).
     seek(_video, t) {
       ask('seek', t * 1000);
     },
