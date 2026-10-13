@@ -460,7 +460,7 @@ const siteOf = (v) => {
     return null;
   }
 };
-const NO_VIDEO_MSG = '이 페이지에서 영상을 찾지 못했어요. 영상이 나오는 페이지에서 시도해 주세요.';
+const NO_VIDEO_MSG = '이 페이지에서 영상을 찾지 못했어요. 쿠팡플레이·넷플릭스·웨이브·티빙의 영상 페이지에서 시도해 주세요.';
 
 async function onCommand(m, sender) {
   await ready;
