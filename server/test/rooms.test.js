@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import WebSocket from 'ws';
 import { createServer } from '../src/index.js';
+import { RoomManager } from '../src/rooms.js';
 
 const app = createServer({ port: 0, host: '127.0.0.1', graceMs: 200, emptyTtlMs: 200, bufferWaitMs: 400, resumeDelayMs: 100 });
 let port;
@@ -698,4 +699,52 @@ test('광고: 0초 이동 + 0초 재생이 연달아 전해진 뒤 광고 보고
   assert.ok(resumed.video.playing && resumed.video.time >= 100, JSON.stringify(resumed.video));
   a.close();
   b.close();
+});
+
+// ---- 반응 없는 방 자동 삭제(가짜 시계와 가짜 연결로 시간을 흘려 확인) ----
+function fakeConn() {
+  const conn = { sent: [], send: (m) => conn.sent.push(m), close() {}, userId: null, roomCode: null };
+  return conn;
+}
+
+test('반응 없는 방은 idleTtlMs 뒤에 닫히고 참가자에게 알림', () => {
+  let t = 0;
+  const rm = new RoomManager({ idleTtlMs: 60_000, idleSweepMs: 3_600_000, now: () => t });
+  const a = fakeConn();
+  rm.create(a, 'user-aaaa-testtest');
+  const code = [...rm.rooms.keys()][0];
+  t = 59_000;
+  rm.closeIdleRooms();
+  assert.equal(rm.rooms.size, 1, '기준 시간 전에는 유지');
+  t = 61_000;
+  rm.closeIdleRooms();
+  assert.equal(rm.rooms.size, 0, '기준 시간이 지나면 닫힘');
+  const err = a.sent.find((m) => m.type === 'error');
+  assert.equal(err?.code, 'room_not_found');
+  assert.match(err.message, /활동/);
+  assert.equal(a.roomCode, null);
+  rm.shutdown();
+  assert.ok(code);
+});
+
+test('채팅/재생 같은 활동이 있으면 idle 시간이 다시 시작됨', () => {
+  let t = 0;
+  const rm = new RoomManager({ idleTtlMs: 60_000, idleSweepMs: 3_600_000, now: () => t });
+  const a = fakeConn();
+  rm.create(a, 'user-bbbb-testtest');
+  t = 50_000;
+  rm.chat(a, '안녕', undefined);
+  t = 100_000; // 마지막 활동(50초) 기준 50초 지남
+  rm.closeIdleRooms();
+  assert.equal(rm.rooms.size, 1, '채팅 뒤 새로 시작');
+  rm.video(a, { action: 'play', time: 10, sentAt: t });
+  t = 150_000;
+  rm.syncReport(a, { time: 50, playing: true, sentAt: t }); // 재생 중 위치 보고도 활동
+  t = 200_000;
+  rm.closeIdleRooms();
+  assert.equal(rm.rooms.size, 1, '재생 중 위치 보고도 활동으로 잡힘');
+  t = 300_000;
+  rm.closeIdleRooms();
+  assert.equal(rm.rooms.size, 0, '활동이 멈추면 닫힘');
+  rm.shutdown();
 });
