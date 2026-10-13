@@ -20,10 +20,9 @@
   const AD_EVENTS = ['durationchange', 'loadedmetadata', 'emptied']; // 같은 <video> 에서 광고 <-> 본편이 바뀌는 신호
 
   const isTop = window === window.top;
-  // 재생 위치(초) = <video>.currentTime + timeOffset. 넷플릭스는 광고가 지나가면 시간축이 광고 때 시간에 이어져서(예: 실제 43:30 인데 0:33)
-  // 광고가 끝날 때 광고 직전의 본편 위치에 맞춰 timeOffset 을 다시 잡는다(adapter.shiftsAfterAd). 다른 사이트는 항상 0.
-  let timeOffset = 0;
-  const pos = () => video.currentTime + timeOffset;
+  // 재생 위치(초). 넷플릭스는 광고가 끝난 직후 이 값이 본편 위치와 어긋나 있으므로(광고 때 시간에 이어짐) 광고가 끝나면
+  // 방의 위치로 한 번 이동시켜 다시 맞춘다(normalizeAfterAd). 그동안(normalizing)은 이 값을 방에 보내지 않는다.
+  const pos = () => video.currentTime;
   // 진단용 기록: 최근 동작을 링 버퍼에 남겨 두고, 팝업의 "진단 정보 복사"로 꺼낼 수 있다(재생 위치/광고/주고받은 이벤트가 어긋나는 문제를 볼 때 쓴다).
   const diag = [];
   const note = (...a) => {
@@ -115,17 +114,43 @@
         adReported = true;
         send({ cmd: CMD.BUFFERING, isBuffering: true, reason: 'ad' }); // 위치는 보내지 않는다(광고 위치는 의미 없음)
       }
-    } else if (adapter.shiftsAfterAd && video) {
-      // 광고가 끝났다: 본편이 이어지는 위치(광고 직전 위치)와 지금 영상 시간축의 차이를 보정값으로 잡는다(5초 넘게 어긋났을 때만)
-      const shift = lastStableTime - pos();
-      if (Math.abs(shift) > 5) {
-        timeOffset += shift;
-        log('광고 뒤 시간축 보정', { offset: +timeOffset.toFixed(1), shift: +shift.toFixed(1) });
-      }
-      resumeAfterAd();
+    } else if (adapter.reseekAfterAd && video && active()) {
+      normalizeAfterAd();
     } else {
       resumeAfterAd();
     }
+  }
+
+  // 넷플릭스: 광고가 끝나면 화면은 원래 장면을 이어서 보여 주지만 영상 시간(video.currentTime)은 광고 때 시간에 이어져서
+  // 본편 위치와 다르다(예: 화면 55:13, 영상 시간 0:17). 이 값을 그대로 방에 보내면 기다리던 사람이 처음으로 가고, 그 뒤 동기화로
+  // 광고 본 사람까지 처음으로 끌려간다. 그래서 광고가 끝나면 이 값을 쓰지 않고, 방의 위치로 한 번 이동시켜
+  // (넷플릭스는 이동하면 영상 시간이 다시 본편 위치와 같아진다) 맞춘 다음에 방과 함께 재개한다.
+  let normalizing = false;
+  function normalizeAfterAd() {
+    normalizing = true;
+    setTimeout(() => {
+      if (!video || !active() || inAd) {
+        normalizing = false;
+        return;
+      }
+      const target = roomTimeNow();
+      log('광고 뒤 방 위치로 다시 이동', { target, vct: +video.currentTime.toFixed(1) });
+      let timer = null;
+      const done = () => {
+        video?.removeEventListener('seeked', done);
+        clearTimeout(timer);
+        if (!normalizing) return;
+        normalizing = false;
+        log('광고 뒤 이동 완료', { vct: video ? +video.currentTime.toFixed(1) : null });
+        adGraceUntil = Date.now() + 500; // 이동이 일으킨 이벤트가 방에 나가지 않도록 잠깐 더
+        lastStableTime = video ? video.currentTime : lastStableTime;
+        resumeAfterAd();
+      };
+      video.addEventListener('seeked', done);
+      timer = setTimeout(done, 3000);
+      expect('seeked');
+      adapter.seek(video, target);
+    }, 700); // 광고 표시가 사라진 직후는 아직 광고 끝부분일 수 있어 잠깐 기다린다
   }
   function resumeAfterAd() {
     if (adReported) {
@@ -168,7 +193,7 @@
   //  3) 둘 다 없으면 방 타임라인(마지막 재생/정지/시크 이벤트 + 경과 시간)
   // 방 타임라인만 쓰면, 영상을 이미 재생 중인 상태에서 방에 들어왔을 때 이벤트가 없어 0:00 으로 나온다.
   const currentVideoTime = () => {
-    if (inAd) return undefined; // 광고 중의 위치는 장면 정보로 의미가 없다
+    if (inAd || normalizing) return undefined; // 광고 중의 위치는 장면 정보로 의미가 없다
     if (video) return Math.round(pos() * 10) / 10;
     if (framePos && Date.now() - framePos.at < 5000) {
       if (framePos.ad) return undefined;
@@ -224,8 +249,8 @@
   function seekTo(t) {
     if (!video || Math.abs(pos() - t) < SEEK_THRESHOLD) return;
     expect('seeked');
-    note('seekTo', +t.toFixed(1), 'from pos', +pos().toFixed(1), 'offset', +timeOffset.toFixed(1));
-    adapter.seek(video, t); // 이동 요청은 본편 위치(방의 시간) 그대로 — 이동하고 나면 영상 시간축이 본편 위치와 같아진다(onSeeked 에서 보정값 해제)
+    note('seekTo', +t.toFixed(1), 'from pos', +pos().toFixed(1));
+    adapter.seek(video, t);
     if (adapter.settleMs) {
       // 이동 뒤 재생/정지가 어긋나 있으면(어댑터의 명령이 비동기라 상태 확인이 엇갈린 경우) 방 상태로 다시 맞춘다. 위치는 건드리지 않는다.
       clearTimeout(settleTimer);
@@ -269,7 +294,7 @@
   // updatedAt 이 미래면 "그 시각에 재생 시작" 예약(카운트다운/버퍼링 후 재개) 이므로 그때까지 멈춰 둔다.
   function applyRoomVideo() {
     clearTimeout(startTimer);
-    if (!video || !active() || inAd) return;
+    if (!video || !active() || inAd || normalizing) return; // 광고 직후 위치를 맞추는 중이면 끝난 뒤 다시 맞춘다
     const v = state.video;
     const now = serverNow();
     if (v.playing && v.updatedAt > now) {
@@ -289,7 +314,7 @@
 
   function applyRemote(msg) {
     clearTimeout(startTimer);
-    if (!video || inAd) return;
+    if (!video || inAd || normalizing) return;
     if (msg.action === 'sync') {
       correctDrift(); // 방장 위치로 기준점이 갱신됨: 시크 없이 부드럽게 맞춘다
       return;
@@ -314,7 +339,7 @@
   //  - 1.5초 초과: 시크
   // 방장은 기준점 자체이므로 보정하지 않는다.
   function correctDrift() {
-    if (!video || !active() || inAd || video.paused || state.hostId === state.userId) return setRate(1);
+    if (!video || !active() || inAd || normalizing || video.paused || state.hostId === state.userId) return setRate(1);
     const v = state.video;
     const now = serverNow();
     if (!v.playing || v.updatedAt > now) return setRate(1);
@@ -333,7 +358,7 @@
   setInterval(correctDrift, 1000); // 네트워크 없이 로컬 계산만이라 자주 돌려도 된다(위치 보고는 아래 5초 주기)
 
   function reportAndCorrect() {
-    if (!video || !active() || inAd) return;
+    if (!video || !active() || inAd || normalizing) return;
     if (!video.paused && !suspiciousJump()) {
       send({ cmd: CMD.SYNC_REPORT, time: pos(), playing: true, sentAt: Date.now() });
     }
@@ -382,7 +407,7 @@
   const HOLD_MS = 3000;
 
   function onLocal(action, silent = false, held = false) {
-    if (inAd || Date.now() < adGraceUntil) return; // 광고 중의 조작은 방에 보내지도, 방 상태로 되돌리지도 않는다
+    if (inAd || normalizing || Date.now() < adGraceUntil) return; // 광고 중(과 광고 직후 위치를 맞추는 동안)의 조작은 방에 보내지도, 방 상태로 되돌리지도 않는다
     if (!held && suspiciousJump()) {
       if (Date.now() < holdUntil) return; // 보류 중에 이어 오는 이벤트는 보류가 끝날 때 현재 상태로 한 번에 보낸다
       holdUntil = Date.now() + HOLD_MS;
@@ -426,14 +451,7 @@
 
   const onPlay = () => !consume('play') && onLocal('play');
   const onPause = () => !consume('pause') && onLocal('pause');
-  const onSeeked = () => {
-    // 넷플릭스는 이동(시크)하면 영상 시간축이 다시 본편 위치와 같아진다(보정값 해제). 광고 직후 이어서 재생되는 동안에만 시간축이 어긋나 있다.
-    if (timeOffset !== 0) {
-      log('이동 뒤 시간축 보정 해제', { offset: +timeOffset.toFixed(1), vct: +video.currentTime.toFixed(1) });
-      timeOffset = 0;
-    }
-    return !consume('seeked') && onLocal('seek');
-  };
+  const onSeeked = () => !consume('seeked') && onLocal('seek');
 
   // ---------- <video> 탐지 ----------
   function attach(v) {
@@ -469,7 +487,7 @@
       send({ cmd: CMD.BUFFERING, isBuffering: false }); // 영상이 사라지면(페이지 이동 등) 기다리지 않도록
     }
     bufferingReported = false;
-    timeOffset = 0;
+    normalizing = false;
     clearTimeout(startTimer);
     ui.hideClickPrompt();
   }
