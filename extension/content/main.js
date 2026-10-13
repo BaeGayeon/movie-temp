@@ -98,7 +98,7 @@
   } catch {}
 
   function setAdNotice(on) {
-    if (isTop) ui.showAd(on ? '광고 시청 중이에요. 끝나면 다 같이 이어서 재생해요.' : null);
+    if (isTop) ui.showAd(on && active() ? '광고 시청 중이에요. 끝나면 다 같이 이어서 재생해요.' : null);
   }
 
   // 광고: 내 영상은 방과 따로 두고, 방에는 "광고 중이니 기다려 달라"고 알린다(다른 사람 영상도 멈추고, 광고가 끝나면 함께 다시 재생)
@@ -678,6 +678,7 @@
         const wasActive = active();
         state = m.state;
         if (!wasActive && active()) alignNoticeUntil = Date.now() + 10000;
+        setAdNotice(inAd); // 광고 안내는 방에 있을 때만(방에 들어오면 켜고, 나가면 끈다)
         log('state', state.roomCode ?? '방 없음', state.connection);
         if (!active()) {
           ui.hideClickPrompt();

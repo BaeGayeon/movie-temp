@@ -121,8 +121,8 @@ export function createNetflixAdapter() {
       return { adOnScreen: lastScan.ad, ui: timeLabels().map((l) => `${l.text}@${l.uia}`) };
     },
 
-    isAd(video) {
-      return base.isAd(video) || adOnScreen();
+    isAd(_video) {
+      return adOnScreen(); // 짧은 영상(미리보기/예고편)은 광고가 아니다. 넷플릭스는 영상 길이가 광고에서도 본편 길이 그대로라 화면 표시만 본다
     },
 
     // 이동/재생 명령이 반영될 때까지 걸리는 시간(ms) 뒤에 방 상태(재생/정지)를 다시 확인한다
