@@ -20,9 +20,19 @@
   const AD_EVENTS = ['durationchange', 'loadedmetadata', 'emptied']; // 같은 <video> 에서 광고 <-> 본편이 바뀌는 신호
 
   const isTop = window === window.top;
-  // 재생 위치(초). 넷플릭스는 광고가 끝난 직후 이 값이 본편 위치와 어긋나 있으므로(광고 때 시간에 이어짐) 광고가 끝나면
-  // 방의 위치로 한 번 이동시켜 다시 맞춘다(normalizeAfterAd). 그동안(normalizing)은 이 값을 방에 보내지 않는다.
-  const pos = () => video.currentTime;
+  // 재생 위치(초) = 본편 위치. 보통은 <video>.currentTime 과 같지만, 넷플릭스는 광고가 지나가면 영상 시간이 광고 때 시간에 이어져
+  // 본편 위치와 달라지고(예: 화면 39:39, 영상 시간 0:27) 가까운 곳으로 이동해도 그 차이가 남는다. 그 차이(timeOffset)를 재서 더한다.
+  //  - 우리가 이동시킨 경우: 이동한 위치(본편) - 이동 직후 영상 시간 (adapter.contentSeek)
+  //  - 화면 재생바의 남은 시간이 보이면: 영상 길이 - 남은 시간 = 본편 위치 (adapter.uiContentTime)
+  // 다른 사이트는 항상 0.
+  let timeOffset = 0;
+  let pendingSeek = null; // { target, at } — 우리가 요청한 이동(본편 위치). seeked 가 오면 이 값으로 차이를 잰다
+  const pos = () => video.currentTime + timeOffset;
+  function setOffset(off, why) {
+    if (Math.abs(off) < 2) off = 0; // 이동 직후 재생이 조금 진행된 정도의 차이는 버린다
+    if (Math.abs(off - timeOffset) >= 1) log('본편 위치 보정', { offset: +off.toFixed(1), was: +timeOffset.toFixed(1), why, vct: video ? +video.currentTime.toFixed(1) : null });
+    timeOffset = off;
+  }
   // 진단용 기록: 최근 동작을 링 버퍼에 남겨 두고, 팝업의 "진단 정보 복사"로 꺼낼 수 있다(재생 위치/광고/주고받은 이벤트가 어긋나는 문제를 볼 때 쓴다).
   const diag = [];
   const note = (...a) => {
@@ -141,14 +151,21 @@
         clearTimeout(timer);
         if (!normalizing) return;
         normalizing = false;
-        log('광고 뒤 이동 완료', { vct: video ? +video.currentTime.toFixed(1) : null });
+        if (pendingSeek && video) {
+          // seeked 가 오지 않았다: 재생바가 보이면 그걸로, 아니면 화면이 방 위치에 있다고 보고 잰다
+          const c = adapter.uiContentTime?.(video);
+          setOffset((c ?? pendingSeek.target) - video.currentTime, c != null ? '광고 뒤 재생바' : '광고 뒤 이동(응답 없음)');
+          pendingSeek = null;
+        }
+        log('광고 뒤 이동 완료', { pos: video ? +pos().toFixed(1) : null, vct: video ? +video.currentTime.toFixed(1) : null });
         adGraceUntil = Date.now() + 500; // 이동이 일으킨 이벤트가 방에 나가지 않도록 잠깐 더
-        lastStableTime = video ? video.currentTime : lastStableTime;
+        lastRaw = video ? video.currentTime : lastRaw;
         resumeAfterAd();
       };
       video.addEventListener('seeked', done);
       timer = setTimeout(done, 3000);
       expect('seeked');
+      if (adapter.contentSeek) pendingSeek = { target, at: Date.now() };
       adapter.seek(video, target);
     }, 700); // 광고 표시가 사라진 직후는 아직 광고 끝부분일 수 있어 잠깐 기다린다
   }
@@ -249,8 +266,9 @@
   function seekTo(t) {
     if (!video || Math.abs(pos() - t) < SEEK_THRESHOLD) return;
     expect('seeked');
-    note('seekTo', +t.toFixed(1), 'from pos', +pos().toFixed(1));
-    adapter.seek(video, t);
+    note('seekTo', +t.toFixed(1), 'from pos', +pos().toFixed(1), 'offset', +timeOffset.toFixed(1));
+    if (adapter.contentSeek) pendingSeek = { target: t, at: Date.now() };
+    adapter.seek(video, t); // 본편 위치로 요청(넷플릭스 API 는 본편 위치를 받는다). 이동 직후 차이를 다시 잰다(onSeeked)
     if (adapter.settleMs) {
       // 이동 뒤 재생/정지가 어긋나 있으면(어댑터의 명령이 비동기라 상태 확인이 엇갈린 경우) 방 상태로 다시 맞춘다. 위치는 건드리지 않는다.
       clearTimeout(settleTimer);
@@ -339,7 +357,7 @@
   //  - 1.5초 초과: 시크
   // 방장은 기준점 자체이므로 보정하지 않는다.
   function correctDrift() {
-    if (!video || !active() || inAd || normalizing || video.paused || state.hostId === state.userId) return setRate(1);
+    if (!video || !active() || inAd || normalizing || remeasuring || video.paused || state.hostId === state.userId) return setRate(1);
     const v = state.video;
     const now = serverNow();
     if (!v.playing || v.updatedAt > now) return setRate(1);
@@ -358,7 +376,7 @@
   setInterval(correctDrift, 1000); // 네트워크 없이 로컬 계산만이라 자주 돌려도 된다(위치 보고는 아래 5초 주기)
 
   function reportAndCorrect() {
-    if (!video || !active() || inAd || normalizing) return;
+    if (!video || !active() || inAd || normalizing || remeasuring) return;
     if (!video.paused && !suspiciousJump()) {
       send({ cmd: CMD.SYNC_REPORT, time: pos(), playing: true, sentAt: Date.now() });
     }
@@ -396,18 +414,19 @@
 
   // 광고가 시작되는 순간에는 화면의 광고 표시가 뜨기 전에 영상이 0초로 바뀌며 seek/play 이벤트가 먼저 나올 수 있다.
   // "방금까지 한참 뒤였는데 갑자기 0~5초"인 이벤트는 광고 감지가 따라올 때까지 잠깐 보류한다.
-  let lastStableTime = 0;
+  // (보정값과 상관없이 영상 시간 그대로 본다: 광고가 시작되면 영상 시간이 0 근처로 떨어진다)
+  let lastRaw = 0;
   setInterval(() => {
     if (!video || inAd || Number.isNaN(video.duration)) return;
-    const t = pos();
-    if (!(t < 5 && lastStableTime - t > 30)) lastStableTime = t; // 갑자기 크게 되감긴 값은 기준으로 삼지 않는다
+    const t = video.currentTime;
+    if (!(t < 5 && lastRaw - t > 30)) lastRaw = t; // 갑자기 크게 되감긴 값은 기준으로 삼지 않는다
   }, 500);
-  const suspiciousJump = () => !!video && pos() < 5 && lastStableTime - pos() > 30;
+  const suspiciousJump = () => !!video && video.currentTime < 5 && lastRaw - video.currentTime > 30;
   let holdUntil = 0;
   const HOLD_MS = 3000;
 
   function onLocal(action, silent = false, held = false) {
-    if (inAd || normalizing || Date.now() < adGraceUntil) return; // 광고 중(과 광고 직후 위치를 맞추는 동안)의 조작은 방에 보내지도, 방 상태로 되돌리지도 않는다
+    if (inAd || normalizing || remeasuring || Date.now() < adGraceUntil) return; // 광고 중(과 광고 직후 위치를 맞추는 동안)의 조작은 방에 보내지도, 방 상태로 되돌리지도 않는다
     if (!held && suspiciousJump()) {
       if (Date.now() < holdUntil) return; // 보류 중에 이어 오는 이벤트는 보류가 끝날 때 현재 상태로 한 번에 보낸다
       holdUntil = Date.now() + HOLD_MS;
@@ -421,7 +440,7 @@
         }
         if (Date.now() < holdUntil) return;
         clearInterval(poll);
-        lastStableTime = pos(); // 끝까지 광고가 아니면 진짜로 처음으로 돌아간 것이니 그대로 방에 알린다
+        lastRaw = video.currentTime; // 끝까지 광고가 아니면 진짜로 처음으로 돌아간 것이니 그대로 방에 알린다
         onLocal('seek', silent, true);
         onLocal(video.paused ? 'pause' : 'play', silent, true);
       }, 300);
@@ -451,7 +470,71 @@
 
   const onPlay = () => !consume('play') && onLocal('play');
   const onPause = () => !consume('pause') && onLocal('pause');
-  const onSeeked = () => !consume('seeked') && onLocal('seek');
+  // 우리가 요청한 이동이 끝나면 본편 위치와 영상 시간의 차이를 다시 잰다(넷플릭스는 이동하면 차이가 바뀌거나 사라진다)
+  function measureAfterSeek() {
+    const mine = !!pendingSeek && Date.now() - pendingSeek.at < 5000;
+    if (mine && adapter.contentSeek && video) setOffset(pendingSeek.target - video.currentTime, '이동한 위치');
+    pendingSeek = null;
+    return mine;
+  }
+
+  // 차이가 있는 상태에서 사용자가 직접 이동한 경우: 본편 위치를 모르는 채로 보내면 안 되므로 재생바(남은 시간)를 두 번 읽어
+  // 같은 값이 나오면 그걸로 잰 뒤에 보낸다(재생바 글자는 이동 직후 잠깐 늦게 바뀐다). 끝내 못 읽으면 넷플릭스 동작대로 추정한다:
+  // 멀리(30초 넘게) 이동하면 차이가 사라지고, 가까이 이동하면 그대로 남는다.
+  let remeasuring = false;
+  // 이동 직전의 영상 시간(얼마나 멀리 이동했는지 보려고). seeking 이 시작되면 그 직전 값을 고정한다
+  let rawSample = 0;
+  let seekFrom = 0;
+  setInterval(() => {
+    if (video && !video.seeking) rawSample = video.currentTime;
+  }, 250);
+  const onSeeking = () => (seekFrom = rawSample);
+  function remeasureThenSend(jump) {
+    remeasuring = true;
+    let prev = null;
+    let tries = 0;
+    const timer = setInterval(() => {
+      tries++;
+      const c = video ? adapter.uiContentTime(video) : null;
+      const step = video && !video.paused ? 0.4 : 0;
+      const stable = c != null && prev != null && Math.abs(c - prev - step) <= 1.2;
+      if (c != null) prev = c;
+      if (!stable && tries < 6) return;
+      clearInterval(timer);
+      if (video) {
+        if (stable) setOffset(c - video.currentTime, '이동 뒤 재생바');
+        else setOffset(jump > 30 ? 0 : timeOffset, jump > 30 ? '멀리 이동(추정)' : '가까이 이동(추정)');
+      }
+      remeasuring = false;
+      if (!video) return;
+      onLocal('seek', false, true);
+      onLocal(isPaused() ? 'pause' : 'play', false, true);
+    }, 400);
+  }
+
+  const onSeeked = () => {
+    const mine = measureAfterSeek();
+    if (consume('seeked')) return;
+    if (!mine && timeOffset !== 0 && adapter.uiContentTime && video && !inAd && !normalizing) {
+      if (!remeasuring) remeasureThenSend(Math.abs(video.currentTime - seekFrom));
+      return;
+    }
+    onLocal('seek');
+  };
+
+  // 재생바(남은 시간)가 보일 때마다 차이가 맞는지 확인한다. 두 번 연속 같은 값일 때만 고친다(다른 시간 글자를 잘못 읽는 경우 대비).
+  let healCandidate = null;
+  setInterval(() => {
+    if (!adapter.uiContentTime || !video || inAd || normalizing || video.seeking) return;
+    const c = adapter.uiContentTime(video);
+    if (c == null) return (healCandidate = null);
+    const off = c - video.currentTime;
+    if (Math.abs(off - timeOffset) <= 3) return (healCandidate = null);
+    if (healCandidate != null && Math.abs(healCandidate - off) <= 1.5) {
+      setOffset(off, '재생바와 다름');
+      healCandidate = null;
+    } else healCandidate = off;
+  }, 1000);
 
   // ---------- <video> 탐지 ----------
   function attach(v) {
@@ -462,6 +545,7 @@
     v.addEventListener('play', onPlay);
     v.addEventListener('pause', onPause);
     v.addEventListener('seeked', onSeeked);
+    v.addEventListener('seeking', onSeeking);
     v.addEventListener('waiting', onWaiting);
     for (const t of ['playing', 'canplay']) v.addEventListener(t, onReady);
     for (const t of AD_EVENTS) v.addEventListener(t, evalAd);
@@ -474,6 +558,7 @@
     video.removeEventListener('play', onPlay);
     video.removeEventListener('pause', onPause);
     video.removeEventListener('seeked', onSeeked);
+    video.removeEventListener('seeking', onSeeking);
     video.removeEventListener('waiting', onWaiting);
     for (const t of ['playing', 'canplay']) video.removeEventListener(t, onReady);
     for (const t of AD_EVENTS) video.removeEventListener(t, evalAd);
@@ -488,6 +573,8 @@
     }
     bufferingReported = false;
     normalizing = false;
+    timeOffset = 0;
+    pendingSeek = null;
     clearTimeout(startTimer);
     ui.hideClickPrompt();
   }
@@ -510,7 +597,7 @@
   setInterval(() => {
     if (!video || !active()) return;
     const v = state.video;
-    note('snap', { pos: +pos().toFixed(1), vct: +video.currentTime.toFixed(1), dur: Number.isFinite(video.duration) ? Math.round(video.duration) : null, paused: video.paused, inAd,
+    note('snap', { pos: +pos().toFixed(1), vct: +video.currentTime.toFixed(1), off: +timeOffset.toFixed(1), dur: Number.isFinite(video.duration) ? Math.round(video.duration) : null, paused: video.paused, inAd,
       room: { t: +v.time.toFixed(1), playing: v.playing, exp: +roomTimeNow().toFixed(1) }, wait: state.waitingIds?.length ?? 0, ads: state.adIds?.length ?? 0, ...(adapter.debug?.() ?? {}) });
   }, 2000);
 
