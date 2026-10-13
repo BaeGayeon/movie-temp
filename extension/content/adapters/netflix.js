@@ -96,9 +96,9 @@ export function createNetflixAdapter() {
       ask('pause').then((r) => r.ok || video.pause());
     },
 
-    // 광고가 지나가면 넷플릭스는 <video> 시간축(과 플레이어 API 의 위치)을 광고 때 시간에 이어서 쓴다.
-    // 실제로는 43:30 인데 0:33 으로 나오는 식이라, main.js 가 광고가 끝날 때 본편 위치(광고 직전 위치)에 맞춰 보정값을 다시 잡는다.
-    shiftsAfterAd: true,
+    // 광고가 끝난 직후 넷플릭스의 <video> 시간은 광고 때 시간에 이어져 본편 위치와 다르다(화면은 원래 장면).
+    // main.js 가 광고가 끝나면 방의 위치로 한 번 이동시켜 다시 맞추게 한다(이동하면 영상 시간이 본편 위치와 같아진다).
+    reseekAfterAd: true,
 
     // 진단 기록용: 어댑터가 아는 값
     debug() {
