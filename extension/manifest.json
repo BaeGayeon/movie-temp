@@ -32,6 +32,20 @@
         "file:///*"
       ],
       "js": [
+        "content/keyguard.js"
+      ],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "*://*.coupangplay.com/*",
+        "*://*.netflix.com/*",
+        "*://*.wavve.com/*",
+        "*://*.tving.com/*",
+        "http://localhost/*",
+        "file:///*"
+      ],
+      "js": [
         "content/main.js"
       ],
       "all_frames": true,
