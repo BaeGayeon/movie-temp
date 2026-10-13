@@ -488,9 +488,21 @@
   setInterval(() => {
     if (video && !video.seeking) rawSample = video.currentTime;
   }, 250);
-  const onSeeking = () => (seekFrom = rawSample);
-  function remeasureThenSend(jump) {
+  let seekPreview = null; // 이동이 시작될 때 떠 있던 재생바 미리보기 시간(재생바를 눌러 이동한 경우)
+  const onSeeking = () => {
+    seekFrom = rawSample;
+    seekPreview = adapter.previewTime?.() ?? null;
+  };
+  function remeasureThenSend(jump, preview) {
     remeasuring = true;
+    if (preview != null && video) {
+      // 재생바를 눌러 이동: 누른 곳(미리보기 시간)이 이동한 본편 위치다
+      setOffset(preview - video.currentTime, '재생바 누른 위치');
+      remeasuring = false;
+      onLocal('seek', false, true);
+      onLocal(isPaused() ? 'pause' : 'play', false, true);
+      return;
+    }
     let prev = null;
     let tries = 0;
     const timer = setInterval(() => {
@@ -516,24 +528,26 @@
     const mine = measureAfterSeek();
     if (consume('seeked')) return;
     if (!mine && timeOffset !== 0 && adapter.uiContentTime && video && !inAd && !normalizing) {
-      if (!remeasuring) remeasureThenSend(Math.abs(video.currentTime - seekFrom));
+      if (!remeasuring) remeasureThenSend(Math.abs(video.currentTime - seekFrom), seekPreview);
       return;
     }
     onLocal('seek');
   };
 
   // 재생바(남은 시간)가 보일 때마다 차이가 맞는지 확인한다. 두 번 연속 같은 값일 때만 고친다(다른 시간 글자를 잘못 읽는 경우 대비).
-  let healCandidate = null;
+  // 재생 중일 때만 본다(정지 중에 재생바를 가리키면 값이 그대로라 잘못 읽어도 일정하게 보인다). 세 번 연속 같은 차이일 때만 고친다.
+  let healSeen = [];
   setInterval(() => {
-    if (!adapter.uiContentTime || !video || inAd || normalizing || video.seeking) return;
+    if (!adapter.uiContentTime || !video || inAd || normalizing || remeasuring || video.seeking || video.paused) return (healSeen = []);
     const c = adapter.uiContentTime(video);
-    if (c == null) return (healCandidate = null);
+    if (c == null) return (healSeen = []);
     const off = c - video.currentTime;
-    if (Math.abs(off - timeOffset) <= 3) return (healCandidate = null);
-    if (healCandidate != null && Math.abs(healCandidate - off) <= 1.5) {
+    if (Math.abs(off - timeOffset) <= 3) return (healSeen = []);
+    healSeen = [...healSeen, off].slice(-3);
+    if (healSeen.length === 3 && Math.max(...healSeen) - Math.min(...healSeen) <= 1.5) {
       setOffset(off, '재생바와 다름');
-      healCandidate = null;
-    } else healCandidate = off;
+      healSeen = [];
+    }
   }, 1000);
 
   // ---------- <video> 탐지 ----------

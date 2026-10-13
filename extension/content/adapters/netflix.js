@@ -51,10 +51,18 @@ function timeLabels() {
   }
   return out;
 }
-// 남은 시간 글자를 고른다: 이름에 time/remaining 이 들어간 것 우선, 없으면 첫 번째 시간 글자
-function remainingLabel() {
-  const labels = timeLabels();
-  return labels.find((l) => /remaining|time/i.test(l.uia)) ?? labels[0] ?? null;
+// 재생바 위에 마우스를 올리면 미리보기 시간(trick-play)이 뜨고, 그동안은 남은 시간 글자도 "마우스 위치부터 남은 시간"으로 바뀐다
+// (진단 기록: 미리보기 40:35 + 남은 시간 1:11:19 = 전체 1:51:55). 그래서 미리보기가 떠 있으면 남은 시간을 읽지 않는다.
+const TRICK_PLAY = '[data-uia*="trick-play"]';
+const leafTime = (root) => {
+  if (!root) return null;
+  if (root.childElementCount === 0) return parseTime(root.textContent.trim());
+  for (const e of root.querySelectorAll('*')) if (e.childElementCount === 0 && TIME_TEXT.test(e.textContent.trim())) return parseTime(e.textContent.trim());
+  return null;
+};
+function remainingSeconds() {
+  if (document.querySelector(TRICK_PLAY)) return null;
+  return leafTime(document.querySelector('[data-uia="controls-time-remaining"]'));
 }
 
 export function createNetflixAdapter() {
@@ -92,14 +100,18 @@ export function createNetflixAdapter() {
     // seek(t) 의 t 는 본편 위치(화면 재생바 기준). 이동 직후 영상 시간과 비교해 차이를 잴 수 있다
     contentSeek: true,
 
-    // 화면 재생바로 본 본편 위치(초). 재생바가 안 보이거나 광고 중이면 null.
+    // 화면 재생바로 본 본편 위치(초) = 영상 길이 - 남은 시간. 재생바가 안 보이거나, 광고 중이거나, 재생바 미리보기가 떠 있으면 null.
     uiContentTime(video) {
       if (adOnScreen()) return null;
-      const label = remainingLabel();
+      const v = remainingSeconds();
       const dur = video.duration;
-      const v = label && parseTime(label.text);
       if (v == null || !Number.isFinite(dur) || v > dur) return null;
-      return dur - v; // 넷플릭스는 기본으로 남은 시간을 보여 준다
+      return dur - v;
+    },
+
+    // 재생바 미리보기 시간(마우스가 가리키는 본편 위치, 초). 재생바를 눌러 이동하는 순간에는 이 값이 이동할 위치다.
+    previewTime() {
+      return leafTime(document.querySelector(TRICK_PLAY));
     },
 
     // 진단 기록용
