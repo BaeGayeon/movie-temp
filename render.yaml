@@ -1,0 +1,14 @@
+# Render Blueprint: 저장소에 이 파일이 있으면 Render 대시보드의 New > Blueprint 로 바로 만들 수 있다.
+services:
+  - type: web
+    name: bae-movie-temp-server
+    runtime: node
+    rootDir: server
+    buildCommand: npm ci --omit=dev
+    startCommand: npm start
+    healthCheckPath: /health
+    plan: free # 무료 플랜은 한동안 접속이 없으면 잠든다(다시 깨우는 데 30초 안팎). 같이 볼 때 쓴다면 starter 이상 권장
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "20"

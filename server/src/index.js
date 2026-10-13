@@ -1,9 +1,11 @@
+import fs from 'node:fs';
 import http from 'node:http';
 import { pathToFileURL } from 'node:url';
 import { WebSocketServer } from 'ws';
 import { C2S, S2C, parseMessage } from './protocol.js';
 import { RoomManager } from './rooms.js';
 
+const PRIVACY_HTML = fs.readFileSync(new URL('../public/privacy.html', import.meta.url));
 const MAX_PAYLOAD = 64 * 1024; // 이미지 프사 포함 profile_update 를 받기 위함(메시지 타입별 상한은 protocol.js)
 const RATE_CAPACITY = 60; // 연결당 버스트
 const RATE_PER_SEC = 30; // 연결당 초당 평균 메시지 수
@@ -15,6 +17,12 @@ export function createServer({ port = Number(process.env.PORT) || 8080, host = '
     if (req.method === 'GET' && req.url === '/health') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: true, rooms: rooms.rooms.size }));
+      return;
+    }
+    // 크롬 웹스토어 등록용 개인정보처리방침 주소: https://서버주소/privacy
+    if (req.method === 'GET' && (req.url === '/privacy' || req.url === '/privacy/')) {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=3600' });
+      res.end(PRIVACY_HTML);
       return;
     }
     res.writeHead(404);

@@ -1,6 +1,6 @@
 # bae-movie-temp (임시 이름)
 
-티빙/웨이브/쿠팡플레이처럼 텔레파티가 지원하지 않는 OTT에서 같이 영상을 볼 수 있는 크롬 확장 프로그램.
+티빙/웨이브/쿠팡플레이/넷플릭스 같은 OTT에서 각자 계정으로 같이 영상을 볼 수 있는 크롬 확장 프로그램.
 각자 자기 계정으로 재생하고, 재생/일시정지/시크 **상태만** 동기화한다. 자세한 내용은 [SPEC.md](SPEC.md).
 
 앱 이름은 `extension/config.js`의 `APP_NAME`과 `extension/manifest.json`의 `name` 두 곳에서만 관리한다.
@@ -15,6 +15,24 @@ npm test           # WebSocket 클라이언트로 방 생성/참가/중계 등�
 ```
 
 서버 주소는 `extension/config.js`의 `SERVER_URL`(개발용 `ws://localhost:8080`).
+서버가 `GET /privacy` 로 개인정보처리방침 페이지(`server/public/privacy.html`)도 제공한다.
+
+## 배포
+
+**1. 서버 (Render)**
+1. Render 대시보드 → New → Blueprint → 이 저장소 선택. 저장소 루트의 `render.yaml` 이 `server/` 를 Node 웹 서비스로 만든다(`/health` 로 상태 확인, `PORT` 는 Render 가 넣어 준다).
+2. 배포가 끝나면 주소(예: `https://bae-movie-temp-server.onrender.com`)가 나온다. `https://주소/health` 와 `https://주소/privacy` 가 열리는지 확인.
+3. 무료 플랜은 한동안 접속이 없으면 잠들어 첫 접속이 30초 안팎 느리다. 같이 볼 때 쓰려면 `render.yaml` 의 `plan` 을 `starter` 로 바꾸는 걸 권한다.
+
+**2. 확장 프로그램 (스토어용 묶음)**
+```bash
+node tools/build-store.mjs --server wss://bae-movie-temp-server.onrender.com
+```
+`dist/store/`(폴더)와 `dist/bae-movie-temp-<버전>.zip` 이 만들어진다. 이 묶음은 `SERVER_URL` 이 `--server` 값으로 바뀌고, 개발용 주소(`localhost`, `file://`)가 manifest 에서 빠진다.
+허용 사이트는 `extension/manifest.json` 의 `content_scripts[0].matches`(와 `web_accessible_resources` 의 `matches`) 한 곳에서 관리한다. 사이트를 추가하면 두 곳에 같이 넣는다.
+개발 중에는 `extension/` 폴더를 그대로 로드하면 된다(`localhost` 페이지와 `file://` 에서도 동작).
+
+**3. 스토어 등록**: 문구와 권한 사유는 `docs/store-listing.md`. 개인정보처리방침 URL 은 `https://서버주소/privacy`. 방침 맨 아래 문의 이메일은 `server/public/privacy.html` 에서 바꾼다.
 
 ## 크롬에 확장 프로그램 로드
 
