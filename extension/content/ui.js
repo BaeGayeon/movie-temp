@@ -36,7 +36,15 @@ const CSS = `
 export function createLayer(css, { passEvents = false, topLayer = false } = {}) {
   let host = null;
   let root = null;
-  const api = { ensure: null, remove: () => host?.remove(), get host() { return host; } };
+  let shown = false; // remove() 뒤에는 전체화면 전환 등으로 다시 붙이지 않는다(방을 나가면 채팅 아이콘이 남던 문제)
+  const api = {
+    ensure: null,
+    remove: () => {
+      shown = false;
+      host?.remove();
+    },
+    get host() { return host; },
+  };
 
   const parent = () => {
     const fs = document.fullscreenElement;
@@ -44,6 +52,7 @@ export function createLayer(css, { passEvents = false, topLayer = false } = {}) 
   };
 
   api.ensure = () => {
+    shown = true;
     if (!host) {
       host = document.createElement('div');
       host.style.cssText = `all: initial; position: fixed; inset: 0; z-index: 2147483647; pointer-events: ${passEvents ? 'auto' : 'none'};`;
@@ -62,7 +71,7 @@ export function createLayer(css, { passEvents = false, topLayer = false } = {}) 
     return root;
   };
 
-  document.addEventListener('fullscreenchange', () => host && api.ensure());
+  document.addEventListener('fullscreenchange', () => shown && api.ensure());
   return api;
 }
 

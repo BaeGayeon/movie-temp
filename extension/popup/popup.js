@@ -154,14 +154,35 @@ $('chatToggle').addEventListener('click', async () => {
   await chrome.storage.local.set({ chatPrefs: { ...chatPrefs, hidden: !chatPrefs?.hidden } });
 });
 chrome.storage.onChanged.addListener((ch) => ch.chatPrefs && paintChatToggle(!!ch.chatPrefs.newValue?.hidden));
-$('leaveElsewhere').addEventListener('click', () => chrome.runtime.sendMessage({ cmd: CMD.LEAVE_ROOM }));
+// 나가기는 한 번 더 묻는다: 버튼 줄을 "정말 나갈까요? [나가기] [취소]"로 잠깐 바꾼다
+function confirmLeave(row) {
+  const keep = [...row.children];
+  const q = document.createElement('span');
+  q.className = 'confirm-q';
+  q.textContent = '정말 나갈까요?';
+  const yes = document.createElement('button');
+  yes.className = 'btn danger small';
+  yes.textContent = '나가기';
+  const no = document.createElement('button');
+  no.className = 'btn small';
+  no.textContent = '취소';
+  const restore = () => row.replaceChildren(...keep);
+  yes.addEventListener('click', () => {
+    restore();
+    chrome.runtime.sendMessage({ cmd: CMD.LEAVE_ROOM });
+  });
+  no.addEventListener('click', restore);
+  row.replaceChildren(q, yes, no);
+  no.focus();
+}
+$('leaveElsewhere').addEventListener('click', (e) => confirmLeave(e.currentTarget.parentElement));
 $('goRoom').addEventListener('click', async () => {
   try {
     const tab = await chrome.tabs.update(state.tabId, { active: true });
     await chrome.windows.update(tab.windowId, { focused: true });
   } catch {}
 });
-$('leave').addEventListener('click', () => chrome.runtime.sendMessage({ cmd: CMD.LEAVE_ROOM }));
+$('leave').addEventListener('click', (e) => confirmLeave(e.currentTarget.parentElement));
 $('modeSeg').addEventListener('click', (e) => {
   const b = e.target.closest('button[data-mode]');
   if (b) chrome.runtime.sendMessage({ cmd: CMD.SET_MODE, mode: b.dataset.mode });
