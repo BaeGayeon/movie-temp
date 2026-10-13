@@ -19,6 +19,8 @@ export class RoomManager {
   constructor({
     graceMs = 10_000,
     emptyTtlMs = 5 * 60_000,
+    idleTtlMs = 60 * 60_000, // 참가자가 있어도 이만큼 아무 활동이 없으면 방을 닫는다
+    idleSweepMs = 60_000, // 위 시간을 확인하는 주기
     bufferWaitMs = 15_000, // 버퍼링 대기 상한
     adWaitMs = 10 * 60_000, // 광고 대기 상한(광고는 길 수 있다)
     resumeDelayMs = 500, // 모두 준비된 뒤 함께 재개하기까지의 여유
@@ -26,11 +28,31 @@ export class RoomManager {
   } = {}) {
     this.graceMs = graceMs; // 연결이 끊긴 참가자를 유지하는 시간(재접속 대기)
     this.emptyTtlMs = emptyTtlMs; // 모두 나간 방을 삭제하기까지의 시간
+    this.idleTtlMs = idleTtlMs;
     this.bufferWaitMs = bufferWaitMs;
     this.adWaitMs = adWaitMs;
     this.resumeDelayMs = resumeDelayMs;
     this.now = now;
     this.rooms = new Map();
+    this.idleTimer = setInterval(() => this.closeIdleRooms(), idleSweepMs);
+    this.idleTimer.unref?.();
+  }
+
+  // 활동(재생/정지/이동, 재생 중 위치 보고, 채팅, 리액션, 입퇴장 등)이 idleTtlMs 동안 없는 방을 닫는다.
+  // 영상이 재생 중이면 참가자가 위치 보고를 계속 보내므로 활동으로 잡힌다(정지한 채 방치된 방만 닫힌다).
+  closeIdleRooms() {
+    const now = this.now();
+    for (const room of [...this.rooms.values()]) {
+      if (room.participants.size === 0 || now - room.lastActivityAt < this.idleTtlMs) continue;
+      for (const p of room.participants.values()) {
+        clearTimeout(p.graceTimer);
+        p.conn?.send({ type: S2C.ERROR, code: ERR.ROOM_NOT_FOUND, message: '오랫동안 아무 활동이 없어서 방이 닫혔어요.' });
+        if (p.conn) p.conn.roomCode = null;
+      }
+      clearTimeout(room.emptyTimer);
+      clearTimeout(room.waitTimer);
+      this.rooms.delete(room.code);
+    }
   }
 
   create(conn, userId) {
@@ -44,6 +66,7 @@ export class RoomManager {
       profiles: new Map(), // userId -> { name, avatar, color } (재입장 시 유지)
       seq: 0,
       emptyTimer: null,
+      lastActivityAt: this.now(),
       waiting: new Set(), // 버퍼링/광고 중이라 모두가 기다리는 userId
       adIds: new Set(), // waiting 중 광고를 보고 있는 userId
       autoPaused: false, // 버퍼링 때문에 서버가 멈춘 상태인지
@@ -239,6 +262,7 @@ export class RoomManager {
   }
 
   shutdown() {
+    clearInterval(this.idleTimer);
     for (const room of this.rooms.values()) {
       clearTimeout(room.emptyTimer);
       clearTimeout(room.waitTimer);
@@ -252,7 +276,9 @@ export class RoomManager {
   #find(conn) {
     const room = this.rooms.get(conn.roomCode);
     const p = room?.participants.get(conn.userId);
-    return p && p.conn === conn ? { room, p } : null;
+    if (!p || p.conn !== conn) return null;
+    room.lastActivityAt = this.now();
+    return { room, p };
   }
 
   // 토큰 버킷: 허용되면 true. capacity=버스트, perSec=초당 보충량
@@ -352,6 +378,7 @@ export class RoomManager {
     }
     conn.userId = userId;
     conn.roomCode = room.code;
+    room.lastActivityAt = this.now();
     clearTimeout(room.emptyTimer);
     room.emptyTimer = null;
     if (!room.hostId) room.hostId = userId;

@@ -6,7 +6,18 @@ import { CMD } from './shared/cmd.js';
 const PING_MS = 20_000;
 const MAX_BACKOFF_MS = 30_000;
 const MAX_CLOCK_SAMPLES = 5;
-const MAX_CHAT_HISTORY = 200; // 채팅 + 재생/정지/이동 알림
+const MAX_CHAT_HISTORY = 3000; // 채팅 + 재생/정지/이동/입퇴장 알림
+// 상한을 넘으면 알림(kind: 'event')부터 오래된 순으로 지워서, 오래 이어진 대화가 알림에 밀려 사라지지 않게 한다
+function trimChat(list) {
+  let over = list.length - MAX_CHAT_HISTORY;
+  if (over <= 0) return list;
+  const out = [];
+  for (const e of list) {
+    if (over > 0 && e.kind === 'event') over--;
+    else out.push(e);
+  }
+  return over > 0 ? out.slice(over) : out;
+}
 
 const freshRoom = () => ({
   roomCode: null,
@@ -116,7 +127,7 @@ function pushMembershipNotice(user, action) {
 
 function pushEvent(entry) {
   room.chat.push(entry);
-  room.chat = room.chat.slice(-MAX_CHAT_HISTORY);
+  room.chat = trimChat(room.chat);
   persist(); // 입장 알림처럼 다른 저장 직후에 만들어지는 것도 새로고침/서비스 워커 재시작 뒤에 남도록 바로 저장
   sendToTab({ cmd: CMD.CHAT, msg: entry });
 }
@@ -288,7 +299,7 @@ function handleServer(m) {
       {
         const entry = { userId: m.userId, text: m.text, sentAt: m.sentAt, videoTime: m.videoTime };
         room.chat.push(entry);
-        room.chat = room.chat.slice(-MAX_CHAT_HISTORY);
+        room.chat = trimChat(room.chat);
         persist();
         sendToTab({ cmd: CMD.CHAT, msg: entry });
       }
@@ -367,7 +378,7 @@ function handleServer(m) {
 function handleServerError(m) {
   if (m.code === ERR.ROOM_NOT_FOUND) {
     if (room.roomCode) {
-      toast('방이 사라졌어요');
+      toast(m.message || '방이 사라졌어요');
       const tabId = room.tabId;
       resetRoom();
       sendToTab({ cmd: CMD.STATE, state: publicState() }, tabId);
@@ -397,7 +408,7 @@ function rememberRoom() {
   if (me) room.chat.push({ kind: 'event', userId, action: 'leave', name: me.name, sentAt: Date.now() });
   try {
     chrome.storage.local.set({
-      roomMemory: { roomCode: room.roomCode, chat: room.chat.slice(-MAX_CHAT_HISTORY), known: room.known, at: Date.now() },
+      roomMemory: { roomCode: room.roomCode, chat: trimChat(room.chat), known: room.known, at: Date.now() },
     });
   } catch {}
 }

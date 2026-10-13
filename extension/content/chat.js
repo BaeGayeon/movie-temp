@@ -139,7 +139,7 @@ const DEFAULT_PREFS = {
 };
 const MIN_W = 220;
 const MIN_H = 200;
-const MAX_MESSAGES = 200;
+const MAX_MESSAGES = 3000; // 알림 줄부터 지우므로 오래 이어진 대화가 사라지지 않는다
 const PAUSE_SEEK_MERGE_MS = 4000; // 정지 직후의 이동(시크바 드래그)을 합치는 시간
 const EVENT_MERGE_MS = 1500; // 같은 사람의 연속 이벤트(사이트가 시크할 때 pause→seek→play 를 내보냄)를 합치는 시간
 const MAX_FLOATS = 30;
@@ -661,7 +661,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     list.append(row);
     messages.push(entry);
     lastEvent.set(m.userId, { entry, at: m.sentAt });
-    while (messages.length > MAX_MESSAGES) messages.shift().el.remove();
+    trimMessages();
     return row;
   }
 
@@ -679,7 +679,14 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     renderMeta(entry);
     list.append(row);
     messages.push(entry);
-    while (messages.length > MAX_MESSAGES) messages.shift().el.remove();
+    trimMessages();
+  }
+
+  function trimMessages() {
+    while (messages.length > MAX_MESSAGES) {
+      const i = messages.findIndex((m) => m.kind === 'event');
+      messages.splice(i < 0 ? 0 : i, 1)[0].el.remove();
+    }
   }
 
   function renderEmpty() {
