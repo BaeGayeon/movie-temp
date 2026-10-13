@@ -269,10 +269,19 @@
   // 넷플릭스는 이동하며 로딩하는 동안 영상을 멈췄다가 다시 재생하는데, 이걸 내 조작으로 보내면 방 전체가 멈춘다.
   // 그 사이 재생/정지가 방과 어긋나면 아래 감시가 방 상태로 되돌린다.
   let ourSeekUntil = 0;
+  // 방에 막 들어왔을 때 방 위치로 크게 이동하면 "방 위치로 맞췄어요"를 한 번 알린다(갑자기 영상이 이동해 놀라지 않도록)
+  let alignNoticeUntil = 0;
+  const clock = (sec) => {
+    const s = Math.max(0, Math.floor(sec));
+    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = String(s % 60).padStart(2, '0');
+    return h ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
+  };
   function seekTo(t) {
     if (!video || Math.abs(pos() - t) < SEEK_THRESHOLD) return;
     expect('seeked');
     note('seekTo', +t.toFixed(1), 'from pos', +pos().toFixed(1), 'offset', +timeOffset.toFixed(1));
+    if (Date.now() < alignNoticeUntil && Math.abs(pos() - t) >= 3) ui.toast(`방 위치(${clock(t)})로 맞췄어요`);
+    alignNoticeUntil = 0;
     if (adapter.contentSeek) pendingSeek = { target: t, at: Date.now() };
     if (adapter.seekPauses) ourSeekUntil = Date.now() + SEEK_TOKEN_TTL;
     adapter.seek(video, t); // 본편 위치로 요청(넷플릭스 API 는 본편 위치를 받는다). 이동 직후 차이를 다시 잰다(onSeeked)
@@ -665,8 +674,10 @@
       case CMD.HAS_VIDEO:
         if (video) sendResponse(true); // 영상이 없는 프레임은 응답하지 않는다(응답한 프레임이 있으면 그걸 쓴다)
         break;
-      case CMD.STATE:
+      case CMD.STATE: {
+        const wasActive = active();
         state = m.state;
+        if (!wasActive && active()) alignNoticeUntil = Date.now() + 10000;
         log('state', state.roomCode ?? '방 없음', state.connection);
         if (!active()) {
           ui.hideClickPrompt();
@@ -679,6 +690,7 @@
           chat.refreshProfiles();
         }
         break;
+      }
       case CMD.SYNC:
         state = m.state;
         note('recv sync', state.video);
@@ -686,6 +698,7 @@
         break;
       case CMD.SEED:
         state = m.state;
+        alignNoticeUntil = 0; // 방을 만든 사람은 맞출 위치가 없다
         // 방을 만든 사람: 내 영상이 이미 재생 중이어도 서버의 초기 상태(정지, 0초)로 되돌리지 않고, 내 상태를 방에 알린다
         if (video) onLocal(video.paused ? 'pause' : 'play', true); // 방 시작 상태는 채팅 알림으로 띄우지 않는다
         break;
