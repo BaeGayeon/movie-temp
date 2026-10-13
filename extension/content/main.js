@@ -15,6 +15,8 @@
 
   const SEEK_THRESHOLD = 0.5; // 초. 이보다 차이가 작으면 시크하지 않는다
   const TOKEN_TTL = 1500; // 원격 동작이 일으킨 이벤트를 무시하는 유효 시간(ms)
+  const SEEK_TOKEN_TTL = 5000; // 이동은 로딩 때문에 seeked 가 한참 늦게 올 수 있어 더 길게
+  const MISMATCH_MS = 2500; // 재생/정지가 방과 이만큼 계속 다르면 방 상태로 되돌린다
   const REPORT_MS = 5000; // 재생 중 위치 보고/보정 주기
   const BUFFER_DEBOUNCE_MS = 500; // 이 시간 넘게 멈춰 있어야 버퍼링으로 보고
   const AD_EVENTS = ['durationchange', 'loadedmetadata', 'emptied']; // 같은 <video> 에서 광고 <-> 본편이 바뀌는 신호
@@ -253,7 +255,7 @@
   // 원격 동작을 적용하면 play/pause/seeked 이벤트가 비동기로 뒤따라 발생한다.
   // 적용 직전에 "이 이벤트는 내가 일으킨 것"이라는 표식(토큰)을 남기고, 이벤트가 오면 소비하며 무시한다.
   const tokens = { play: [], pause: [], seeked: [] };
-  const expect = (type) => tokens[type].push(Date.now() + TOKEN_TTL);
+  const expect = (type) => tokens[type].push(Date.now() + (type === 'seeked' ? SEEK_TOKEN_TTL : TOKEN_TTL));
   const unexpect = (type) => tokens[type].pop();
   const consume = (type) => {
     const now = Date.now();
@@ -263,11 +265,16 @@
 
   // ---------- 원격 상태 적용 ----------
   let settleTimer = null;
+  // 우리가 요청한 이동이 끝날 때까지(+잠깐) 영상이 스스로 내는 정지/재생 이벤트는 방에 보내지 않는다(어댑터의 seekPauses).
+  // 넷플릭스는 이동하며 로딩하는 동안 영상을 멈췄다가 다시 재생하는데, 이걸 내 조작으로 보내면 방 전체가 멈춘다.
+  // 그 사이 재생/정지가 방과 어긋나면 아래 감시가 방 상태로 되돌린다.
+  let ourSeekUntil = 0;
   function seekTo(t) {
     if (!video || Math.abs(pos() - t) < SEEK_THRESHOLD) return;
     expect('seeked');
     note('seekTo', +t.toFixed(1), 'from pos', +pos().toFixed(1), 'offset', +timeOffset.toFixed(1));
     if (adapter.contentSeek) pendingSeek = { target: t, at: Date.now() };
+    if (adapter.seekPauses) ourSeekUntil = Date.now() + SEEK_TOKEN_TTL;
     adapter.seek(video, t); // 본편 위치로 요청(넷플릭스 API 는 본편 위치를 받는다). 이동 직후 차이를 다시 잰다(onSeeked)
     if (adapter.settleMs) {
       // 이동 뒤 재생/정지가 어긋나 있으면(어댑터의 명령이 비동기라 상태 확인이 엇갈린 경우) 방 상태로 다시 맞춘다. 위치는 건드리지 않는다.
@@ -288,11 +295,18 @@
     if (playing && isPaused()) {
       expect('play');
       adapter.play(video).then(
-        () => ui.hideClickPrompt(),
+        () => {
+          autoplayBlocked = false;
+          ui.hideClickPrompt();
+        },
         (err) => {
           unexpect('play');
           if (err?.name === 'NotAllowedError') {
-            ui.showClickPrompt(video, () => applyRoomVideo());
+            autoplayBlocked = true;
+            ui.showClickPrompt(video, () => {
+              autoplayBlocked = false;
+              applyRoomVideo();
+            });
           }
         },
       );
@@ -303,6 +317,7 @@
   }
 
   let startTimer = null;
+  let autoplayBlocked = false; // 브라우저가 자동 재생을 막아 "클릭하세요" 버튼을 띄운 상태
 
   function setRate(r) {
     if (video && video.playbackRate !== r) video.playbackRate = r;
@@ -468,8 +483,13 @@
     send({ cmd: CMD.VIDEO_EVENT, action, time: pos(), sentAt: Date.now(), silent });
   }
 
-  const onPlay = () => !consume('play') && onLocal('play');
-  const onPause = () => !consume('pause') && onLocal('pause');
+  const fromOurSeek = (type) => {
+    if (Date.now() >= ourSeekUntil) return false;
+    note('이동 중 영상 이벤트 무시', type);
+    return true;
+  };
+  const onPlay = () => !consume('play') && !fromOurSeek('play') && onLocal('play');
+  const onPause = () => !consume('pause') && !fromOurSeek('pause') && onLocal('pause');
   // 우리가 요청한 이동이 끝나면 본편 위치와 영상 시간의 차이를 다시 잰다(넷플릭스는 이동하면 차이가 바뀌거나 사라진다)
   function measureAfterSeek() {
     const mine = !!pendingSeek && Date.now() - pendingSeek.at < 5000;
@@ -526,7 +546,9 @@
 
   const onSeeked = () => {
     const mine = measureAfterSeek();
-    if (consume('seeked')) return;
+    const ours = consume('seeked') || mine;
+    if (ours && Date.now() < ourSeekUntil) ourSeekUntil = Date.now() + 1000; // 이동 직후 이어지는 재생 재개 이벤트까지
+    if (ours) return; // 우리가 요청한 이동(로딩이 길어 늦게 끝나도 방에 다시 보내지 않는다)
     if (!mine && timeOffset !== 0 && adapter.uiContentTime && video && !inAd && !normalizing) {
       if (!remeasuring) remeasureThenSend(Math.abs(video.currentTime - seekFrom), seekPreview);
       return;
@@ -548,6 +570,25 @@
       setOffset(off, '재생바와 다름');
       healSeen = [];
     }
+  }, 1000);
+
+  // 재생/정지가 방과 계속 다르면 방 상태로 되돌린다.
+  // 이동이 오래 걸리면(로딩) 그동안 보낸 재생 명령이 무시되어, 방은 재생 중인데 한쪽 영상만 멈춰 남는 경우가 있다.
+  // 이동/광고/버퍼링 대기/예약 재생 중에는 보지 않는다.
+  let mismatchSince = 0;
+  setInterval(() => {
+    const v = state?.video;
+    const skip =
+      !video || !v || !active() || inAd || Date.now() < ourSeekUntil || normalizing || remeasuring || video.seeking || video.ended || autoplayBlocked ||
+      bufferingReported || adReported || state.waitingIds?.length || v.updatedAt > serverNow() ||
+      Date.now() < holdUntil || Date.now() < adGraceUntil;
+    if (skip || video.paused === !v.playing) return (mismatchSince = 0);
+    if (!mismatchSince) return (mismatchSince = Date.now());
+    if (Date.now() - mismatchSince < MISMATCH_MS) return;
+    mismatchSince = 0;
+    log('재생 상태가 방과 달라 맞춤', { room: v.playing ? '재생' : '정지', mine: video.paused ? '정지' : '재생', pos: +pos().toFixed(1) });
+    setPlaying(v.playing); // 위치는 건드리지 않는다(다시 이동하면 또 로딩이 걸린다). 위치 차이는 싱크 보정이 맞춘다
+    if (!v.playing) seekTo(v.time);
   }, 1000);
 
   // ---------- <video> 탐지 ----------

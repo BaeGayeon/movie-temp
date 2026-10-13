@@ -99,6 +99,8 @@ export function createNetflixAdapter() {
     reseekAfterAd: true,
     // seek(t) 의 t 는 본편 위치(화면 재생바 기준). 이동 직후 영상 시간과 비교해 차이를 잴 수 있다
     contentSeek: true,
+    // 이동하면서 로딩하는 동안 영상을 스스로 멈췄다가 다시 재생한다. 이 정지/재생은 사용자 조작이 아니다
+    seekPauses: true,
 
     // 화면 재생바로 본 본편 위치(초) = 영상 길이 - 남은 시간. 재생바가 안 보이거나, 광고 중이거나, 재생바 미리보기가 떠 있으면 null.
     uiContentTime(video) {
