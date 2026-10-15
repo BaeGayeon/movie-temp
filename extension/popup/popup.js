@@ -371,8 +371,10 @@ async function loadLocalFonts() {
     const families = [...new Set(fonts.map((f) => f.family))].sort((x, y) => x.localeCompare(y, 'ko'));
     if (families.length) await chrome.storage.local.set({ localFonts: families });
     $('fontLoad').hidden = true;
+    $('fontManual').hidden = true;
   } catch (err) {
     $('fontLoad').hidden = false;
+    $('fontManual').hidden = false; // 목록을 못 불러올 때만 이름 직접 입력을 보여 준다
     $('ferror').textContent =
       err?.name === 'NotAllowedError' || err?.name === 'SecurityError'
         ? '글꼴 목록을 볼 수 있는 권한이 필요해요. 허용하지 않으면 아래에 글꼴 이름을 직접 입력해 주세요.'
@@ -380,12 +382,13 @@ async function loadLocalFonts() {
   }
 }
 async function autoLoadFonts() {
-  if (typeof window.queryLocalFonts !== 'function') return; // 미지원: 이름 직접 입력만
+  if (typeof window.queryLocalFonts !== 'function') return $('fontManual').hidden = false; // 미지원: 이름 직접 입력만
   let state = 'prompt';
   try {
     state = (await navigator.permissions.query({ name: 'local-fonts' })).state;
   } catch {}
   if (state === 'denied') {
+    $('fontManual').hidden = false;
     $('ferror').textContent = '글꼴 접근이 차단돼 있어요. 크롬 설정에서 허용하거나, 아래에 글꼴 이름을 직접 입력해 주세요.';
     return;
   }
