@@ -435,9 +435,14 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     badge.textContent = unread > 99 ? '99+' : String(unread);
   };
 
+  // 맨 아래에 붙어 있는지는 "새 메시지가 붙기 전"의 위치로 기억한다. 메시지를 붙인 뒤에 재면 새 메시지 높이만으로 기준(글자/프사를 키우면 더 커짐)을
+  // 넘어 위로 스크롤한 것으로 오해해 자동 스크롤이 멈춘다. 사용자가 직접 위로 올리면(scroll 이벤트) 붙어 있지 않은 것으로 본다.
+  let pinned = true;
+  const updatePinned = () => (pinned = list.scrollHeight - list.scrollTop - list.clientHeight < 40);
   function scrollToBottom(force) {
-    const near = list.scrollHeight - list.scrollTop - list.clientHeight < 60;
-    if (force || near) list.scrollTop = list.scrollHeight;
+    if (!force && !pinned) return;
+    list.scrollTop = list.scrollHeight;
+    pinned = true;
   }
 
   // ---------- 이모지 선택기 (채팅 입력 / 리액션) ----------
@@ -823,6 +828,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     settingsBtn.addEventListener('click', () => (menu.hidden = !menu.hidden));
 
     list = el('div', 'list');
+    list.addEventListener('scroll', updatePinned);
     typingLine = el('div', 'typing');
 
     // 입력줄: 이모지 선택기 버튼 + 입력 + 전송
@@ -1006,7 +1012,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     refreshProfiles() {
       if (!built) return;
       for (const m of messages) {
-        if (m.kind === 'event') m.el.textContent = eventText(m); // 이름이 바뀌었을 수 있음
+        if (m.kind === 'event') fillEvent(m.el, m); // 이름/색이 바뀌었을 수 있음(글자만 덮어쓰면 닉네임 색이 사라진다)
         else applyProfile(m.el, m.userId);
       }
       renderTyping();
