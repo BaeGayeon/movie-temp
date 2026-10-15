@@ -1,10 +1,11 @@
 import { APP_NAME, APP_NAME_KO } from '../config.js';
 import { CMD } from '../shared/cmd.js';
 import { COLOR_PALETTE, MAX_NAME_LENGTH } from '../shared/protocol.js';
-import { renderAvatar, fileToAvatarDataUrl } from '../shared/avatar.js';
+import { renderAvatar, bitmapToAvatarDataUrl } from '../shared/avatar.js';
 import { createEmojiPicker, EMOJI_PICKER_CSS } from '../shared/emoji-picker.js';
 import { ROOT_THEME_CSS, pastelize } from '../shared/theme.js';
 import { createColorPicker, isHex } from '../shared/color-picker.js';
+import { cleanFont } from '../shared/fontname.js';
 
 // 디자인 토큰(다크)과 이모지 선택기 스타일 주입
 const themeStyle = document.createElement('style');
@@ -323,6 +324,187 @@ $('moreEmoji').addEventListener('click', () => {
 });
 
 // 사진 업로드: 내 컴퓨터에서 64x64 로 줄여 프로필에 포함한다
+
+// 채팅 글꼴: 내 컴퓨터에 설치된 글꼴 이름만 chatPrefs.fontFamily 에 저장한다(글꼴 파일은 읽지 않는다). 내 화면의 채팅에만 적용된다.
+// 드롭다운은 "기본 글꼴" + 내 컴퓨터에서 불러온 글꼴(localFonts). 불러오기는 아래 autoLoadFonts 가 카드를 열 때 자동으로 한다.
+let localFonts = [];
+function fontOptions(current) {
+  const names = current && !localFonts.includes(current) ? [current, ...localFonts] : localFonts;
+  return [['', '기본 글꼴 (SUIT)'], ...names.map((f) => [f, f])];
+}
+// 목록을 훑는 동안(마우스 올리기, ↑↓) 샘플 글과 채팅에 미리 적용하고(저장 안 함), 클릭/Enter 로 확정, 닫기/Esc 로 취소한다.
+let committedFont = '';
+let previewBeat = null;
+const sampleFont = (name) => ($('fontSample').style.fontFamily = name ? `"${name}", sans-serif` : '');
+function sendPreview(name) {
+  sampleFont(name);
+  chrome.storage.local.set({ chatFontPreview: name == null ? null : { name, at: Date.now() } });
+}
+function listOpen() {
+  return !$('fontList').hidden;
+}
+function closeFontList(commit) {
+  clearInterval(previewBeat);
+  $('fontList').hidden = true;
+  $('fontCur').setAttribute('aria-expanded', 'false');
+  chrome.storage.local.set({ chatFontPreview: null }); // 미리보기 해제(확정이면 chatPrefs 가 이미 같은 글꼴)
+  if (!commit) sampleFont(committedFont);
+}
+function activeOption() {
+  return $('fontList').querySelector('[role=option].on');
+}
+function setActive(opt, scroll = true) {
+  $('fontList').querySelector('.on')?.classList.remove('on');
+  if (!opt) return;
+  opt.classList.add('on');
+  if (scroll) opt.scrollIntoView({ block: 'nearest' });
+  sendPreview(opt.dataset.font);
+}
+function renderFontList(current) {
+  const list = $('fontList');
+  list.replaceChildren(
+    ...fontOptions(current).map(([value, label]) => {
+      const o = document.createElement('div');
+      o.setAttribute('role', 'option');
+      o.dataset.font = value;
+      o.textContent = label;
+      if (value) o.style.fontFamily = `"${value}", sans-serif`; // 글꼴 이름을 그 글꼴로 보여 준다
+      o.setAttribute('aria-selected', String(value === (current ?? '')));
+      return o;
+    }),
+  );
+  $('fontCur').textContent = current || '기본 글꼴 (SUIT)';
+}
+function openFontList() {
+  $('fontList').hidden = false;
+  $('fontCur').setAttribute('aria-expanded', 'true');
+  const sel = $('fontList').querySelector('[aria-selected=true]');
+  sel?.scrollIntoView({ block: 'center' });
+  $('fontList').focus();
+  previewBeat = setInterval(() => sendPreview(activeOption()?.dataset.font ?? committedFont), 2000); // 채팅 쪽 4초 만료를 늦춘다
+}
+$('fontCur').addEventListener('click', () => (listOpen() ? closeFontList(false) : openFontList()));
+$('fontList').addEventListener('mouseover', (e) => {
+  const o = e.target.closest('[role=option]');
+  if (o && o !== activeOption()) setActive(o, false);
+});
+$('fontList').addEventListener('click', (e) => {
+  const o = e.target.closest('[role=option]');
+  if (!o) return;
+  setChatFont(o.dataset.font);
+  closeFontList(true);
+});
+$('fontList').addEventListener('keydown', (e) => {
+  const opts = [...$('fontList').querySelectorAll('[role=option]')];
+  const i = opts.indexOf(activeOption());
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    const base = i < 0 ? opts.findIndex((o) => o.getAttribute('aria-selected') === 'true') : i;
+    setActive(opts[Math.min(opts.length - 1, Math.max(0, base + (e.key === 'ArrowDown' ? 1 : -1)))]);
+  } else if (e.key === 'Enter' && activeOption()) {
+    e.preventDefault();
+    setChatFont(activeOption().dataset.font);
+    closeFontList(true);
+  } else if (e.key === 'Escape') {
+    e.preventDefault();
+    closeFontList(false);
+    $('fontCur').focus();
+  }
+});
+$('fontList').addEventListener('mouseleave', () => {
+  if (!listOpen()) return; // 목록이 닫히며 생긴 mouseleave 는 무시
+  $('fontList').querySelector('.on')?.classList.remove('on');
+  sendPreview(committedFont); // 목록 밖으로 나가면 확정된 글꼴로
+});
+addEventListener('pagehide', () => chrome.storage.local.set({ chatFontPreview: null })); // 팝업이 닫히면 미리보기 해제
+const paintFont = (name) => {
+  $('fontName').value = name;
+  committedFont = name;
+  sampleFont(name);
+  renderFontList(name);
+};
+async function setChatFont(raw) {
+  const name = cleanFont(raw);
+  $('ferror').textContent = '';
+  paintFont(name);
+  const { chatPrefs } = await chrome.storage.local.get('chatPrefs');
+  await chrome.storage.local.set({ chatPrefs: { ...chatPrefs, fontFamily: name } });
+}
+chrome.storage.local.get(['chatPrefs', 'localFonts']).then((r) => {
+  localFonts = Array.isArray(r.localFonts) ? r.localFonts.filter((f) => typeof f === 'string').slice(0, 5000) : [];
+  paintFont(cleanFont(r.chatPrefs?.fontFamily));
+});
+chrome.storage.onChanged.addListener((ch, area) => {
+  if (area !== 'local') return;
+  if (ch.localFonts) localFonts = Array.isArray(ch.localFonts.newValue) ? ch.localFonts.newValue : [];
+  if (ch.localFonts || ch.chatPrefs) chrome.storage.local.get('chatPrefs').then((r) => paintFont(cleanFont(r.chatPrefs?.fontFamily)));
+});
+$('fontApply').addEventListener('click', () => setChatFont($('fontName').value));
+$('fontName').addEventListener('keydown', (e) => e.key === 'Enter' && !e.isComposing && setChatFont($('fontName').value));
+$('fontReset').addEventListener('click', () => setChatFont(''));
+// 내 컴퓨터 글꼴 목록(queryLocalFonts): 글꼴 카드를 열면 자동으로 불러온다.
+//  - 이미 허용했으면 조용히 불러옴
+//  - 처음이면 카드를 연 클릭이 사용자 동작이므로 그 자리에서 호출 -> 크롬이 허용 창을 띄움
+//  - 사용자 동작이 없는 상태(카드가 열린 채로 팝업이 열림)에서 아직 허용 전이면 "허용하고 불러오기" 버튼을 보여 줌
+let fontsTried = false;
+async function loadLocalFonts() {
+  $('ferror').textContent = '';
+  try {
+    const fonts = await window.queryLocalFonts();
+    const families = [...new Set(fonts.map((f) => f.family))].sort((x, y) => x.localeCompare(y, 'ko'));
+    if (families.length) await chrome.storage.local.set({ localFonts: families });
+    $('fontLoad').hidden = true;
+    $('fontManual').hidden = true;
+  } catch (err) {
+    $('fontLoad').hidden = false;
+    $('fontManual').hidden = false; // 목록을 못 불러올 때만 이름 직접 입력을 보여 준다
+    $('ferror').textContent =
+      err?.name === 'NotAllowedError' || err?.name === 'SecurityError'
+        ? '글꼴 목록을 볼 수 있는 권한이 필요해요. 허용하지 않으면 아래에 글꼴 이름을 직접 입력해 주세요.'
+        : `글꼴 목록을 불러오지 못했어요(${err?.name ?? '오류'}). 아래에 글꼴 이름을 직접 입력해 주세요.`;
+  }
+}
+async function autoLoadFonts() {
+  if (typeof window.queryLocalFonts !== 'function') return $('fontManual').hidden = false; // 미지원: 이름 직접 입력만
+  let state = 'prompt';
+  try {
+    state = (await navigator.permissions.query({ name: 'local-fonts' })).state;
+  } catch {}
+  if (state === 'denied') {
+    $('fontManual').hidden = false;
+    $('ferror').textContent = '글꼴 접근이 차단돼 있어요. 크롬 설정에서 허용하거나, 아래에 글꼴 이름을 직접 입력해 주세요.';
+    return;
+  }
+  if (state === 'granted' || navigator.userActivation?.isActive) await loadLocalFonts();
+  else $('fontLoad').hidden = false;
+}
+$('fontLoad').addEventListener('click', loadLocalFonts);
+$('fontBox').addEventListener('toggle', () => {
+  if (!$('fontBox').open || fontsTried) return;
+  fontsTried = true;
+  autoLoadFonts();
+});
+
+// 글자/프사 크기: 슬라이더를 움직이면 chatPrefs 에 저장하고 채팅이 바로 반영한다(기본값은 채팅과 같다: 글자 1.1배, 프사 34px)
+const SIZE_DEFAULTS = { fontScale: 1.1, avatarSize: 34 };
+let sizeSaveTimer = null;
+function saveSizes() {
+  clearTimeout(sizeSaveTimer);
+  sizeSaveTimer = setTimeout(async () => {
+    const { chatPrefs } = await chrome.storage.local.get('chatPrefs');
+    await chrome.storage.local.set({ chatPrefs: { ...chatPrefs, fontScale: Number($('fontScale').value), avatarSize: Number($('avatarSize').value) } });
+  }, 60);
+}
+function paintSizes(prefs) {
+  $('fontScale').value = String(prefs?.fontScale ?? SIZE_DEFAULTS.fontScale);
+  $('avatarSize').value = String(prefs?.avatarSize ?? SIZE_DEFAULTS.avatarSize);
+  $('fontSample').style.fontSize = `${15 * Number($('fontScale').value) / 1.1}px`;
+}
+chrome.storage.local.get('chatPrefs').then((r) => paintSizes(r.chatPrefs));
+$('fontScale').addEventListener('input', () => { paintSizes({ fontScale: $('fontScale').value, avatarSize: $('avatarSize').value }); saveSizes(); });
+$('avatarSize').addEventListener('input', saveSizes);
+$('sizeReset').addEventListener('click', () => { paintSizes(SIZE_DEFAULTS); saveSizes(); });
+
 $('upload').addEventListener('click', () => $('file').click());
 $('file').addEventListener('change', async (e) => {
   const file = e.target.files[0];
@@ -330,7 +512,108 @@ $('file').addEventListener('change', async (e) => {
   $('perror').textContent = '';
   if (!file) return;
   try {
-    const url = await fileToAvatarDataUrl(file);
+    openCropper(await createImageBitmap(file));
+  } catch {
+    $('perror').textContent = '이미지를 불러올 수 없어요. 다른 사진을 골라 주세요.';
+  }
+});
+
+// 크롭: 원형 미리보기 안에서 사진을 끌어 위치를 정하고 확대/축소한다. 적용하면 보이는 영역(원에 내접한 정사각형)을 64x64 로 쓴다.
+const VIEW = 160; // 미리보기 한 변(css px). 캔버스는 2배 해상도
+let crop = null; // { bmp, base, zoom, ox, oy }: base=원을 꽉 채우는 배율, ox/oy=사진 왼쪽 위 모서리의 위치
+const cropCanvas = $('cropCanvas');
+const cropCtx = cropCanvas.getContext('2d');
+
+function clampCrop() {
+  const s = crop.base * crop.zoom;
+  crop.ox = Math.min(0, Math.max(VIEW - crop.bmp.width * s, crop.ox));
+  crop.oy = Math.min(0, Math.max(VIEW - crop.bmp.height * s, crop.oy));
+}
+
+function drawCrop() {
+  const s = crop.base * crop.zoom;
+  cropCtx.setTransform(2, 0, 0, 2, 0, 0);
+  cropCtx.clearRect(0, 0, VIEW, VIEW);
+  cropCtx.drawImage(crop.bmp, crop.ox, crop.oy, crop.bmp.width * s, crop.bmp.height * s);
+  // 원 바깥은 어둡게, 원 테두리
+  cropCtx.save();
+  cropCtx.fillStyle = 'rgba(0,0,0,.55)';
+  cropCtx.beginPath();
+  cropCtx.rect(0, 0, VIEW, VIEW);
+  cropCtx.arc(VIEW / 2, VIEW / 2, VIEW / 2 - 2, 0, Math.PI * 2, true);
+  cropCtx.fill('evenodd');
+  cropCtx.strokeStyle = 'rgba(255,255,255,.9)';
+  cropCtx.lineWidth = 2;
+  cropCtx.beginPath();
+  cropCtx.arc(VIEW / 2, VIEW / 2, VIEW / 2 - 2, 0, Math.PI * 2);
+  cropCtx.stroke();
+  cropCtx.restore();
+}
+
+function setZoom(z) {
+  // 미리보기 한가운데를 기준으로 확대/축소
+  const old = crop.base * crop.zoom;
+  const cx = (VIEW / 2 - crop.ox) / old;
+  const cy = (VIEW / 2 - crop.oy) / old;
+  crop.zoom = Math.min(4, Math.max(1, z));
+  const s = crop.base * crop.zoom;
+  crop.ox = VIEW / 2 - cx * s;
+  crop.oy = VIEW / 2 - cy * s;
+  clampCrop();
+  $('cropZoom').value = Math.round(crop.zoom * 100);
+  drawCrop();
+}
+
+function openCropper(bmp) {
+  const base = VIEW / Math.min(bmp.width, bmp.height); // 짧은 변이 원을 꽉 채우는 크기(이보다 작아지지 않는다)
+  crop = { bmp, base, zoom: 1, ox: (VIEW - bmp.width * base) / 2, oy: (VIEW - bmp.height * base) / 2 };
+  $('cropZoom').value = 100;
+  $('cropBox').hidden = false;
+  drawCrop();
+}
+
+function closeCropper() {
+  crop = null;
+  $('cropBox').hidden = true;
+}
+
+let dragFrom = null;
+cropCanvas.addEventListener('pointerdown', (e) => {
+  if (!crop) return;
+  dragFrom = { x: e.clientX, y: e.clientY, ox: crop.ox, oy: crop.oy };
+  cropCanvas.setPointerCapture(e.pointerId);
+  cropCanvas.classList.add('drag');
+});
+cropCanvas.addEventListener('pointermove', (e) => {
+  if (!crop || !dragFrom) return;
+  crop.ox = dragFrom.ox + (e.clientX - dragFrom.x);
+  crop.oy = dragFrom.oy + (e.clientY - dragFrom.y);
+  clampCrop();
+  drawCrop();
+});
+const endDrag = () => {
+  dragFrom = null;
+  cropCanvas.classList.remove('drag');
+};
+cropCanvas.addEventListener('pointerup', endDrag);
+cropCanvas.addEventListener('pointercancel', endDrag);
+cropCanvas.addEventListener(
+  'wheel',
+  (e) => {
+    if (!crop) return;
+    e.preventDefault();
+    setZoom(crop.zoom * (e.deltaY < 0 ? 1.08 : 1 / 1.08));
+  },
+  { passive: false },
+);
+$('cropZoom').addEventListener('input', (e) => crop && setZoom(e.target.value / 100));
+$('cropCancel').addEventListener('click', closeCropper);
+$('cropApply').addEventListener('click', () => {
+  if (!crop) return;
+  const s = crop.base * crop.zoom;
+  try {
+    const url = bitmapToAvatarDataUrl(crop.bmp, { x: -crop.ox / s, y: -crop.oy / s, size: VIEW / s });
+    closeCropper();
     update({ avatar: { kind: 'image', value: url, bg: profile.avatar.bg } });
   } catch (err) {
     $('perror').textContent = err.message?.includes('20KB') ? err.message : '이미지를 불러올 수 없어요. 다른 사진을 골라 주세요.';

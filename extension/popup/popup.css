@@ -116,6 +116,23 @@ details.card[open] > summary { border-bottom: 2px solid var(--border); }
 #pnamePreview { font-weight: 800; }
 #pname { width: 100%; }
 .sub { font-size: 12px; font-weight: 700; color: var(--ink-soft); margin-top: 2px; }
+.fontsample { padding: 8px 10px; border-radius: 12px; background: var(--bg); font-size: 15px; }
+#fontName { flex: 1; min-width: 0; }
+.sizerow { display: flex; align-items: center; gap: 10px; }
+.sizerow span { width: 62px; flex: none; font-size: 13px; }
+.sizerow input { flex: 1; accent-color: var(--accent); }
+.fontpick { display: flex; flex-direction: column; gap: 4px; }
+#fontCur { width: 100%; text-align: left; display: flex; justify-content: space-between; align-items: center; }
+#fontCur::after { content: '▾'; opacity: .7; margin-left: 8px; }
+#fontList { max-height: 190px; overflow-y: auto; border-radius: 12px; background: var(--bg); border: 1px solid var(--border-3); padding: 4px; scrollbar-width: thin; }
+#fontList [role=option] { padding: 6px 10px; border-radius: 8px; cursor: pointer; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#fontList [role=option].on, #fontList [role=option][aria-selected=true] { background: var(--surface-2); }
+#fontList [role=option][aria-selected=true]::after { content: ' ✓'; }
+.crop { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 8px; border-radius: 14px; background: var(--bg); }
+.crop canvas { width: 160px; height: 160px; border-radius: 12px; cursor: grab; touch-action: none; }
+.crop canvas.drag { cursor: grabbing; }
+.crop input[type=range] { width: 160px; }
+.crop .row { justify-content: center; }
 .grid { display: flex; flex-wrap: wrap; gap: 5px; }
 .grid button { font-size: 19px; line-height: 1; padding: 5px; border: 2px solid transparent; border-radius: 12px; background: var(--bg); cursor: pointer; transition: transform .08s; }
 .grid button:hover { background: var(--surface-2); transform: scale(1.08); }

@@ -42,16 +42,16 @@ const CSS = `
 
   /* ---- 메시지: 말풍선은 무난하게, 닉네임은 글자색으로 ---- */
   .list, .ep-grid { scrollbar-width: thin; scrollbar-color: var(--surface-3) transparent; } /* 스크롤바가 하얗게 튀지 않게 */
-  .list { flex: 1; overflow-y: auto; padding: 10px 10px 6px; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+  .list { font-size: calc(14px * var(--fs, 1.1)); flex: 1; overflow-y: auto; padding: 10px 10px 6px; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
   .msg { display: flex; gap: 8px; align-items: flex-start; }
   .msg.me { flex-direction: row-reverse; }
-  .av { flex: none; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 16px; overflow: hidden; }
-  .body { min-width: 0; max-width: calc(100% - 40px); display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+  .av { flex: none; width: var(--av, 34px); height: var(--av, 34px); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: calc(var(--av, 34px) * .57); overflow: hidden; }
+  .body { min-width: 0; max-width: calc(100% - var(--av, 34px) - 12px); display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
   .msg.me .body { align-items: flex-end; }
-  .name { display: flex; align-items: baseline; gap: 6px; font-size: 12px; }
+  .name { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 6px; font-size: .857em; }
   .msg.me .name { flex-direction: row-reverse; }
-  .name-text { font-weight: 700; } /* 색은 사용자가 고른 색(파스텔로 보정) */
-  .meta { font-weight: 400; color: var(--ink-soft); font-size: 11px; }
+  .name-text { font-weight: 700; white-space: nowrap; } /* 색은 사용자가 고른 색(파스텔로 보정) */
+  .meta { font-weight: 400; color: var(--ink-soft); font-size: .92em; white-space: nowrap; }
   .text { word-break: break-word; white-space: pre-wrap; background: var(--surface-2); border-radius: 4px 12px 12px 12px; padding: 6px 11px; }
   .msg.me .text { background: var(--bubble-me); border-radius: 12px 4px 12px 12px; }
   /* 줄글/간단 모드: 말풍선 없이 왼쪽 정렬. 줄글 = 프사 | 이름·시각 / 내용, 간단 = 이름·시각 / 내용(프사 없음) */
@@ -62,7 +62,7 @@ const CSS = `
   .list.plain .body, .list.plain .msg.me .body, .list.compact .body, .list.compact .msg.me .body { flex: 1; max-width: none; align-items: flex-start; gap: 3px; }
   .list.plain .name, .list.plain .msg.me .name, .list.compact .name, .list.compact .msg.me .name { flex-direction: row; }
   .list.plain .text, .list.plain .msg.me .text, .list.compact .text, .list.compact .msg.me .text { background: none; padding: 0; border-radius: 0; }
-  .sys { align-self: center; text-align: center; color: var(--ink-soft); font-size: 12px; padding: 0 8px; max-width: 100%; } /* 안내 문구: 어느 모드에서나 가운데, 말풍선 없이 글만 */
+  .sys { align-self: center; text-align: center; color: var(--ink-soft); font-size: .857em; padding: 0 8px; max-width: 100%; } /* 안내 문구: 어느 모드에서나 가운데, 말풍선 없이 글만 */
   .sys .ev-name { font-weight: 600; }
   .no-events .sys { display: none; }
   .empty { color: var(--ink-soft); text-align: center; padding: 18px 0; font-size: 13px; }
@@ -133,9 +133,12 @@ const DEFAULT_PREFS = {
   showClock: true, // 작성 시각
   showVideoTime: true, // 재생 시각
   showEvents: true, // 재생/일시정지/시간 이동 알림
+  fontFamily: '', // 채팅 글꼴(내 컴퓨터에 설치된 글꼴 이름). 비우면 기본(내장 SUIT)
+  fontScale: 1.1, // 채팅 글자 크기 배율(기본 14px 의 1.1배)
+  avatarSize: 34, // 채팅 프사 크기(px)
   style: 'bubble', // 대화 표시 방식: 'bubble' = 말풍선, 'plain' = 줄글(프사 + 이름/내용), 'compact' = 간단(이름/내용)
   hidden: false, // 채팅을 완전히 숨김(팝업에서 다시 켠다)
-  v: 2,
+  v: 3,
 };
 const MIN_W = 220;
 const MIN_H = 200;
@@ -147,6 +150,9 @@ const TYPING_IDLE_MS = 3000;
 const TYPING_RESEND_MS = 2000;
 const EDGE = 16;
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+// 글꼴 이름만 저장한다(CSS 를 깨뜨릴 수 있는 글자는 뺀다). 없는 글꼴이면 뒤의 기본 글꼴로 보인다.
+const cleanFont = (s) => String(s ?? '').replace(/["'\\;{}<>()]|[\u0000-\u001f]/g, '').trim().slice(0, 80);
+const fontStack = (name) => (cleanFont(name) ? `"${cleanFont(name)}", var(--font)` : '');
 
 function el(tag, cls, text) {
   const e = document.createElement(tag);
@@ -186,6 +192,8 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
   const mount = createLayer(CSS, { topLayer: true }); // 페이지 축소(transform)의 영향을 받지 않도록 최상위 레이어에
   let built = false;
   let prefs = { ...DEFAULT_PREFS };
+  let previewFont = null; // 글꼴 미리보기 중이면 그 이름('' = 기본 글꼴), 아니면 null
+  let previewTimer = null;
   const messages = []; // { userId, text, sentAt, videoTime, el }
   let unread = 0;
 
@@ -196,14 +204,35 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     chrome.storage.local.get('chatPrefs').then((r) => {
       prefs = { ...DEFAULT_PREFS, ...(r.chatPrefs ?? {}) };
       prefs.opacities = { ...DEFAULT_PREFS.opacities, ...(r.chatPrefs?.opacities ?? {}) };
-      prefs.v = 2;
+      if ((r.chatPrefs?.v ?? 0) < 3) {
+        // 기본 크기를 키웠다(v3). 이전에 저장된 값은 기본값이었으므로 새 기본값으로 바꾼다
+        prefs.fontScale = DEFAULT_PREFS.fontScale;
+        prefs.avatarSize = DEFAULT_PREFS.avatarSize;
+      }
+      prefs.v = 3;
       if (built) applyPrefs();
     });
     // 팝업에서 채팅을 숨기거나 다시 보이게 한 경우
     chrome.storage.onChanged.addListener((ch, area) => {
+      if (area === 'local' && ch.chatFontPreview) {
+        // 팝업에서 글꼴 목록을 훑는 동안의 미리보기(저장하지 않음). 팝업이 갱신을 멈추면(닫힘 등) 4초 뒤 원래 글꼴로 돌아온다.
+        clearTimeout(previewTimer);
+        const v = ch.chatFontPreview.newValue;
+        previewFont = v && typeof v.name === 'string' ? cleanFont(v.name) : null;
+        if (previewFont !== null) previewTimer = setTimeout(() => { previewFont = null; if (built) applyPrefs(); }, 4000);
+        if (built) applyPrefs();
+      }
       const next = ch.chatPrefs?.newValue;
-      if (area !== 'local' || !next || next.hidden === prefs.hidden) return;
+      if (area !== 'local' || !next) return;
+      // 팝업에서 바꾼 값(숨김, 글꼴, 글자/프사 크기)을 바로 반영한다
+      const hiddenChanged = !!next.hidden !== prefs.hidden;
+      const fontChanged = cleanFont(next.fontFamily) !== cleanFont(prefs.fontFamily);
+      const sizeChanged = (next.fontScale != null && next.fontScale !== prefs.fontScale) || (next.avatarSize != null && next.avatarSize !== prefs.avatarSize);
+      if (!hiddenChanged && !fontChanged && !sizeChanged) return;
       prefs.hidden = !!next.hidden;
+      prefs.fontFamily = cleanFont(next.fontFamily);
+      if (next.fontScale != null) prefs.fontScale = next.fontScale;
+      if (next.avatarSize != null) prefs.avatarSize = next.avatarSize;
       if (built) applyPrefs();
     });
   } catch {}
@@ -350,6 +379,11 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     const vh = window.innerHeight;
     const op = clamp(prefs.opacities[modeState()], 0.3, 1);
     panel.style.opacity = String(op);
+    prefs.fontScale = clamp(Number(prefs.fontScale) || DEFAULT_PREFS.fontScale, 0.8, 1.6);
+    prefs.avatarSize = clamp(Math.round(Number(prefs.avatarSize) || DEFAULT_PREFS.avatarSize), 20, 56);
+    panel.style.fontFamily = fontStack(previewFont ?? prefs.fontFamily);
+    list.style.setProperty('--fs', String(prefs.fontScale));
+    list.style.setProperty('--av', `${prefs.avatarSize}px`);
     opacity.value = String(+(1 - op).toFixed(2)); // 슬라이더는 투명도(오른쪽일수록 투명)
     clockCb.checked = prefs.showClock;
     videoCb.checked = prefs.showVideoTime;
@@ -598,7 +632,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
 
   function applyProfile(row, userId) {
     const p = profileOf(userId);
-    renderAvatar(row.querySelector('.av'), p.avatar, 28);
+    renderAvatar(row.querySelector('.av'), p.avatar); // 크기는 CSS(--av)가 정한다
     const name = row.querySelector('.name-text');
     name.textContent = p.name;
     name.style.color = pastelize(p.color); // 닉네임은 고른 색의 글자색으로. 어두운 배경에서 잘 보이게 파스텔톤으로 보정

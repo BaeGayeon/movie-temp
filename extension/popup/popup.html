@@ -92,6 +92,14 @@
           <button id="clearPhoto" class="btn small" hidden>지우기</button>
           <input type="file" id="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
         </div>
+        <div id="cropBox" class="crop" hidden>
+          <canvas id="cropCanvas" width="320" height="320" aria-label="사진 위치 맞추기"></canvas>
+          <input type="range" id="cropZoom" min="100" max="400" value="100" aria-label="확대/축소">
+          <div class="row nowrap">
+            <button id="cropApply" class="btn primary small">적용</button>
+            <button id="cropCancel" class="btn small">취소</button>
+          </div>
+        </div>
         <div id="pickerBox" hidden></div>
         <div class="error" id="perror"></div>
         <div class="sub">프사 배경색</div>
@@ -100,6 +108,29 @@
         <div class="sub">닉네임 색</div>
         <div class="grid" id="colorGrid"></div>
         <div id="colorPicker" hidden></div>
+      </div>
+    </details>
+
+    <details class="card" id="fontBox" data-fold="font">
+      <summary>🔤 채팅 글꼴·크기</summary>
+      <div class="inner">
+        <div class="fontsample" id="fontSample">안녕하세요, 같이 봐요 ABC 123 ♥</div>
+        <div class="fontpick">
+          <button id="fontCur" class="btn" type="button" aria-haspopup="listbox" aria-expanded="false"></button>
+          <div id="fontList" role="listbox" tabindex="-1" hidden></div>
+        </div>
+        <div class="row nowrap">
+          <button id="fontLoad" class="btn small" hidden>💻 내 컴퓨터 글꼴 허용하고 불러오기</button>
+          <button id="fontReset" class="btn small">기본으로</button>
+        </div>
+        <div class="row nowrap" id="fontManual" hidden>
+          <input id="fontName" maxlength="80" placeholder="글꼴 이름 직접 입력" autocomplete="off">
+          <button id="fontApply" class="btn small">적용</button>
+        </div>
+        <div class="error" id="ferror"></div>
+        <label class="sizerow"><span>글자 크기</span><input type="range" id="fontScale" min="0.8" max="1.6" step="0.05"></label>
+        <label class="sizerow"><span>프사 크기</span><input type="range" id="avatarSize" min="20" max="56" step="2"></label>
+        <button id="sizeReset" class="btn small">크기 기본값</button>
       </div>
     </details>
 
