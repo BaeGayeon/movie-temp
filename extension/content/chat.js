@@ -1006,7 +1006,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     refreshProfiles() {
       if (!built) return;
       for (const m of messages) {
-        if (m.kind === 'event') m.el.textContent = eventText(m); // 이름이 바뀌었을 수 있음
+        if (m.kind === 'event') fillEvent(m.el, m); // 이름/색이 바뀌었을 수 있음(글자만 덮어쓰면 닉네임 색이 사라진다)
         else applyProfile(m.el, m.userId);
       }
       renderTyping();
