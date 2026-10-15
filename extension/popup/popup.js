@@ -323,6 +323,47 @@ $('moreEmoji').addEventListener('click', () => {
 });
 
 // 사진 업로드: 내 컴퓨터에서 64x64 로 줄여 프로필에 포함한다
+
+// 채팅 글꼴: 내 컴퓨터에 설치된 글꼴 이름만 chatPrefs.fontFamily 에 저장한다(글꼴 파일은 읽지 않는다). 내 화면의 채팅에만 적용된다.
+const cleanFont = (v) => String(v ?? '').replace(/["'\\;{}<>()]|[\u0000-\u001f]/g, '').trim().slice(0, 80);
+const paintFont = (name) => {
+  $('fontName').value = name;
+  $('fontSample').style.fontFamily = name ? `"${name}", sans-serif` : '';
+  if (!$('fontSelect').hidden) $('fontSelect').value = [...$('fontSelect').options].some((o) => o.value === name) ? name : '';
+};
+async function setChatFont(raw) {
+  const name = cleanFont(raw);
+  $('ferror').textContent = '';
+  paintFont(name);
+  const { chatPrefs } = await chrome.storage.local.get('chatPrefs');
+  await chrome.storage.local.set({ chatPrefs: { ...chatPrefs, fontFamily: name } });
+}
+chrome.storage.local.get('chatPrefs').then((r) => paintFont(cleanFont(r.chatPrefs?.fontFamily)));
+$('fontApply').addEventListener('click', () => setChatFont($('fontName').value));
+$('fontName').addEventListener('keydown', (e) => e.key === 'Enter' && !e.isComposing && setChatFont($('fontName').value));
+$('fontReset').addEventListener('click', () => setChatFont(''));
+$('fontSelect').addEventListener('change', (e) => e.target.value && setChatFont(e.target.value));
+$('fontLoad').addEventListener('click', async () => {
+  $('ferror').textContent = '';
+  if (typeof window.queryLocalFonts !== 'function') {
+    $('ferror').textContent = '이 브라우저에서는 글꼴 목록을 불러올 수 없어요. 글꼴 이름을 직접 입력해 주세요.';
+    return;
+  }
+  try {
+    const fonts = await window.queryLocalFonts(); // 크롬이 권한을 한 번 물어본다
+    const families = [...new Set(fonts.map((f) => f.family))].sort((a, b) => a.localeCompare(b, 'ko'));
+    const sel = $('fontSelect');
+    sel.replaceChildren(new Option(`글꼴 선택 (${families.length}개)`, ''), ...families.map((f) => new Option(f, f)));
+    sel.hidden = false;
+    paintFont(cleanFont($('fontName').value));
+  } catch (err) {
+    $('ferror').textContent =
+      err?.name === 'NotAllowedError'
+        ? '글꼴 목록을 볼 수 있는 권한이 필요해요. 허용하지 않으면 글꼴 이름을 직접 입력해 주세요.'
+        : '글꼴 목록을 불러오지 못했어요. 글꼴 이름을 직접 입력해 주세요.';
+  }
+});
+
 $('upload').addEventListener('click', () => $('file').click());
 $('file').addEventListener('change', async (e) => {
   const file = e.target.files[0];

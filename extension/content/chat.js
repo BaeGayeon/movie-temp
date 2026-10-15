@@ -133,6 +133,7 @@ const DEFAULT_PREFS = {
   showClock: true, // 작성 시각
   showVideoTime: true, // 재생 시각
   showEvents: true, // 재생/일시정지/시간 이동 알림
+  fontFamily: '', // 채팅 글꼴(내 컴퓨터에 설치된 글꼴 이름). 비우면 기본(내장 SUIT)
   fontScale: 1.1, // 채팅 글자 크기 배율(기본 14px 의 1.1배)
   avatarSize: 34, // 채팅 프사 크기(px)
   style: 'bubble', // 대화 표시 방식: 'bubble' = 말풍선, 'plain' = 줄글(프사 + 이름/내용), 'compact' = 간단(이름/내용)
@@ -149,6 +150,9 @@ const TYPING_IDLE_MS = 3000;
 const TYPING_RESEND_MS = 2000;
 const EDGE = 16;
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+// 글꼴 이름만 저장한다(CSS 를 깨뜨릴 수 있는 글자는 뺀다). 없는 글꼴이면 뒤의 기본 글꼴로 보인다.
+const cleanFont = (s) => String(s ?? '').replace(/["'\\;{}<>()]|[\u0000-\u001f]/g, '').trim().slice(0, 80);
+const fontStack = (name) => (cleanFont(name) ? `"${cleanFont(name)}", var(--font)` : '');
 
 function el(tag, cls, text) {
   const e = document.createElement(tag);
@@ -209,8 +213,12 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     // 팝업에서 채팅을 숨기거나 다시 보이게 한 경우
     chrome.storage.onChanged.addListener((ch, area) => {
       const next = ch.chatPrefs?.newValue;
-      if (area !== 'local' || !next || next.hidden === prefs.hidden) return;
+      if (area !== 'local' || !next) return;
+      const hiddenChanged = !!next.hidden !== prefs.hidden;
+      const fontChanged = cleanFont(next.fontFamily) !== cleanFont(prefs.fontFamily);
+      if (!hiddenChanged && !fontChanged) return;
       prefs.hidden = !!next.hidden;
+      prefs.fontFamily = cleanFont(next.fontFamily);
       if (built) applyPrefs();
     });
   } catch {}
@@ -359,6 +367,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     panel.style.opacity = String(op);
     prefs.fontScale = clamp(Number(prefs.fontScale) || DEFAULT_PREFS.fontScale, 0.8, 1.6);
     prefs.avatarSize = clamp(Math.round(Number(prefs.avatarSize) || DEFAULT_PREFS.avatarSize), 20, 56);
+    panel.style.fontFamily = fontStack(prefs.fontFamily);
     list.style.setProperty('--fs', String(prefs.fontScale));
     list.style.setProperty('--av', `${prefs.avatarSize}px`);
     fontRange.value = String(prefs.fontScale);
