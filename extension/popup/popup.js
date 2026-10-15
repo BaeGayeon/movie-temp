@@ -328,16 +328,100 @@ $('moreEmoji').addEventListener('click', () => {
 // 채팅 글꼴: 내 컴퓨터에 설치된 글꼴 이름만 chatPrefs.fontFamily 에 저장한다(글꼴 파일은 읽지 않는다). 내 화면의 채팅에만 적용된다.
 // 드롭다운은 "기본 글꼴" + 내 컴퓨터에서 불러온 글꼴(localFonts). 불러오기는 아래 autoLoadFonts 가 카드를 열 때 자동으로 한다.
 let localFonts = [];
-function fillFontSelect(current) {
+function fontOptions(current) {
   const names = current && !localFonts.includes(current) ? [current, ...localFonts] : localFonts;
-  $('fontSelect').replaceChildren(new Option('기본 글꼴 (SUIT)', ''), ...names.map((f) => new Option(f, f)));
-  $('fontSelect').value = current ?? '';
-  $('fontLoad').textContent = localFonts.length ? `💻 글꼴 다시 불러오기 (${localFonts.length}개)` : '💻 내 컴퓨터 글꼴 불러오기';
+  return [['', '기본 글꼴 (SUIT)'], ...names.map((f) => [f, f])];
 }
+// 목록을 훑는 동안(마우스 올리기, ↑↓) 샘플 글과 채팅에 미리 적용하고(저장 안 함), 클릭/Enter 로 확정, 닫기/Esc 로 취소한다.
+let committedFont = '';
+let previewBeat = null;
+const sampleFont = (name) => ($('fontSample').style.fontFamily = name ? `"${name}", sans-serif` : '');
+function sendPreview(name) {
+  sampleFont(name);
+  chrome.storage.local.set({ chatFontPreview: name == null ? null : { name, at: Date.now() } });
+}
+function listOpen() {
+  return !$('fontList').hidden;
+}
+function closeFontList(commit) {
+  clearInterval(previewBeat);
+  $('fontList').hidden = true;
+  $('fontCur').setAttribute('aria-expanded', 'false');
+  chrome.storage.local.set({ chatFontPreview: null }); // 미리보기 해제(확정이면 chatPrefs 가 이미 같은 글꼴)
+  if (!commit) sampleFont(committedFont);
+}
+function activeOption() {
+  return $('fontList').querySelector('[role=option].on');
+}
+function setActive(opt, scroll = true) {
+  $('fontList').querySelector('.on')?.classList.remove('on');
+  if (!opt) return;
+  opt.classList.add('on');
+  if (scroll) opt.scrollIntoView({ block: 'nearest' });
+  sendPreview(opt.dataset.font);
+}
+function renderFontList(current) {
+  const list = $('fontList');
+  list.replaceChildren(
+    ...fontOptions(current).map(([value, label]) => {
+      const o = document.createElement('div');
+      o.setAttribute('role', 'option');
+      o.dataset.font = value;
+      o.textContent = label;
+      if (value) o.style.fontFamily = `"${value}", sans-serif`; // 글꼴 이름을 그 글꼴로 보여 준다
+      o.setAttribute('aria-selected', String(value === (current ?? '')));
+      return o;
+    }),
+  );
+  $('fontCur').textContent = current || '기본 글꼴 (SUIT)';
+}
+function openFontList() {
+  $('fontList').hidden = false;
+  $('fontCur').setAttribute('aria-expanded', 'true');
+  const sel = $('fontList').querySelector('[aria-selected=true]');
+  sel?.scrollIntoView({ block: 'center' });
+  $('fontList').focus();
+  previewBeat = setInterval(() => sendPreview(activeOption()?.dataset.font ?? committedFont), 2000); // 채팅 쪽 4초 만료를 늦춘다
+}
+$('fontCur').addEventListener('click', () => (listOpen() ? closeFontList(false) : openFontList()));
+$('fontList').addEventListener('mouseover', (e) => {
+  const o = e.target.closest('[role=option]');
+  if (o && o !== activeOption()) setActive(o, false);
+});
+$('fontList').addEventListener('click', (e) => {
+  const o = e.target.closest('[role=option]');
+  if (!o) return;
+  setChatFont(o.dataset.font);
+  closeFontList(true);
+});
+$('fontList').addEventListener('keydown', (e) => {
+  const opts = [...$('fontList').querySelectorAll('[role=option]')];
+  const i = opts.indexOf(activeOption());
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    const base = i < 0 ? opts.findIndex((o) => o.getAttribute('aria-selected') === 'true') : i;
+    setActive(opts[Math.min(opts.length - 1, Math.max(0, base + (e.key === 'ArrowDown' ? 1 : -1)))]);
+  } else if (e.key === 'Enter' && activeOption()) {
+    e.preventDefault();
+    setChatFont(activeOption().dataset.font);
+    closeFontList(true);
+  } else if (e.key === 'Escape') {
+    e.preventDefault();
+    closeFontList(false);
+    $('fontCur').focus();
+  }
+});
+$('fontList').addEventListener('mouseleave', () => {
+  if (!listOpen()) return; // 목록이 닫히며 생긴 mouseleave 는 무시
+  $('fontList').querySelector('.on')?.classList.remove('on');
+  sendPreview(committedFont); // 목록 밖으로 나가면 확정된 글꼴로
+});
+addEventListener('pagehide', () => chrome.storage.local.set({ chatFontPreview: null })); // 팝업이 닫히면 미리보기 해제
 const paintFont = (name) => {
   $('fontName').value = name;
-  $('fontSample').style.fontFamily = name ? `"${name}", sans-serif` : '';
-  fillFontSelect(name);
+  committedFont = name;
+  sampleFont(name);
+  renderFontList(name);
 };
 async function setChatFont(raw) {
   const name = cleanFont(raw);
@@ -358,7 +442,6 @@ chrome.storage.onChanged.addListener((ch, area) => {
 $('fontApply').addEventListener('click', () => setChatFont($('fontName').value));
 $('fontName').addEventListener('keydown', (e) => e.key === 'Enter' && !e.isComposing && setChatFont($('fontName').value));
 $('fontReset').addEventListener('click', () => setChatFont(''));
-$('fontSelect').addEventListener('change', (e) => setChatFont(e.target.value));
 // 내 컴퓨터 글꼴 목록(queryLocalFonts): 글꼴 카드를 열면 자동으로 불러온다.
 //  - 이미 허용했으면 조용히 불러옴
 //  - 처음이면 카드를 연 클릭이 사용자 동작이므로 그 자리에서 호출 -> 크롬이 허용 창을 띄움

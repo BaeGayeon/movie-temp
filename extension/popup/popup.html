@@ -115,7 +115,10 @@
       <summary>🔤 채팅 글꼴</summary>
       <div class="inner">
         <div class="fontsample" id="fontSample">안녕하세요, 같이 봐요 ABC 123 ♥</div>
-        <select id="fontSelect" aria-label="채팅 글꼴"></select>
+        <div class="fontpick">
+          <button id="fontCur" class="btn" type="button" aria-haspopup="listbox" aria-expanded="false"></button>
+          <div id="fontList" role="listbox" tabindex="-1" hidden></div>
+        </div>
         <div class="row nowrap">
           <button id="fontLoad" class="btn small" hidden>💻 내 컴퓨터 글꼴 허용하고 불러오기</button>
           <button id="fontReset" class="btn small">기본으로</button>

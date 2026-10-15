@@ -192,6 +192,8 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
   const mount = createLayer(CSS, { topLayer: true }); // 페이지 축소(transform)의 영향을 받지 않도록 최상위 레이어에
   let built = false;
   let prefs = { ...DEFAULT_PREFS };
+  let previewFont = null; // 글꼴 미리보기 중이면 그 이름('' = 기본 글꼴), 아니면 null
+  let previewTimer = null;
   const messages = []; // { userId, text, sentAt, videoTime, el }
   let unread = 0;
 
@@ -212,6 +214,14 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     });
     // 팝업에서 채팅을 숨기거나 다시 보이게 한 경우
     chrome.storage.onChanged.addListener((ch, area) => {
+      if (area === 'local' && ch.chatFontPreview) {
+        // 팝업에서 글꼴 목록을 훑는 동안의 미리보기(저장하지 않음). 팝업이 갱신을 멈추면(닫힘 등) 4초 뒤 원래 글꼴로 돌아온다.
+        clearTimeout(previewTimer);
+        const v = ch.chatFontPreview.newValue;
+        previewFont = v && typeof v.name === 'string' ? cleanFont(v.name) : null;
+        if (previewFont !== null) previewTimer = setTimeout(() => { previewFont = null; if (built) applyPrefs(); }, 4000);
+        if (built) applyPrefs();
+      }
       const next = ch.chatPrefs?.newValue;
       if (area !== 'local' || !next) return;
       const hiddenChanged = !!next.hidden !== prefs.hidden;
@@ -367,7 +377,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     panel.style.opacity = String(op);
     prefs.fontScale = clamp(Number(prefs.fontScale) || DEFAULT_PREFS.fontScale, 0.8, 1.6);
     prefs.avatarSize = clamp(Math.round(Number(prefs.avatarSize) || DEFAULT_PREFS.avatarSize), 20, 56);
-    panel.style.fontFamily = fontStack(prefs.fontFamily);
+    panel.style.fontFamily = fontStack(previewFont ?? prefs.fontFamily);
     list.style.setProperty('--fs', String(prefs.fontScale));
     list.style.setProperty('--av', `${prefs.avatarSize}px`);
     fontRange.value = String(prefs.fontScale);
