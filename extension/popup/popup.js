@@ -1,7 +1,7 @@
 import { APP_NAME, APP_NAME_KO } from '../config.js';
 import { CMD } from '../shared/cmd.js';
 import { COLOR_PALETTE, MAX_NAME_LENGTH } from '../shared/protocol.js';
-import { renderAvatar, fileToAvatarDataUrl } from '../shared/avatar.js';
+import { renderAvatar, bitmapToAvatarDataUrl } from '../shared/avatar.js';
 import { createEmojiPicker, EMOJI_PICKER_CSS } from '../shared/emoji-picker.js';
 import { ROOT_THEME_CSS, pastelize } from '../shared/theme.js';
 import { createColorPicker, isHex } from '../shared/color-picker.js';
@@ -330,7 +330,108 @@ $('file').addEventListener('change', async (e) => {
   $('perror').textContent = '';
   if (!file) return;
   try {
-    const url = await fileToAvatarDataUrl(file);
+    openCropper(await createImageBitmap(file));
+  } catch {
+    $('perror').textContent = '이미지를 불러올 수 없어요. 다른 사진을 골라 주세요.';
+  }
+});
+
+// 크롭: 원형 미리보기 안에서 사진을 끌어 위치를 정하고 확대/축소한다. 적용하면 보이는 영역(원에 내접한 정사각형)을 64x64 로 쓴다.
+const VIEW = 160; // 미리보기 한 변(css px). 캔버스는 2배 해상도
+let crop = null; // { bmp, base, zoom, ox, oy }: base=원을 꽉 채우는 배율, ox/oy=사진 왼쪽 위 모서리의 위치
+const cropCanvas = $('cropCanvas');
+const cropCtx = cropCanvas.getContext('2d');
+
+function clampCrop() {
+  const s = crop.base * crop.zoom;
+  crop.ox = Math.min(0, Math.max(VIEW - crop.bmp.width * s, crop.ox));
+  crop.oy = Math.min(0, Math.max(VIEW - crop.bmp.height * s, crop.oy));
+}
+
+function drawCrop() {
+  const s = crop.base * crop.zoom;
+  cropCtx.setTransform(2, 0, 0, 2, 0, 0);
+  cropCtx.clearRect(0, 0, VIEW, VIEW);
+  cropCtx.drawImage(crop.bmp, crop.ox, crop.oy, crop.bmp.width * s, crop.bmp.height * s);
+  // 원 바깥은 어둡게, 원 테두리
+  cropCtx.save();
+  cropCtx.fillStyle = 'rgba(0,0,0,.55)';
+  cropCtx.beginPath();
+  cropCtx.rect(0, 0, VIEW, VIEW);
+  cropCtx.arc(VIEW / 2, VIEW / 2, VIEW / 2 - 2, 0, Math.PI * 2, true);
+  cropCtx.fill('evenodd');
+  cropCtx.strokeStyle = 'rgba(255,255,255,.9)';
+  cropCtx.lineWidth = 2;
+  cropCtx.beginPath();
+  cropCtx.arc(VIEW / 2, VIEW / 2, VIEW / 2 - 2, 0, Math.PI * 2);
+  cropCtx.stroke();
+  cropCtx.restore();
+}
+
+function setZoom(z) {
+  // 미리보기 한가운데를 기준으로 확대/축소
+  const old = crop.base * crop.zoom;
+  const cx = (VIEW / 2 - crop.ox) / old;
+  const cy = (VIEW / 2 - crop.oy) / old;
+  crop.zoom = Math.min(4, Math.max(1, z));
+  const s = crop.base * crop.zoom;
+  crop.ox = VIEW / 2 - cx * s;
+  crop.oy = VIEW / 2 - cy * s;
+  clampCrop();
+  $('cropZoom').value = Math.round(crop.zoom * 100);
+  drawCrop();
+}
+
+function openCropper(bmp) {
+  const base = VIEW / Math.min(bmp.width, bmp.height); // 짧은 변이 원을 꽉 채우는 크기(이보다 작아지지 않는다)
+  crop = { bmp, base, zoom: 1, ox: (VIEW - bmp.width * base) / 2, oy: (VIEW - bmp.height * base) / 2 };
+  $('cropZoom').value = 100;
+  $('cropBox').hidden = false;
+  drawCrop();
+}
+
+function closeCropper() {
+  crop = null;
+  $('cropBox').hidden = true;
+}
+
+let dragFrom = null;
+cropCanvas.addEventListener('pointerdown', (e) => {
+  if (!crop) return;
+  dragFrom = { x: e.clientX, y: e.clientY, ox: crop.ox, oy: crop.oy };
+  cropCanvas.setPointerCapture(e.pointerId);
+  cropCanvas.classList.add('drag');
+});
+cropCanvas.addEventListener('pointermove', (e) => {
+  if (!crop || !dragFrom) return;
+  crop.ox = dragFrom.ox + (e.clientX - dragFrom.x);
+  crop.oy = dragFrom.oy + (e.clientY - dragFrom.y);
+  clampCrop();
+  drawCrop();
+});
+const endDrag = () => {
+  dragFrom = null;
+  cropCanvas.classList.remove('drag');
+};
+cropCanvas.addEventListener('pointerup', endDrag);
+cropCanvas.addEventListener('pointercancel', endDrag);
+cropCanvas.addEventListener(
+  'wheel',
+  (e) => {
+    if (!crop) return;
+    e.preventDefault();
+    setZoom(crop.zoom * (e.deltaY < 0 ? 1.08 : 1 / 1.08));
+  },
+  { passive: false },
+);
+$('cropZoom').addEventListener('input', (e) => crop && setZoom(e.target.value / 100));
+$('cropCancel').addEventListener('click', closeCropper);
+$('cropApply').addEventListener('click', () => {
+  if (!crop) return;
+  const s = crop.base * crop.zoom;
+  try {
+    const url = bitmapToAvatarDataUrl(crop.bmp, { x: -crop.ox / s, y: -crop.oy / s, size: VIEW / s });
+    closeCropper();
     update({ avatar: { kind: 'image', value: url, bg: profile.avatar.bg } });
   } catch (err) {
     $('perror').textContent = err.message?.includes('20KB') ? err.message : '이미지를 불러올 수 없어요. 다른 사진을 골라 주세요.';

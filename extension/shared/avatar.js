@@ -38,14 +38,15 @@ export function renderAvatar(el, avatar, px) {
 
 const dataUrlBytes = (url) => Math.floor(((url.length - url.indexOf(',') - 1) * 3) / 4);
 
-// 업로드한 이미지를 64x64 로 중앙 크롭해서 WebP(안 되면 JPEG) 데이터 URL 로 만든다. 20KB 이하가 될 때까지 품질을 낮춘다.
-export async function fileToAvatarDataUrl(file) {
-  const bmp = await createImageBitmap(file);
+// 이미지의 crop({x, y, size}: 원본 픽셀 기준 정사각형)를 64x64 로 잘라 WebP(안 되면 JPEG) 데이터 URL 로 만든다.
+// crop 이 없으면 중앙 정사각형. 20KB 이하가 될 때까지 품질을 낮춘다.
+export function bitmapToAvatarDataUrl(bmp, crop) {
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = AVATAR_PX;
   const ctx = canvas.getContext('2d');
   const s = Math.min(bmp.width, bmp.height);
-  ctx.drawImage(bmp, (bmp.width - s) / 2, (bmp.height - s) / 2, s, s, 0, 0, AVATAR_PX, AVATAR_PX);
+  const c = crop ?? { x: (bmp.width - s) / 2, y: (bmp.height - s) / 2, size: s };
+  ctx.drawImage(bmp, c.x, c.y, c.size, c.size, 0, 0, AVATAR_PX, AVATAR_PX);
   for (const [type, qualities] of [['image/webp', [0.85, 0.7, 0.5, 0.3]], ['image/jpeg', [0.8, 0.5, 0.3]]]) {
     for (const q of qualities) {
       const url = canvas.toDataURL(type, q);
@@ -53,4 +54,8 @@ export async function fileToAvatarDataUrl(file) {
     }
   }
   throw new Error('이미지를 20KB 이하로 줄일 수 없어요.');
+}
+
+export async function fileToAvatarDataUrl(file) {
+  return bitmapToAvatarDataUrl(await createImageBitmap(file));
 }

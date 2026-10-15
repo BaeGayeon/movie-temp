@@ -92,6 +92,14 @@
           <button id="clearPhoto" class="btn small" hidden>지우기</button>
           <input type="file" id="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
         </div>
+        <div id="cropBox" class="crop" hidden>
+          <canvas id="cropCanvas" width="320" height="320" aria-label="사진 위치 맞추기"></canvas>
+          <input type="range" id="cropZoom" min="100" max="400" value="100" aria-label="확대/축소">
+          <div class="row nowrap">
+            <button id="cropApply" class="btn primary small">적용</button>
+            <button id="cropCancel" class="btn small">취소</button>
+          </div>
+        </div>
         <div id="pickerBox" hidden></div>
         <div class="error" id="perror"></div>
         <div class="sub">프사 배경색</div>
