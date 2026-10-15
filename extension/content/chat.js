@@ -42,11 +42,11 @@ const CSS = `
 
   /* ---- 메시지: 말풍선은 무난하게, 닉네임은 글자색으로 ---- */
   .list, .ep-grid { scrollbar-width: thin; scrollbar-color: var(--surface-3) transparent; } /* 스크롤바가 하얗게 튀지 않게 */
-  .list { font-size: calc(14px * var(--fs, 1)); flex: 1; overflow-y: auto; padding: 10px 10px 6px; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+  .list { font-size: calc(14px * var(--fs, 1.1)); flex: 1; overflow-y: auto; padding: 10px 10px 6px; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
   .msg { display: flex; gap: 8px; align-items: flex-start; }
   .msg.me { flex-direction: row-reverse; }
-  .av { flex: none; width: var(--av, 28px); height: var(--av, 28px); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: calc(var(--av, 28px) * .57); overflow: hidden; }
-  .body { min-width: 0; max-width: calc(100% - var(--av, 28px) - 12px); display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+  .av { flex: none; width: var(--av, 34px); height: var(--av, 34px); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: calc(var(--av, 34px) * .57); overflow: hidden; }
+  .body { min-width: 0; max-width: calc(100% - var(--av, 34px) - 12px); display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
   .msg.me .body { align-items: flex-end; }
   .name { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 6px; font-size: .857em; }
   .msg.me .name { flex-direction: row-reverse; }
@@ -133,11 +133,11 @@ const DEFAULT_PREFS = {
   showClock: true, // 작성 시각
   showVideoTime: true, // 재생 시각
   showEvents: true, // 재생/일시정지/시간 이동 알림
-  fontScale: 1, // 채팅 글자 크기 배율
-  avatarSize: 28, // 채팅 프사 크기(px)
+  fontScale: 1.1, // 채팅 글자 크기 배율(기본 14px 의 1.1배)
+  avatarSize: 34, // 채팅 프사 크기(px)
   style: 'bubble', // 대화 표시 방식: 'bubble' = 말풍선, 'plain' = 줄글(프사 + 이름/내용), 'compact' = 간단(이름/내용)
   hidden: false, // 채팅을 완전히 숨김(팝업에서 다시 켠다)
-  v: 2,
+  v: 3,
 };
 const MIN_W = 220;
 const MIN_H = 200;
@@ -198,7 +198,12 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     chrome.storage.local.get('chatPrefs').then((r) => {
       prefs = { ...DEFAULT_PREFS, ...(r.chatPrefs ?? {}) };
       prefs.opacities = { ...DEFAULT_PREFS.opacities, ...(r.chatPrefs?.opacities ?? {}) };
-      prefs.v = 2;
+      if ((r.chatPrefs?.v ?? 0) < 3) {
+        // 기본 크기를 키웠다(v3). 이전에 저장된 값은 기본값이었으므로 새 기본값으로 바꾼다
+        prefs.fontScale = DEFAULT_PREFS.fontScale;
+        prefs.avatarSize = DEFAULT_PREFS.avatarSize;
+      }
+      prefs.v = 3;
       if (built) applyPrefs();
     });
     // 팝업에서 채팅을 숨기거나 다시 보이게 한 경우
@@ -352,8 +357,8 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     const vh = window.innerHeight;
     const op = clamp(prefs.opacities[modeState()], 0.3, 1);
     panel.style.opacity = String(op);
-    prefs.fontScale = clamp(Number(prefs.fontScale) || 1, 0.8, 1.6);
-    prefs.avatarSize = clamp(Math.round(Number(prefs.avatarSize) || 28), 20, 56);
+    prefs.fontScale = clamp(Number(prefs.fontScale) || DEFAULT_PREFS.fontScale, 0.8, 1.6);
+    prefs.avatarSize = clamp(Math.round(Number(prefs.avatarSize) || DEFAULT_PREFS.avatarSize), 20, 56);
     list.style.setProperty('--fs', String(prefs.fontScale));
     list.style.setProperty('--av', `${prefs.avatarSize}px`);
     fontRange.value = String(prefs.fontScale);
