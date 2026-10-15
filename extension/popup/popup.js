@@ -326,10 +326,18 @@ $('moreEmoji').addEventListener('click', () => {
 
 // 채팅 글꼴: 내 컴퓨터에 설치된 글꼴 이름만 chatPrefs.fontFamily 에 저장한다(글꼴 파일은 읽지 않는다). 내 화면의 채팅에만 적용된다.
 const cleanFont = (v) => String(v ?? '').replace(/["'\\;{}<>()]|[\u0000-\u001f]/g, '').trim().slice(0, 80);
+// 드롭다운: 처음에는 기본 + 자주 쓰는 글꼴, "모두 불러오기"를 누르면(또는 권한을 이미 줬으면 자동으로) 설치된 글꼴 전체
+const COMMON_FONTS = ['맑은 고딕', '나눔고딕', '나눔명조', 'Pretendard', 'Apple SD 산돌고딕 Neo', '굴림', '돋움', '바탕', 'Noto Sans KR', 'Arial', 'Georgia', 'Courier New'];
+let fontList = COMMON_FONTS;
+function fillFontSelect(current) {
+  const names = current && !fontList.includes(current) ? [current, ...fontList] : fontList;
+  $('fontSelect').replaceChildren(new Option('기본 글꼴 (SUIT)', ''), ...names.map((f) => new Option(f, f)));
+  $('fontSelect').value = current ?? '';
+}
 const paintFont = (name) => {
   $('fontName').value = name;
   $('fontSample').style.fontFamily = name ? `"${name}", sans-serif` : '';
-  if (!$('fontSelect').hidden) $('fontSelect').value = [...$('fontSelect').options].some((o) => o.value === name) ? name : '';
+  fillFontSelect(name);
 };
 async function setChatFont(raw) {
   const name = cleanFont(raw);
@@ -342,26 +350,35 @@ chrome.storage.local.get('chatPrefs').then((r) => paintFont(cleanFont(r.chatPref
 $('fontApply').addEventListener('click', () => setChatFont($('fontName').value));
 $('fontName').addEventListener('keydown', (e) => e.key === 'Enter' && !e.isComposing && setChatFont($('fontName').value));
 $('fontReset').addEventListener('click', () => setChatFont(''));
-$('fontSelect').addEventListener('change', (e) => e.target.value && setChatFont(e.target.value));
-$('fontLoad').addEventListener('click', async () => {
+$('fontSelect').addEventListener('change', (e) => setChatFont(e.target.value));
+async function loadLocalFonts(manual) {
   $('ferror').textContent = '';
   if (typeof window.queryLocalFonts !== 'function') {
-    $('ferror').textContent = '이 브라우저에서는 글꼴 목록을 불러올 수 없어요. 글꼴 이름을 직접 입력해 주세요.';
+    if (manual) $('ferror').textContent = '이 브라우저에서는 글꼴 목록을 불러올 수 없어요. 아래에 글꼴 이름을 직접 입력해 주세요.';
     return;
   }
   try {
     const fonts = await window.queryLocalFonts(); // 크롬이 권한을 한 번 물어본다
-    const families = [...new Set(fonts.map((f) => f.family))].sort((a, b) => a.localeCompare(b, 'ko'));
-    const sel = $('fontSelect');
-    sel.replaceChildren(new Option(`글꼴 선택 (${families.length}개)`, ''), ...families.map((f) => new Option(f, f)));
-    sel.hidden = false;
-    paintFont(cleanFont($('fontName').value));
+    fontList = [...new Set(fonts.map((f) => f.family))].sort((a, b) => a.localeCompare(b, 'ko'));
+    fillFontSelect(cleanFont($('fontName').value));
+    $('fontLoad').textContent = `💻 ${fontList.length}개 불러옴`;
   } catch (err) {
-    $('ferror').textContent =
-      err?.name === 'NotAllowedError'
-        ? '글꼴 목록을 볼 수 있는 권한이 필요해요. 허용하지 않으면 글꼴 이름을 직접 입력해 주세요.'
-        : '글꼴 목록을 불러오지 못했어요. 글꼴 이름을 직접 입력해 주세요.';
+    if (manual) {
+      $('ferror').textContent =
+        err?.name === 'NotAllowedError'
+          ? '글꼴 목록을 볼 수 있는 권한이 필요해요. 허용하지 않으면 아래에 글꼴 이름을 직접 입력해 주세요.'
+          : '글꼴 목록을 불러오지 못했어요. 아래에 글꼴 이름을 직접 입력해 주세요.';
+    }
   }
+}
+$('fontLoad').addEventListener('click', () => loadLocalFonts(true));
+// 권한을 이미 허용했다면 카드를 열 때 자동으로 전체 목록을 채운다
+$('fontBox').addEventListener('toggle', async () => {
+  if (!$('fontBox').open || fontList !== COMMON_FONTS) return;
+  try {
+    const st = await navigator.permissions.query({ name: 'local-fonts' });
+    if (st.state === 'granted') loadLocalFonts(false);
+  } catch {}
 });
 
 $('upload').addEventListener('click', () => $('file').click());

@@ -118,7 +118,7 @@ details.card[open] > summary { border-bottom: 2px solid var(--border); }
 .sub { font-size: 12px; font-weight: 700; color: var(--ink-soft); margin-top: 2px; }
 .fontsample { padding: 8px 10px; border-radius: 12px; background: var(--bg); font-size: 15px; }
 #fontName { flex: 1; min-width: 0; }
-#fontSelect { width: 100%; padding: 6px 8px; border-radius: 10px; background: var(--bg); color: inherit; border: 1px solid var(--border-3); font: inherit; }
+#fontSelect { width: 100%; }
 .crop { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 8px; border-radius: 14px; background: var(--bg); }
 .crop canvas { width: 160px; height: 160px; border-radius: 12px; cursor: grab; touch-action: none; }
 .crop canvas.drag { cursor: grabbing; }

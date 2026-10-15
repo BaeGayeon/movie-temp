@@ -115,14 +115,14 @@
       <summary>🔤 채팅 글꼴</summary>
       <div class="inner">
         <div class="fontsample" id="fontSample">안녕하세요, 같이 봐요 ABC 123 ♥</div>
+        <select id="fontSelect" aria-label="채팅 글꼴"></select>
         <div class="row nowrap">
-          <input id="fontName" maxlength="80" placeholder="글꼴 이름 (예: 맑은 고딕)" autocomplete="off">
-          <button id="fontApply" class="btn small">적용</button>
-        </div>
-        <select id="fontSelect" hidden aria-label="내 컴퓨터 글꼴"></select>
-        <div class="row nowrap">
-          <button id="fontLoad" class="btn small">💻 내 컴퓨터 글꼴 불러오기</button>
+          <button id="fontLoad" class="btn small">💻 내 컴퓨터 글꼴 모두 불러오기</button>
           <button id="fontReset" class="btn small">기본으로</button>
+        </div>
+        <div class="row nowrap">
+          <input id="fontName" maxlength="80" placeholder="글꼴 이름 직접 입력" autocomplete="off">
+          <button id="fontApply" class="btn small">적용</button>
         </div>
         <div class="error" id="ferror"></div>
       </div>
