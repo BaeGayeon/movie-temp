@@ -326,8 +326,7 @@ $('moreEmoji').addEventListener('click', () => {
 // 사진 업로드: 내 컴퓨터에서 64x64 로 줄여 프로필에 포함한다
 
 // 채팅 글꼴: 내 컴퓨터에 설치된 글꼴 이름만 chatPrefs.fontFamily 에 저장한다(글꼴 파일은 읽지 않는다). 내 화면의 채팅에만 적용된다.
-// 드롭다운은 "기본 글꼴" + 내 컴퓨터에서 불러온 글꼴(localFonts). 팝업은 크롬의 권한 창이 뜨면 닫히므로
-// 불러오기는 별도 탭(fonts/fonts.html)에서 하고, 거기서 저장한 목록을 여기서 쓴다.
+// 드롭다운은 "기본 글꼴" + 내 컴퓨터에서 불러온 글꼴(localFonts). 불러오기는 아래 autoLoadFonts 가 카드를 열 때 자동으로 한다.
 let localFonts = [];
 function fillFontSelect(current) {
   const names = current && !localFonts.includes(current) ? [current, ...localFonts] : localFonts;
@@ -360,18 +359,45 @@ $('fontApply').addEventListener('click', () => setChatFont($('fontName').value))
 $('fontName').addEventListener('keydown', (e) => e.key === 'Enter' && !e.isComposing && setChatFont($('fontName').value));
 $('fontReset').addEventListener('click', () => setChatFont(''));
 $('fontSelect').addEventListener('change', (e) => setChatFont(e.target.value));
-$('fontLoad').addEventListener('click', () => chrome.tabs.create({ url: chrome.runtime.getURL('fonts/fonts.html') }));
-// 글꼴 접근을 이미 허용했다면(처음 한 번만 fonts 탭에서 허용) 팝업을 열 때 자동으로 목록을 새로 불러온다. 허용하지 않았으면 아무것도 하지 않는다.
-(async () => {
+// 내 컴퓨터 글꼴 목록(queryLocalFonts): 글꼴 카드를 열면 자동으로 불러온다.
+//  - 이미 허용했으면 조용히 불러옴
+//  - 처음이면 카드를 연 클릭이 사용자 동작이므로 그 자리에서 호출 -> 크롬이 허용 창을 띄움
+//  - 사용자 동작이 없는 상태(카드가 열린 채로 팝업이 열림)에서 아직 허용 전이면 "허용하고 불러오기" 버튼을 보여 줌
+let fontsTried = false;
+async function loadLocalFonts() {
+  $('ferror').textContent = '';
   try {
-    if (typeof window.queryLocalFonts !== 'function') return;
-    const st = await navigator.permissions.query({ name: 'local-fonts' });
-    if (st.state !== 'granted') return;
     const fonts = await window.queryLocalFonts();
     const families = [...new Set(fonts.map((f) => f.family))].sort((x, y) => x.localeCompare(y, 'ko'));
     if (families.length) await chrome.storage.local.set({ localFonts: families });
+    $('fontLoad').hidden = true;
+  } catch (err) {
+    $('fontLoad').hidden = false;
+    $('ferror').textContent =
+      err?.name === 'NotAllowedError' || err?.name === 'SecurityError'
+        ? '글꼴 목록을 볼 수 있는 권한이 필요해요. 허용하지 않으면 아래에 글꼴 이름을 직접 입력해 주세요.'
+        : `글꼴 목록을 불러오지 못했어요(${err?.name ?? '오류'}). 아래에 글꼴 이름을 직접 입력해 주세요.`;
+  }
+}
+async function autoLoadFonts() {
+  if (typeof window.queryLocalFonts !== 'function') return; // 미지원: 이름 직접 입력만
+  let state = 'prompt';
+  try {
+    state = (await navigator.permissions.query({ name: 'local-fonts' })).state;
   } catch {}
-})();
+  if (state === 'denied') {
+    $('ferror').textContent = '글꼴 접근이 차단돼 있어요. 크롬 설정에서 허용하거나, 아래에 글꼴 이름을 직접 입력해 주세요.';
+    return;
+  }
+  if (state === 'granted' || navigator.userActivation?.isActive) await loadLocalFonts();
+  else $('fontLoad').hidden = false;
+}
+$('fontLoad').addEventListener('click', loadLocalFonts);
+$('fontBox').addEventListener('toggle', () => {
+  if (!$('fontBox').open || fontsTried) return;
+  fontsTried = true;
+  autoLoadFonts();
+});
 
 $('upload').addEventListener('click', () => $('file').click());
 $('file').addEventListener('change', async (e) => {
