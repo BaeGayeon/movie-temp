@@ -5,6 +5,7 @@ import { renderAvatar, bitmapToAvatarDataUrl } from '../shared/avatar.js';
 import { createEmojiPicker, EMOJI_PICKER_CSS } from '../shared/emoji-picker.js';
 import { ROOT_THEME_CSS, pastelize } from '../shared/theme.js';
 import { createColorPicker, isHex } from '../shared/color-picker.js';
+import { cleanFont } from '../shared/fontname.js';
 
 // 디자인 토큰(다크)과 이모지 선택기 스타일 주입
 const themeStyle = document.createElement('style');
@@ -325,14 +326,14 @@ $('moreEmoji').addEventListener('click', () => {
 // 사진 업로드: 내 컴퓨터에서 64x64 로 줄여 프로필에 포함한다
 
 // 채팅 글꼴: 내 컴퓨터에 설치된 글꼴 이름만 chatPrefs.fontFamily 에 저장한다(글꼴 파일은 읽지 않는다). 내 화면의 채팅에만 적용된다.
-const cleanFont = (v) => String(v ?? '').replace(/["'\\;{}<>()]|[\u0000-\u001f]/g, '').trim().slice(0, 80);
-// 드롭다운: 처음에는 기본 + 자주 쓰는 글꼴, "모두 불러오기"를 누르면(또는 권한을 이미 줬으면 자동으로) 설치된 글꼴 전체
-const COMMON_FONTS = ['맑은 고딕', '나눔고딕', '나눔명조', 'Pretendard', 'Apple SD 산돌고딕 Neo', '굴림', '돋움', '바탕', 'Noto Sans KR', 'Arial', 'Georgia', 'Courier New'];
-let fontList = COMMON_FONTS;
+// 드롭다운은 "기본 글꼴" + 내 컴퓨터에서 불러온 글꼴(localFonts). 팝업은 크롬의 권한 창이 뜨면 닫히므로
+// 불러오기는 별도 탭(fonts/fonts.html)에서 하고, 거기서 저장한 목록을 여기서 쓴다.
+let localFonts = [];
 function fillFontSelect(current) {
-  const names = current && !fontList.includes(current) ? [current, ...fontList] : fontList;
+  const names = current && !localFonts.includes(current) ? [current, ...localFonts] : localFonts;
   $('fontSelect').replaceChildren(new Option('기본 글꼴 (SUIT)', ''), ...names.map((f) => new Option(f, f)));
   $('fontSelect').value = current ?? '';
+  $('fontLoad').textContent = localFonts.length ? `💻 글꼴 다시 불러오기 (${localFonts.length}개)` : '💻 내 컴퓨터 글꼴 불러오기';
 }
 const paintFont = (name) => {
   $('fontName').value = name;
@@ -346,40 +347,20 @@ async function setChatFont(raw) {
   const { chatPrefs } = await chrome.storage.local.get('chatPrefs');
   await chrome.storage.local.set({ chatPrefs: { ...chatPrefs, fontFamily: name } });
 }
-chrome.storage.local.get('chatPrefs').then((r) => paintFont(cleanFont(r.chatPrefs?.fontFamily)));
+chrome.storage.local.get(['chatPrefs', 'localFonts']).then((r) => {
+  localFonts = Array.isArray(r.localFonts) ? r.localFonts.filter((f) => typeof f === 'string').slice(0, 5000) : [];
+  paintFont(cleanFont(r.chatPrefs?.fontFamily));
+});
+chrome.storage.onChanged.addListener((ch, area) => {
+  if (area !== 'local') return;
+  if (ch.localFonts) localFonts = Array.isArray(ch.localFonts.newValue) ? ch.localFonts.newValue : [];
+  if (ch.localFonts || ch.chatPrefs) chrome.storage.local.get('chatPrefs').then((r) => paintFont(cleanFont(r.chatPrefs?.fontFamily)));
+});
 $('fontApply').addEventListener('click', () => setChatFont($('fontName').value));
 $('fontName').addEventListener('keydown', (e) => e.key === 'Enter' && !e.isComposing && setChatFont($('fontName').value));
 $('fontReset').addEventListener('click', () => setChatFont(''));
 $('fontSelect').addEventListener('change', (e) => setChatFont(e.target.value));
-async function loadLocalFonts(manual) {
-  $('ferror').textContent = '';
-  if (typeof window.queryLocalFonts !== 'function') {
-    if (manual) $('ferror').textContent = '이 브라우저에서는 글꼴 목록을 불러올 수 없어요. 아래에 글꼴 이름을 직접 입력해 주세요.';
-    return;
-  }
-  try {
-    const fonts = await window.queryLocalFonts(); // 크롬이 권한을 한 번 물어본다
-    fontList = [...new Set(fonts.map((f) => f.family))].sort((a, b) => a.localeCompare(b, 'ko'));
-    fillFontSelect(cleanFont($('fontName').value));
-    $('fontLoad').textContent = `💻 ${fontList.length}개 불러옴`;
-  } catch (err) {
-    if (manual) {
-      $('ferror').textContent =
-        err?.name === 'NotAllowedError'
-          ? '글꼴 목록을 볼 수 있는 권한이 필요해요. 허용하지 않으면 아래에 글꼴 이름을 직접 입력해 주세요.'
-          : '글꼴 목록을 불러오지 못했어요. 아래에 글꼴 이름을 직접 입력해 주세요.';
-    }
-  }
-}
-$('fontLoad').addEventListener('click', () => loadLocalFonts(true));
-// 권한을 이미 허용했다면 카드를 열 때 자동으로 전체 목록을 채운다
-$('fontBox').addEventListener('toggle', async () => {
-  if (!$('fontBox').open || fontList !== COMMON_FONTS) return;
-  try {
-    const st = await navigator.permissions.query({ name: 'local-fonts' });
-    if (st.state === 'granted') loadLocalFonts(false);
-  } catch {}
-});
+$('fontLoad').addEventListener('click', () => chrome.tabs.create({ url: chrome.runtime.getURL('fonts/fonts.html') }));
 
 $('upload').addEventListener('click', () => $('file').click());
 $('file').addEventListener('change', async (e) => {
