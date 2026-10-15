@@ -189,7 +189,19 @@ async function copyText(text) {
 // getState(): 최신 background 상태. getInviteLink(): 현재 페이지 + ?wp=코드
 // getReactionArea(): 리액션이 퍼질 영역(영상의 화면상 사각형, 없으면 null). onSend(text) / onTyping(bool) / onReaction(emoji) / onNotify(text)
 export function createChat({ getState, getInviteLink, getReactionArea, onSend, onTyping, onReaction, onNotify }) {
-  const mount = createLayer(CSS, { topLayer: true }); // 페이지 축소(transform)의 영향을 받지 않도록 최상위 레이어에
+  // 전체화면을 켜고 끌 때 레이어를 다른 부모로 옮기면 목록 스크롤이 맨 위로 돌아가므로, 옮기기 전에 위치를 기억했다가 되돌린다
+  let moveScroll = null;
+  const mount = createLayer(CSS, {
+    topLayer: true, // 페이지 축소(transform)의 영향을 받지 않도록 최상위 레이어에
+    beforeMove: () => {
+      if (list) moveScroll = { top: list.scrollTop, pinned: pinned };
+    },
+    afterMove: () => {
+      if (!list || !moveScroll) return;
+      list.scrollTop = moveScroll.pinned ? list.scrollHeight : moveScroll.top;
+      pinned = moveScroll.pinned; // 옮기며 생긴 scroll 이벤트(0)가 위치를 "위로 올림"으로 오해하지 않게
+    },
+  });
   let built = false;
   let prefs = { ...DEFAULT_PREFS };
   let previewFont = null; // 글꼴 미리보기 중이면 그 이름('' = 기본 글꼴), 아니면 null

@@ -33,7 +33,9 @@ const CSS = `
 //
 // topLayer: true 이면 Popover API 로 브라우저 최상위 레이어(top layer)에 올린다. 최상위 레이어 요소는 조상(<html>)에
 // transform(화면 축소)이 걸려 있어도 영향을 받지 않아, "오른쪽에 붙이기"에서 페이지만 줄고 채팅은 그대로 유지된다.
-export function createLayer(css, { passEvents = false, topLayer = false } = {}) {
+// beforeMove/afterMove: 전체화면을 켜고 끌 때 레이어를 다른 부모로 옮기면 안쪽 요소의 스크롤 위치가 0 으로 돌아가므로,
+// 옮기기 전에 상태를 저장하고 옮긴 뒤에 되돌릴 수 있게 부르는 함수.
+export function createLayer(css, { passEvents = false, topLayer = false, beforeMove = null, afterMove = null } = {}) {
   let host = null;
   let root = null;
   let shown = false; // remove() 뒤에는 전체화면 전환 등으로 다시 붙이지 않는다(방을 나가면 채팅 아이콘이 남던 문제)
@@ -62,12 +64,18 @@ export function createLayer(css, { passEvents = false, topLayer = false } = {}) 
       style.textContent = css;
       root.append(style);
     }
+    const moving = !!host.parentNode && host.parentNode !== parent();
+    if (moving) beforeMove?.();
     if (host.parentNode !== parent()) parent().append(host); // 부모를 옮기면 popover 는 닫히므로 아래에서 다시 연다
     if (topLayer && host.isConnected && typeof host.showPopover === 'function') {
       try {
         host.popover = 'manual';
         if (!host.matches(':popover-open')) host.showPopover();
       } catch {} // 미지원/이미 열림: 일반 fixed 레이어로 동작
+    }
+    if (moving) {
+      afterMove?.();
+      requestAnimationFrame(() => afterMove?.()); // 옮긴 뒤 크기가 바뀌어 한 번 더 맞춘다
     }
     return root;
   };
