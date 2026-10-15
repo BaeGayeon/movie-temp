@@ -361,6 +361,17 @@ $('fontName').addEventListener('keydown', (e) => e.key === 'Enter' && !e.isCompo
 $('fontReset').addEventListener('click', () => setChatFont(''));
 $('fontSelect').addEventListener('change', (e) => setChatFont(e.target.value));
 $('fontLoad').addEventListener('click', () => chrome.tabs.create({ url: chrome.runtime.getURL('fonts/fonts.html') }));
+// 글꼴 접근을 이미 허용했다면(처음 한 번만 fonts 탭에서 허용) 팝업을 열 때 자동으로 목록을 새로 불러온다. 허용하지 않았으면 아무것도 하지 않는다.
+(async () => {
+  try {
+    if (typeof window.queryLocalFonts !== 'function') return;
+    const st = await navigator.permissions.query({ name: 'local-fonts' });
+    if (st.state !== 'granted') return;
+    const fonts = await window.queryLocalFonts();
+    const families = [...new Set(fonts.map((f) => f.family))].sort((x, y) => x.localeCompare(y, 'ko'));
+    if (families.length) await chrome.storage.local.set({ localFonts: families });
+  } catch {}
+})();
 
 $('upload').addEventListener('click', () => $('file').click());
 $('file').addEventListener('change', async (e) => {
