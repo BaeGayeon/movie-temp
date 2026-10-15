@@ -42,16 +42,16 @@ const CSS = `
 
   /* ---- 메시지: 말풍선은 무난하게, 닉네임은 글자색으로 ---- */
   .list, .ep-grid { scrollbar-width: thin; scrollbar-color: var(--surface-3) transparent; } /* 스크롤바가 하얗게 튀지 않게 */
-  .list { flex: 1; overflow-y: auto; padding: 10px 10px 6px; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+  .list { font-size: calc(14px * var(--fs, 1)); flex: 1; overflow-y: auto; padding: 10px 10px 6px; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
   .msg { display: flex; gap: 8px; align-items: flex-start; }
   .msg.me { flex-direction: row-reverse; }
-  .av { flex: none; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 16px; overflow: hidden; }
-  .body { min-width: 0; max-width: calc(100% - 40px); display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+  .av { flex: none; width: var(--av, 28px); height: var(--av, 28px); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: calc(var(--av, 28px) * .57); overflow: hidden; }
+  .body { min-width: 0; max-width: calc(100% - var(--av, 28px) - 12px); display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
   .msg.me .body { align-items: flex-end; }
-  .name { display: flex; align-items: baseline; gap: 6px; font-size: 12px; }
+  .name { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 6px; font-size: .857em; }
   .msg.me .name { flex-direction: row-reverse; }
-  .name-text { font-weight: 700; } /* 색은 사용자가 고른 색(파스텔로 보정) */
-  .meta { font-weight: 400; color: var(--ink-soft); font-size: 11px; }
+  .name-text { font-weight: 700; white-space: nowrap; } /* 색은 사용자가 고른 색(파스텔로 보정) */
+  .meta { font-weight: 400; color: var(--ink-soft); font-size: .92em; white-space: nowrap; }
   .text { word-break: break-word; white-space: pre-wrap; background: var(--surface-2); border-radius: 4px 12px 12px 12px; padding: 6px 11px; }
   .msg.me .text { background: var(--bubble-me); border-radius: 12px 4px 12px 12px; }
   /* 줄글/간단 모드: 말풍선 없이 왼쪽 정렬. 줄글 = 프사 | 이름·시각 / 내용, 간단 = 이름·시각 / 내용(프사 없음) */
@@ -62,7 +62,7 @@ const CSS = `
   .list.plain .body, .list.plain .msg.me .body, .list.compact .body, .list.compact .msg.me .body { flex: 1; max-width: none; align-items: flex-start; gap: 3px; }
   .list.plain .name, .list.plain .msg.me .name, .list.compact .name, .list.compact .msg.me .name { flex-direction: row; }
   .list.plain .text, .list.plain .msg.me .text, .list.compact .text, .list.compact .msg.me .text { background: none; padding: 0; border-radius: 0; }
-  .sys { align-self: center; text-align: center; color: var(--ink-soft); font-size: 12px; padding: 0 8px; max-width: 100%; } /* 안내 문구: 어느 모드에서나 가운데, 말풍선 없이 글만 */
+  .sys { align-self: center; text-align: center; color: var(--ink-soft); font-size: .857em; padding: 0 8px; max-width: 100%; } /* 안내 문구: 어느 모드에서나 가운데, 말풍선 없이 글만 */
   .sys .ev-name { font-weight: 600; }
   .no-events .sys { display: none; }
   .empty { color: var(--ink-soft); text-align: center; padding: 18px 0; font-size: 13px; }
@@ -133,6 +133,8 @@ const DEFAULT_PREFS = {
   showClock: true, // 작성 시각
   showVideoTime: true, // 재생 시각
   showEvents: true, // 재생/일시정지/시간 이동 알림
+  fontScale: 1, // 채팅 글자 크기 배율
+  avatarSize: 28, // 채팅 프사 크기(px)
   style: 'bubble', // 대화 표시 방식: 'bubble' = 말풍선, 'plain' = 줄글(프사 + 이름/내용), 'compact' = 간단(이름/내용)
   hidden: false, // 채팅을 완전히 숨김(팝업에서 다시 켠다)
   v: 2,
@@ -190,7 +192,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
   let unread = 0;
 
   // DOM 참조
-  let wrap, panel, head, list, typingLine, input, bubbleBox, badge, floats, menu, opacity, clockCb, videoCb, eventsCb, modeBtn, pop, picker, styleSeg;
+  let fontRange, avatarRange, wrap, panel, head, list, typingLine, input, bubbleBox, badge, floats, menu, opacity, clockCb, videoCb, eventsCb, modeBtn, pop, picker, styleSeg;
 
   try {
     chrome.storage.local.get('chatPrefs').then((r) => {
@@ -350,6 +352,12 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     const vh = window.innerHeight;
     const op = clamp(prefs.opacities[modeState()], 0.3, 1);
     panel.style.opacity = String(op);
+    prefs.fontScale = clamp(Number(prefs.fontScale) || 1, 0.8, 1.6);
+    prefs.avatarSize = clamp(Math.round(Number(prefs.avatarSize) || 28), 20, 56);
+    list.style.setProperty('--fs', String(prefs.fontScale));
+    list.style.setProperty('--av', `${prefs.avatarSize}px`);
+    fontRange.value = String(prefs.fontScale);
+    avatarRange.value = String(prefs.avatarSize);
     opacity.value = String(+(1 - op).toFixed(2)); // 슬라이더는 투명도(오른쪽일수록 투명)
     clockCb.checked = prefs.showClock;
     videoCb.checked = prefs.showVideoTime;
@@ -598,7 +606,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
 
   function applyProfile(row, userId) {
     const p = profileOf(userId);
-    renderAvatar(row.querySelector('.av'), p.avatar, 28);
+    renderAvatar(row.querySelector('.av'), p.avatar); // 크기는 CSS(--av)가 정한다
     const name = row.querySelector('.name-text');
     name.textContent = p.name;
     name.style.color = pastelize(p.color); // 닉네임은 고른 색의 글자색으로. 어두운 배경에서 잘 보이게 파스텔톤으로 보정
@@ -745,6 +753,34 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     opacity.addEventListener('change', savePrefs);
     const opLabel = el('label');
     opLabel.append(el('span', '', '투명도'), opacity);
+    const sizeRange = (text, min, max, step, onInput) => {
+      const label = el('label');
+      const r = el('input');
+      r.type = 'range';
+      r.min = String(min);
+      r.max = String(max);
+      r.step = String(step);
+      r.addEventListener('input', () => onInput(Number(r.value)));
+      r.addEventListener('change', savePrefs);
+      label.append(el('span', '', text), r);
+      return [label, r];
+    };
+    let fontLabel, avatarLabel;
+    [fontLabel, fontRange] = sizeRange('글자 크기', 0.8, 1.6, 0.05, (v) => {
+      prefs.fontScale = v;
+      applyPrefs();
+    });
+    [avatarLabel, avatarRange] = sizeRange('프사 크기', 20, 56, 2, (v) => {
+      prefs.avatarSize = v;
+      applyPrefs();
+    });
+    const resetSize = el('button', 'act', '↺ 글자·프사 크기 기본값');
+    resetSize.addEventListener('click', () => {
+      prefs.fontScale = DEFAULT_PREFS.fontScale;
+      prefs.avatarSize = DEFAULT_PREFS.avatarSize;
+      applyPrefs();
+      savePrefs();
+    });
     const checkbox = (text, key) => {
       const label = el('label');
       const cb = el('input');
@@ -785,7 +821,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
       applyPrefs();
       savePrefs();
     });
-    menu.append(opLabel, styleSeg, clockLabel, videoLabel, eventsLabel, copyLink, copyCode, hideBtn);
+    menu.append(opLabel, fontLabel, avatarLabel, resetSize, styleSeg, clockLabel, videoLabel, eventsLabel, copyLink, copyCode, hideBtn);
     settingsBtn.addEventListener('click', () => (menu.hidden = !menu.hidden));
 
     list = el('div', 'list');

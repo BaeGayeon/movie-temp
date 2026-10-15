@@ -27,8 +27,9 @@ export function renderAvatar(el, avatar, px) {
   el.style.background = avatar?.bg ?? '#555';
   if (avatar?.kind === 'image') {
     const canvas = document.createElement('canvas');
-    canvas.width = canvas.height = px * 2; // 고해상도 화면 대비
-    canvas.style.cssText = `width:${px}px;height:${px}px;border-radius:50%;display:block`;
+    canvas.width = canvas.height = (px ?? 32) * 2; // 고해상도 화면 대비
+    const side = px ? `${px}px` : '100%'; // px 가 없으면 el 크기(CSS)를 따른다
+    canvas.style.cssText = `width:${side};height:${side};border-radius:50%;display:block`;
     el.append(canvas);
     decode(avatar.value).then((bmp) => bmp && canvas.getContext('2d').drawImage(bmp, 0, 0, canvas.width, canvas.height));
   } else {
