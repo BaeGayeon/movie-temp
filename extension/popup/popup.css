@@ -118,6 +118,9 @@ details.card[open] > summary { border-bottom: 2px solid var(--border); }
 .sub { font-size: 12px; font-weight: 700; color: var(--ink-soft); margin-top: 2px; }
 .fontsample { padding: 8px 10px; border-radius: 12px; background: var(--bg); font-size: 15px; }
 #fontName { flex: 1; min-width: 0; }
+.sizerow { display: flex; align-items: center; gap: 10px; }
+.sizerow span { width: 62px; flex: none; font-size: 13px; }
+.sizerow input { flex: 1; accent-color: var(--accent); }
 .fontpick { display: flex; flex-direction: column; gap: 4px; }
 #fontCur { width: 100%; text-align: left; display: flex; justify-content: space-between; align-items: center; }
 #fontCur::after { content: '▾'; opacity: .7; margin-left: 8px; }

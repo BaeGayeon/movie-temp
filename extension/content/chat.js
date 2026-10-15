@@ -198,7 +198,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
   let unread = 0;
 
   // DOM 참조
-  let fontRange, avatarRange, wrap, panel, head, list, typingLine, input, bubbleBox, badge, floats, menu, opacity, clockCb, videoCb, eventsCb, modeBtn, pop, picker, styleSeg;
+  let wrap, panel, head, list, typingLine, input, bubbleBox, badge, floats, menu, opacity, clockCb, videoCb, eventsCb, modeBtn, pop, picker, styleSeg;
 
   try {
     chrome.storage.local.get('chatPrefs').then((r) => {
@@ -224,11 +224,15 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
       }
       const next = ch.chatPrefs?.newValue;
       if (area !== 'local' || !next) return;
+      // 팝업에서 바꾼 값(숨김, 글꼴, 글자/프사 크기)을 바로 반영한다
       const hiddenChanged = !!next.hidden !== prefs.hidden;
       const fontChanged = cleanFont(next.fontFamily) !== cleanFont(prefs.fontFamily);
-      if (!hiddenChanged && !fontChanged) return;
+      const sizeChanged = (next.fontScale != null && next.fontScale !== prefs.fontScale) || (next.avatarSize != null && next.avatarSize !== prefs.avatarSize);
+      if (!hiddenChanged && !fontChanged && !sizeChanged) return;
       prefs.hidden = !!next.hidden;
       prefs.fontFamily = cleanFont(next.fontFamily);
+      if (next.fontScale != null) prefs.fontScale = next.fontScale;
+      if (next.avatarSize != null) prefs.avatarSize = next.avatarSize;
       if (built) applyPrefs();
     });
   } catch {}
@@ -380,8 +384,6 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     panel.style.fontFamily = fontStack(previewFont ?? prefs.fontFamily);
     list.style.setProperty('--fs', String(prefs.fontScale));
     list.style.setProperty('--av', `${prefs.avatarSize}px`);
-    fontRange.value = String(prefs.fontScale);
-    avatarRange.value = String(prefs.avatarSize);
     opacity.value = String(+(1 - op).toFixed(2)); // 슬라이더는 투명도(오른쪽일수록 투명)
     clockCb.checked = prefs.showClock;
     videoCb.checked = prefs.showVideoTime;
@@ -777,34 +779,6 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     opacity.addEventListener('change', savePrefs);
     const opLabel = el('label');
     opLabel.append(el('span', '', '투명도'), opacity);
-    const sizeRange = (text, min, max, step, onInput) => {
-      const label = el('label');
-      const r = el('input');
-      r.type = 'range';
-      r.min = String(min);
-      r.max = String(max);
-      r.step = String(step);
-      r.addEventListener('input', () => onInput(Number(r.value)));
-      r.addEventListener('change', savePrefs);
-      label.append(el('span', '', text), r);
-      return [label, r];
-    };
-    let fontLabel, avatarLabel;
-    [fontLabel, fontRange] = sizeRange('글자 크기', 0.8, 1.6, 0.05, (v) => {
-      prefs.fontScale = v;
-      applyPrefs();
-    });
-    [avatarLabel, avatarRange] = sizeRange('프사 크기', 20, 56, 2, (v) => {
-      prefs.avatarSize = v;
-      applyPrefs();
-    });
-    const resetSize = el('button', 'act', '↺ 글자·프사 크기 기본값');
-    resetSize.addEventListener('click', () => {
-      prefs.fontScale = DEFAULT_PREFS.fontScale;
-      prefs.avatarSize = DEFAULT_PREFS.avatarSize;
-      applyPrefs();
-      savePrefs();
-    });
     const checkbox = (text, key) => {
       const label = el('label');
       const cb = el('input');
@@ -845,7 +819,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
       applyPrefs();
       savePrefs();
     });
-    menu.append(opLabel, fontLabel, avatarLabel, resetSize, styleSeg, clockLabel, videoLabel, eventsLabel, copyLink, copyCode, hideBtn);
+    menu.append(opLabel, styleSeg, clockLabel, videoLabel, eventsLabel, copyLink, copyCode, hideBtn);
     settingsBtn.addEventListener('click', () => (menu.hidden = !menu.hidden));
 
     list = el('div', 'list');

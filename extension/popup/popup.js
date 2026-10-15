@@ -485,6 +485,26 @@ $('fontBox').addEventListener('toggle', () => {
   autoLoadFonts();
 });
 
+// 글자/프사 크기: 슬라이더를 움직이면 chatPrefs 에 저장하고 채팅이 바로 반영한다(기본값은 채팅과 같다: 글자 1.1배, 프사 34px)
+const SIZE_DEFAULTS = { fontScale: 1.1, avatarSize: 34 };
+let sizeSaveTimer = null;
+function saveSizes() {
+  clearTimeout(sizeSaveTimer);
+  sizeSaveTimer = setTimeout(async () => {
+    const { chatPrefs } = await chrome.storage.local.get('chatPrefs');
+    await chrome.storage.local.set({ chatPrefs: { ...chatPrefs, fontScale: Number($('fontScale').value), avatarSize: Number($('avatarSize').value) } });
+  }, 60);
+}
+function paintSizes(prefs) {
+  $('fontScale').value = String(prefs?.fontScale ?? SIZE_DEFAULTS.fontScale);
+  $('avatarSize').value = String(prefs?.avatarSize ?? SIZE_DEFAULTS.avatarSize);
+  $('fontSample').style.fontSize = `${15 * Number($('fontScale').value) / 1.1}px`;
+}
+chrome.storage.local.get('chatPrefs').then((r) => paintSizes(r.chatPrefs));
+$('fontScale').addEventListener('input', () => { paintSizes({ fontScale: $('fontScale').value, avatarSize: $('avatarSize').value }); saveSizes(); });
+$('avatarSize').addEventListener('input', saveSizes);
+$('sizeReset').addEventListener('click', () => { paintSizes(SIZE_DEFAULTS); saveSizes(); });
+
 $('upload').addEventListener('click', () => $('file').click());
 $('file').addEventListener('change', async (e) => {
   const file = e.target.files[0];
