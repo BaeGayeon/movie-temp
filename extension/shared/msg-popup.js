@@ -6,6 +6,7 @@ export const MSG = {
     'popup.tabRoom': '방',
     'popup.tabMe': '내 설정',
     'popup.roomSettings': '⚙️ 방 설정',
+    'popup.sync': '⚙️ 동기화 설정',
     'popup.lang': '🌐 언어',
     'popup.langAuto': '자동',
 
@@ -162,6 +163,7 @@ export const MSG = {
     'popup.tabRoom': 'Room',
     'popup.tabMe': 'My settings',
     'popup.roomSettings': '⚙️ Room settings',
+    'popup.sync': '⚙️ Sync settings',
     'popup.lang': '🌐 Language',
     'popup.langAuto': 'Auto',
 

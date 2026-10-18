@@ -233,11 +233,12 @@ summary > .ic { margin-right: .45em; }
 #optBox[hidden] { display: none; }
 #optBox .optline, #optBox #pwButtons, #optBox #pwForm { margin-bottom: 0; }
 
-/* 헤더 오른쪽 위 언어 선택 */
-.lang { position: absolute; top: 10px; right: 12px; z-index: 2; display: flex; align-items: center; gap: 4px; padding: 0 2px 0 8px; border-radius: 999px; background: var(--surface); color: var(--ink-soft); font-size: 12px; box-shadow: 0 2px 6px var(--btn-shadow); }
+/* 탭 줄 오른쪽 언어 선택 */
+.tabbar { display: flex; align-items: center; gap: 8px; }
+.tabbar .tabs { flex: 1; min-width: 0; }
+.lang { flex: none; display: flex; align-items: center; gap: 4px; padding: 0 2px 0 10px; height: 100%; border-radius: 999px; background: var(--surface-2); color: var(--ink-soft); font-size: 12px; }
 .lang-ic { line-height: 1; }
-.lang select { font-size: 12px; padding: 3px 22px 3px 4px; border: 0; background-color: transparent; background-position: right 7px center; }
-.check-card { padding: 12px 14px; }
+.lang select { font-size: 12px; padding: 6px 22px 6px 2px; border: 0; background-color: transparent; background-position: right 7px center; }
 
 /* 같은 줄의 버튼/선택칸은 높이를 맞춘다(파란 버튼 아래 입체 그림자만 조금 더 나온다) */
 .row.nowrap { align-items: stretch; }
@@ -245,4 +246,5 @@ summary > .ic { margin-right: .45em; }
 .row.nowrap > .btn:not(.small) { display: flex; align-items: center; justify-content: center; }
 .row.nowrap > .btn:not(.small):not(.primary):not(.ghost):not(.danger) { box-shadow: 0 3px 0 var(--border-2); } /* 파란 버튼의 입체감(아래 두께)과 맞춘다 */
 .row.nowrap > select { padding-top: 0; padding-bottom: 0; }
-.brand { padding-right: 96px; } /* 오른쪽 위 언어 선택과 제목이 겹치지 않게 */
+/* 아래 두께(그림자)만큼 아래 줄과 벌어져 보이도록 세로 간격을 가로 간격(8px)과 같게 맞춘다 */
+.row.nowrap:has(> .btn:not(.small):not(.ghost):not(.danger)) { margin-bottom: 3px; }

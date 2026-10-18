@@ -14,6 +14,16 @@
         <p class="tagline" data-i18n="popup.tagline">같이 보면 더 재밌어요 🍿</p>
       </div>
     </div>
+  </header>
+
+  <main>
+    <!-- 연결 안내/오류: 맨 위에 두어 눈에 띄게 한다 -->
+    <div class="error" id="error" role="status"></div>
+    <div class="tabbar">
+    <nav class="tabs" role="tablist">
+      <button type="button" role="tab" id="tabBtnRoom" data-tab="room" data-i18n="popup.tabRoom">방</button>
+      <button type="button" role="tab" id="tabBtnMe" data-tab="me" data-i18n="popup.tabMe">내 설정</button>
+    </nav>
     <label class="lang" data-i18n-title="popup.lang" title="🌐 언어">
       <span class="lang-ic" aria-hidden="true">🌐</span>
       <select id="langSel" aria-label="Language">
@@ -22,15 +32,7 @@
         <option value="en">English</option>
       </select>
     </label>
-  </header>
-
-  <main>
-    <!-- 연결 안내/오류: 맨 위에 두어 눈에 띄게 한다 -->
-    <div class="error" id="error" role="status"></div>
-    <nav class="tabs" role="tablist">
-      <button type="button" role="tab" id="tabBtnRoom" data-tab="room" data-i18n="popup.tabRoom">방</button>
-      <button type="button" role="tab" id="tabBtnMe" data-tab="me" data-i18n="popup.tabMe">내 설정</button>
-    </nav>
+    </div>
 
     <div id="tabRoom" class="tabpane" role="tabpanel" aria-labelledby="tabBtnRoom">
     <!-- 방이 없을 때 -->
@@ -194,10 +196,12 @@
       </div>
     </details>
 
-    <!-- 설정이 하나뿐이라 접는 카드 대신 펼쳐진 카드로 -->
-    <section class="card check-card" id="syncBox">
-      <label class="check" data-i18n-title="popup.adDetectTip" title="90초보다 짧은 영상은 광고로 보고, 광고 중에는 재생·일시정지·이동을 주고받지 않아요"><input type="checkbox" id="adDetect"> <span data-i18n="popup.adDetect">광고 구간은 동기화에서 제외</span></label>
-    </section>
+    <details class="card" id="syncBox" data-fold="sync">
+      <summary data-i18n="popup.sync">⚙️ 동기화 설정</summary>
+      <div class="inner">
+        <label class="check" data-i18n-title="popup.adDetectTip" title="90초보다 짧은 영상은 광고로 보고, 광고 중에는 재생·일시정지·이동을 주고받지 않아요"><input type="checkbox" id="adDetect"> <span data-i18n="popup.adDetect">광고 구간은 동기화에서 제외</span></label>
+      </div>
+    </details>
     </div>
   </main>
   <script type="module" src="popup.js"></script>
