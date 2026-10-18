@@ -181,6 +181,7 @@ summary > .ic { margin-right: .45em; }
 /* 방 옵션(비밀번호/최대 인원) */
 .opts { margin-bottom: 10px; font-size: 13px; }
 .opts > summary { cursor: pointer; color: var(--ink-soft); font-weight: 700; padding: 4px 2px; user-select: none; }
+.optnote { margin: 4px 2px 0; color: var(--ink-soft); font-size: 12px; line-height: 1.4; }
 .opts label { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-weight: 700; }
 .opts input { flex: 1; min-width: 0; }
 /* 비밀번호 칸 + 보기/숨기기(눈) 버튼 */
