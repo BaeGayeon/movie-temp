@@ -94,6 +94,8 @@ const CSS = `
   .rbtn { background: transparent; color: var(--ink-soft); font-size: 12px; padding: 0 4px; border-radius: 6px; opacity: 0; transition: opacity .1s; }
   .msg:hover .rbtn, .rbtn:focus-visible { opacity: 1; }
   .rbtn:hover { color: var(--ink); background: var(--surface-3); }
+  .msg.me .rbtn { transform: scaleX(-1); } /* 오른쪽 정렬(내 말풍선)에서는 화살표도 반대로 */
+  .list.plain .msg.me .rbtn, .list.compact .msg.me .rbtn { transform: none; }
   .quote { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; font-size: .857em; color: var(--ink-soft);
     background: transparent; border-left: 2px solid var(--border-3); padding: 0 0 0 6px; cursor: pointer; }
   .quote::before { content: '↩ '; }
