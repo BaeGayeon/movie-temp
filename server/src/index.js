@@ -236,6 +236,8 @@ export function createServer({
       new Promise((resolve) => server.listen(port, host, () => resolve(server.address().port))),
     // 배포 등으로 곧 꺼질 때: 연결된 모두에게 알리고 닫는다(1012 = service restart). 확장이 바로 다시 연결해 방을 복구한다
     announceRestart: () => {
+      // 새 연결은 더 받지 않는다: 재접속이 죽어가는 서버에 붙지 않고 새 서버로 가야 한다
+      server.close();
       for (const ws of wss.clients) {
         if (ws.readyState !== ws.OPEN) continue;
         ws.send(JSON.stringify({ type: S2C.SERVER_RESTARTING }));
