@@ -72,7 +72,8 @@ option { color: #222; }
 .or { display: flex; align-items: center; gap: 8px; margin: 12px 0 10px; color: var(--ink-soft); font-size: 12px; }
 .or::before, .or::after { content: ''; flex: 1; height: 2px; border-radius: 2px; background: var(--border); }
 .join { display: flex; gap: 8px; }
-.join input { flex: 1; text-transform: uppercase; letter-spacing: 3px; font-weight: 700; text-align: center; }
+.join input, .joinpw { text-transform: uppercase; letter-spacing: 3px; font-weight: 700; text-align: center; } /* 코드 칸과 비밀번호 칸은 같은 모양 */
+.join input { flex: 1; }
 .join .btn { flex: none; }
 .hint { margin: 10px 0 0; font-size: 12px; color: var(--ink-soft); text-align: center; }
 
