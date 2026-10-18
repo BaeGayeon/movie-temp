@@ -72,7 +72,7 @@ export function createServer({
     if (req.method === 'GET' && req.url === '/health') {
       // 확장 background 가 잠든 서버를 깨울 때 이 주소를 fetch 한다. 스토어 빌드는 서버 주소에 대한 호스트 권한이 없어 CORS 헤더가 없으면 응답이 와도 fetch 가 실패한다
       res.writeHead(200, { ...SECURITY_HEADERS, ...cors(req), 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
-      res.end(JSON.stringify({ ok: true, rooms: rooms.rooms.size }));
+      res.end(JSON.stringify({ ok: true, rooms: rooms.rooms.size, serverId: rooms.serverId })); // serverId: 서버가 켜질 때마다 바뀌는 값(확장이 끊긴 이유가 재배포인지 구분하는 데 쓴다)
       return;
     }
     // 초대 링크의 방이 아직 있는지 확인(확장 background 가 호출). 방 정보는 내보내지 않고 존재 여부만 돌려준다

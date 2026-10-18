@@ -114,7 +114,13 @@
   function showConnNotice() {
     if (!isTop || !connLost()) return;
     connShown = true;
-    ui.showConnection(tr(droppedAction ? 'content.droppedAction' : state.restarting ? 'content.serverRestarting' : 'content.reconnecting'));
+    const restart = !!state.restarting; // 재배포/서버 재시작(예정된 일)인지, 진짜 오류인지
+    ui.showConnection(
+      tr(droppedAction ? (restart ? 'content.droppedActionRestart' : 'content.droppedAction') : restart ? 'content.serverRestarting' : 'content.reconnecting'),
+      undefined,
+      false,
+      restart ? 'restart' : 'error',
+    );
   }
   function updateConnNotice() {
     if (!isTop) return;
@@ -126,7 +132,7 @@
       clearTimeout(connTimer);
       connTimer = null;
       droppedAction = false;
-      if (connShown) ui.showConnection(null, tr('content.reconnected'));
+      if (connShown) ui.showConnection(null, tr(state.restarting ? 'content.reconnectedRestart' : 'content.reconnected'));
       connShown = false;
     }
   }

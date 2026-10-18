@@ -35,6 +35,8 @@ const CSS = `
     padding: 8px 18px; border-radius: 999px; box-shadow: var(--shadow); font-weight: 500; white-space: nowrap; }
   .conn { position: absolute; top: 18px; left: 18px; display: flex; align-items: center; gap: 10px; max-width: min(400px, calc(100% - 36px)); background: var(--warn-bg); color: var(--warn-ink); border: 1px solid var(--warn-border);
     padding: 9px 18px; border-radius: 14px; box-shadow: var(--shadow); font-weight: 500; line-height: 1.35; text-align: left; }
+  .conn.info { background: var(--surface); color: var(--ink); border-color: var(--border-3); }
+  .conn.info::before { border-color: var(--border-3); border-top-color: var(--accent-light); }
   .conn.ok::before { content: '✓'; border: 0; width: auto; height: auto; animation: none; border-radius: 0; font-weight: 700; }
   .conn::before { content: ''; flex: none; width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--warn-border); border-top-color: var(--warn-ink); animation: conn-spin .8s linear infinite; }
   @keyframes conn-spin { to { transform: rotate(360deg); } }
@@ -377,7 +379,8 @@ export function createUI() {
     // 서버와 연결이 끊겨 다시 연결하는 중(영상 위 맨 위). text 가 없으면 숨김
     // 끊김은 1~2초 만에 끝나는 일이 많아서, 한 번 뜬 안내는 읽을 수 있게 최소 CONN_MIN_MS 동안은 보여 준다
     // doneText: 다시 연결됐을 때 최소 시간 동안 대신 보여 줄 글자(스피너 없이)
-    showConnection(text, doneText, immediate = false) {
+    // kind: 'restart'(재배포/서버 재시작: 차분한 색) | 그 밖(진짜 오류: 경고 색)
+    showConnection(text, doneText, immediate = false, kind = 'error') {
       clearTimeout(connHideTimer);
       if (!text) {
         if (!connEl) return;
@@ -406,6 +409,7 @@ export function createUI() {
         layer.append(connEl);
         connShownAt = Date.now();
       }
+      connEl.classList.toggle('info', kind === 'restart');
       connEl.textContent = text;
     },
 
