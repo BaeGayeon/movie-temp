@@ -377,6 +377,7 @@ function handleServer(m) {
 
 function handleServerError(m) {
   if (m.code === ERR.ROOM_NOT_FOUND) {
+    if (!room.roomCode) toast(m.message || '방이 닫혔어요'); // 참가가 실패한 경우: 입장 전이라 팝업이 아니라 그 탭에 알린다
     if (room.roomCode) {
       toast(m.message || '방이 사라졌어요');
       const tabId = room.tabId;
@@ -392,6 +393,20 @@ function handleServerError(m) {
     leaveRoom(false);
     lastError = m.message;
     broadcast();
+  }
+}
+
+// 초대 링크의 방이 아직 있는지 서버에 묻는다. 서버가 깨어나는 중이거나 네트워크 오류면 null(모름)
+const ROOM_CHECK_TIMEOUT_MS = 6000;
+async function roomExists(code) {
+  try {
+    const url = `${SERVER_URL.replace(/^ws/, 'http')}/rooms/${code}`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(ROOM_CHECK_TIMEOUT_MS), cache: 'no-store' });
+    if (!res.ok) return null;
+    const body = await res.json();
+    return typeof body.exists === 'boolean' ? body.exists : null;
+  } catch {
+    return null;
   }
 }
 
@@ -487,6 +502,11 @@ async function onCommand(m, sender) {
       return room.roomCode && fromTab === room.tabId
         ? { state: publicState(), chat: room.chat }
         : { state: null, chat: [] };
+
+    case CMD.CHECK_ROOM: {
+      const code = String(m.roomCode ?? '').trim().toUpperCase();
+      return { exists: ROOM_CODE_RE.test(code) ? await roomExists(code) : null };
+    }
 
     case CMD.HAS_VIDEO:
       return { ok: await tabHasVideo(m.tabId ?? fromTab) };
