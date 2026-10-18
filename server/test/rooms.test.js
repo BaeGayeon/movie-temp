@@ -99,6 +99,7 @@ test('GET /privacy: ?lang=en 또는 Accept-Language 로 영어 페이지', async
 
 test('GET /health', async () => {
   const res = await fetch(`http://127.0.0.1:${port}/health`);
+  assert.equal(res.headers.get('access-control-allow-origin'), '*', '확장(호스트 권한 없는 스토어 빌드)이 잠든 서버를 깨우려면 CORS 헤더가 필요하다');
   assert.equal(res.status, 200);
   assert.equal((await res.json()).ok, true);
 });

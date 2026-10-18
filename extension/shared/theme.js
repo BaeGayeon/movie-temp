@@ -28,6 +28,14 @@ const CALM = {
   'bubble-me': '#3a3b3e', // 내 말풍선
 };
 
+// 채팅 색 "검정": 차콜(CALM) 위에 배경·테두리만 더 어둡게 덮어쓴다. 글자색·포인트는 그대로.
+const BLACK = {
+  bg: '#000000', surface: '#0b0b0c', 'surface-2': '#161617', 'surface-3': '#212123',
+  border: '#161617', 'border-2': '#222224', 'border-3': '#343436',
+  'head-1': '#0b0b0c', 'head-2': '#0b0b0c', 'bubble-me': '#2a2a2c',
+  'warn-bg': '#18181a',
+};
+
 const decls = (t) => Object.entries(t).map(([k, v]) => `--${k}:${v};`).join('');
 
 // 글꼴: 팝업은 @font-face 로 직접 불러온 SUIT, 페이지 안 UI 는 FontFace API 로 넣은 'BMT SUIT'(shared/font.js)
@@ -35,6 +43,7 @@ const FONT_FALLBACK = "system-ui, -apple-system, 'Malgun Gothic', sans-serif";
 
 export const ROOT_THEME_CSS = `:root{${decls(POPUP)}--font:'SUIT',${FONT_FALLBACK};}`;
 export const SHADOW_THEME_CSS = `:host{${decls(CALM)}--font:'BMT SUIT',${FONT_FALLBACK};}`;
+export const BLACK_THEME_CSS = `.root[data-theme=black]{${decls(BLACK)}}`;
 
 // ---------- 닉네임 색 ----------
 // 어떤 색을 골랐더라도(예전에 저장된 진한 색 포함) 어두운 배경에서 잘 보이는 파스텔톤으로 보정해서 보여준다.
