@@ -17,8 +17,8 @@ export const C2S = {
   CHAT: 'chat',
   TYPING: 'typing',
   REACTION: 'reaction',
-  // 4단계 (비밀번호/인원 제한은 보류)
-  SET_ROOM_OPTIONS: 'set_room_options',
+  // 4단계: 방 옵션(비밀번호/인원 제한)은 방을 만들 때 create_room 에 싣고, 만든 뒤에는 방장이 set_room_options 로 바꾼다.
+  SET_ROOM_OPTIONS: 'set_room_options', // { password?: string | null, maxMembers?: number | null } — null 은 해제
 };
 
 export const S2C = {
@@ -41,12 +41,18 @@ export const S2C = {
   CHAT: 'chat',
   TYPING: 'typing',
   REACTION: 'reaction',
+  // 4단계
+  ROOM_OPTIONS: 'room_options', // { hasPassword, maxMembers, passwordChanged, fromId } — 방장이 방 옵션을 바꿈
 };
 
 export const ERR = {
   ROOM_NOT_FOUND: 'room_not_found',
   NOT_ALLOWED: 'not_allowed',
   REPLACED: 'replaced',
+  PASSWORD_REQUIRED: 'password_required', // 비밀번호가 있는 방에 비밀번호 없이 들어오려 함
+  WRONG_PASSWORD: 'wrong_password',
+  ROOM_FULL: 'room_full',
+  TOO_MANY_ATTEMPTS: 'too_many_attempts', // 참가 실패가 잦아 잠시 차단
 };
 
 export const VIDEO_ACTIONS = ['play', 'pause', 'seek'];
@@ -56,7 +62,7 @@ export const MAX_COUNTDOWN_SECONDS = 10;
 
 // 3단계: 프로필/채팅/리액션 제한
 export const MAX_NAME_LENGTH = 16;
-export const MAX_CHAT_LENGTH = 300;
+export const MAX_CHAT_LENGTH = 2000;
 // 리액션 빠른 선택 목록(기본). 감정이 비슷한 것끼리 묶어 두었다(묶음 사이는 화면에서 간격을 둔다).
 //   호감·기쁨 | 응원·축하 | 놀람·의문 | 슬픔 | 화남·무덤덤
 // 서버는 이모지 1개면 무엇이든 허용하고 빈도만 제한한다.
@@ -118,6 +124,17 @@ export function validateProfile(p) {
 }
 export const MODES = ['host_only', 'everyone'];
 
+// 방 옵션: 비밀번호(선택, 영문·숫자 4~32자)와 최대 인원(선택, 2~20명)
+export const MIN_PASSWORD_LENGTH = 4;
+export const MAX_PASSWORD_LENGTH = 32;
+export const MIN_ROOM_MEMBERS = 2;
+export const MAX_ROOM_MEMBERS = 20;
+// 비밀번호는 영문과 숫자만(방 코드와 같은 글자 종류). 팝업 입력칸도 같은 규칙으로 막는다.
+export const PASSWORD_CHARS_RE = /^[A-Za-z0-9]+$/;
+export const isValidNewPassword = (v) =>
+  typeof v === 'string' && v.length >= MIN_PASSWORD_LENGTH && v.length <= MAX_PASSWORD_LENGTH && PASSWORD_CHARS_RE.test(v);
+export const isValidMaxMembers = (v) => Number.isInteger(v) && v >= MIN_ROOM_MEMBERS && v <= MAX_ROOM_MEMBERS;
+
 export const ROOM_CODE_RE = /^[A-Z0-9]{6}$/;
 const USER_ID_RE = /^[A-Za-z0-9_-]{8,64}$/;
 const MAX_TIME = 24 * 60 * 60; // 초
@@ -128,17 +145,31 @@ const isTime = (v) => isNum(v) && v >= 0 && v <= MAX_TIME;
 // 타입별 검증기: 올바르면 정규화된 메시지를, 아니면 null 을 반환한다.
 // 여기에 없는 타입(이후 단계 메시지 포함)은 무시된다.
 const validators = {
-  [C2S.CREATE_ROOM]: (m) =>
-    typeof m.userId === 'string' && USER_ID_RE.test(m.userId)
-      ? { type: m.type, userId: m.userId }
-      : null,
+  [C2S.CREATE_ROOM]: (m) => {
+    if (typeof m.userId !== 'string' || !USER_ID_RE.test(m.userId)) return null;
+    const out = { type: m.type, userId: m.userId };
+    if (m.password !== undefined) {
+      if (!isValidNewPassword(m.password)) return null;
+      out.password = m.password;
+    }
+    if (m.maxMembers !== undefined) {
+      if (!isValidMaxMembers(m.maxMembers)) return null;
+      out.maxMembers = m.maxMembers;
+    }
+    return out;
+  },
 
   [C2S.JOIN_ROOM]: (m) => {
     if (typeof m.userId !== 'string' || !USER_ID_RE.test(m.userId)) return null;
     if (typeof m.roomCode !== 'string') return null;
     const roomCode = m.roomCode.toUpperCase();
     if (!ROOM_CODE_RE.test(roomCode)) return null;
-    return { type: m.type, userId: m.userId, roomCode };
+    const out = { type: m.type, userId: m.userId, roomCode };
+    if (m.password !== undefined) {
+      if (typeof m.password !== 'string' || m.password.length > MAX_PASSWORD_LENGTH) return null;
+      out.password = m.password;
+    }
+    return out;
   },
 
   [C2S.LEAVE_ROOM]: (m) => ({ type: m.type }),
@@ -178,16 +209,35 @@ const validators = {
 
   [C2S.CHAT]: (m) => {
     if (typeof m.text !== 'string') return null;
-    const text = m.text.replace(/[\r\n\t]+/g, ' ').trim();
-    if (text.length < 1 || text.length > MAX_CHAT_LENGTH || /[\p{Cc}\u2028\u2029]/u.test(text)) return null;
+    // 줄바꿈은 살리되(연속 빈 줄은 한 줄로) 탭은 공백으로, 줄 끝 공백은 지운다
+    const text = m.text.replace(/\r\n?/g, '\n').replace(/\t/g, ' ').replace(/ +\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+    if (text.length < 1 || text.length > MAX_CHAT_LENGTH || /[\p{Cc}\u2028\u2029]/u.test(text.replace(/\n/g, ''))) return null;
     // videoTime: 보낸 시점의 영상 재생 위치(초). 선택 사항
     if (m.videoTime !== undefined && !isTime(m.videoTime)) return null;
-    return m.videoTime === undefined ? { type: m.type, text } : { type: m.type, text, videoTime: m.videoTime };
+    const out = { type: m.type, text };
+    if (m.videoTime !== undefined) out.videoTime = m.videoTime;
+    // replyTo: 답장 대상 메시지의 id(서버가 붙여 준 8자리 16진수). 형식이 틀리면 답장 표시만 버리고 메시지는 보낸다
+    if (typeof m.replyTo === 'string' && /^[0-9a-f]{8}$/.test(m.replyTo)) out.replyTo = m.replyTo;
+    return out;
   },
 
   [C2S.TYPING]: (m) => (typeof m.isTyping === 'boolean' ? { type: m.type, isTyping: m.isTyping } : null),
 
   [C2S.REACTION]: (m) => (isSingleEmoji(m.emoji) ? { type: m.type, emoji: m.emoji } : null),
+
+  // 방장이 비밀번호(string = 설정/변경, null = 없앰)와 최대 인원(number = 설정, null = 제한 없음)을 바꾼다. 둘 중 하나는 있어야 한다.
+  [C2S.SET_ROOM_OPTIONS]: (m) => {
+    const out = { type: m.type };
+    if (m.password !== undefined) {
+      if (m.password !== null && !isValidNewPassword(m.password)) return null;
+      out.password = m.password;
+    }
+    if (m.maxMembers !== undefined) {
+      if (m.maxMembers !== null && !isValidMaxMembers(m.maxMembers)) return null;
+      out.maxMembers = m.maxMembers;
+    }
+    return 'password' in out || 'maxMembers' in out ? out : null;
+  },
 
   [C2S.SYNC_REPORT]: (m) =>
     isTime(m.time) && typeof m.playing === 'boolean' && isNum(m.sentAt)
@@ -195,7 +245,7 @@ const validators = {
       : null,
 };
 
-export const MAX_MESSAGE_BYTES = 4096; // 일반 메시지 상한
+export const MAX_MESSAGE_BYTES = 8192; // 일반 메시지 상한(채팅 2000자가 전부 이스케이프돼도 4000자 안팎)
 export const MAX_PROFILE_MESSAGE_BYTES = 40 * 1024; // profile_update 만 이미지 프사(20KB, base64 ~27KB) 때문에 크다
 
 export function parseMessage(raw) {

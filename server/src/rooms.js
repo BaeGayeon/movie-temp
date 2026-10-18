@@ -1,4 +1,4 @@
-import { randomInt } from 'node:crypto';
+import { randomBytes, randomInt, scryptSync, timingSafeEqual } from 'node:crypto';
 import { S2C, ERR, VIDEO_ACTION_SYNC, DEFAULT_COLORS, DEFAULT_AVATAR_EMOJI } from './protocol.js';
 
 const AD_ROLLBACK_MS = 6000; // 광고 보고 직전 이 시간 안의 본인 이벤트는 광고 전환 중 생긴 것으로 보고 되돌린다
@@ -14,6 +14,15 @@ function keepSnapshot(room, userId, at) {
 // 헷갈리는 문자(0/O, 1/I)를 뺀 영숫자
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
+// 방 비밀번호는 해시(scrypt + 무작위 salt)로만 메모리에 보관한다(평문 보관/로그 금지).
+function hashPassword(password) {
+  const salt = randomBytes(16);
+  return { salt, hash: scryptSync(password, salt, 32) };
+}
+function checkPassword(stored, password) {
+  return typeof password === 'string' && timingSafeEqual(stored.hash, scryptSync(password, stored.salt, 32));
+}
+
 // conn: { send(obj), close?(), userId, roomCode } — WebSocket 과 분리해 테스트하기 쉽게 한다.
 export class RoomManager {
   constructor({
@@ -24,6 +33,8 @@ export class RoomManager {
     bufferWaitMs = 15_000, // 버퍼링 대기 상한
     adWaitMs = 10 * 60_000, // 광고 대기 상한(광고는 길 수 있다)
     resumeDelayMs = 500, // 모두 준비된 뒤 함께 재개하기까지의 여유
+    joinFailLimit = 10, // 연결 주소(IP) 당 이 횟수만큼 참가에 실패(없는 방/틀린 비밀번호)하면 잠시 차단
+    joinFailWindowMs = 60_000,
     now = () => Date.now(),
   } = {}) {
     this.graceMs = graceMs; // 연결이 끊긴 참가자를 유지하는 시간(재접속 대기)
@@ -33,6 +44,9 @@ export class RoomManager {
     this.adWaitMs = adWaitMs;
     this.resumeDelayMs = resumeDelayMs;
     this.now = now;
+    this.joinFailLimit = joinFailLimit;
+    this.joinFailWindowMs = joinFailWindowMs;
+    this.joinFails = new Map(); // ip -> { count, resetAt }
     this.rooms = new Map();
     this.idleTimer = setInterval(() => this.closeIdleRooms(), idleSweepMs);
     this.idleTimer.unref?.();
@@ -55,7 +69,7 @@ export class RoomManager {
     }
   }
 
-  create(conn, userId) {
+  create(conn, userId, { password, maxMembers } = {}) {
     this.leave(conn);
     const room = {
       code: this.#newCode(),
@@ -72,6 +86,8 @@ export class RoomManager {
       autoPaused: false, // 버퍼링 때문에 서버가 멈춘 상태인지
       waitTimer: null,
       lastSyncAt: 0,
+      password: password ? hashPassword(password) : null, // { salt, hash }. 평문은 보관하지 않는다
+      maxMembers: maxMembers ?? null,
     };
     this.rooms.set(room.code, room);
     this.#attach(room, conn, userId);
@@ -79,11 +95,52 @@ export class RoomManager {
     conn.send(this.#stateMsg(room));
   }
 
-  join(conn, roomCode, userId) {
+  #joinBlocked(ip) {
+    const e = ip && this.joinFails.get(ip);
+    return !!e && e.resetAt > this.now() && e.count >= this.joinFailLimit;
+  }
+
+  #joinFailed(ip) {
+    if (!ip) return;
+    const now = this.now();
+    let e = this.joinFails.get(ip);
+    if (!e || e.resetAt <= now) {
+      for (const [k, v] of this.joinFails) if (v.resetAt <= now) this.joinFails.delete(k);
+      e = { count: 0, resetAt: now + this.joinFailWindowMs };
+      this.joinFails.set(ip, e);
+    }
+    e.count++;
+  }
+
+  join(conn, roomCode, userId, password) {
+    const reject = (code, message) => conn.send({ type: S2C.ERROR, code, message });
+    if (this.#joinBlocked(conn.ip)) {
+      reject(ERR.TOO_MANY_ATTEMPTS, '참가 시도가 너무 많아요. 잠시 뒤에 다시 해 주세요.');
+      return;
+    }
     const room = this.rooms.get(roomCode);
     if (!room) {
-      conn.send({ type: S2C.ERROR, code: ERR.ROOM_NOT_FOUND, message: '존재하지 않는 방이에요.' });
+      this.#joinFailed(conn.ip);
+      reject(ERR.ROOM_NOT_FOUND, '존재하지 않는 방이에요.');
       return;
+    }
+    // 이미 방에 있는 사람의 재접속은 비밀번호/인원 검사를 하지 않는다
+    if (!room.participants.has(userId)) {
+      if (room.password) {
+        if (password === undefined) {
+          reject(ERR.PASSWORD_REQUIRED, '비밀번호가 필요한 방이에요.');
+          return;
+        }
+        if (!checkPassword(room.password, password)) {
+          this.#joinFailed(conn.ip);
+          reject(ERR.WRONG_PASSWORD, '비밀번호가 맞지 않아요.');
+          return;
+        }
+      }
+      if (room.maxMembers && room.participants.size >= room.maxMembers) {
+        reject(ERR.ROOM_FULL, `방이 가득 찼어요 (최대 ${room.maxMembers}명).`);
+        return;
+      }
     }
     if (conn.roomCode && (conn.roomCode !== roomCode || conn.userId !== userId)) this.leave(conn);
     const { isNew, participant } = this.#attach(room, conn, userId);
@@ -231,11 +288,13 @@ export class RoomManager {
   }
 
   // 채팅: 메시지에는 userId 만 붙이고 방 전체(본인 포함)에 전파. 사용자당 빈도 제한.
-  chat(conn, text, videoTime) {
+  chat(conn, text, videoTime, replyTo) {
     const found = this.#find(conn);
     if (!found || !this.#take(found.p, 'chat', 5, 1.5)) return; // 버스트 5개, 평균 초당 1.5개
-    const msg = { type: S2C.CHAT, userId: found.p.id, text, sentAt: this.now() };
+    // id: 답장이 가리킬 수 있도록 서버가 메시지마다 붙인다(8자리 16진수)
+    const msg = { type: S2C.CHAT, id: randomBytes(4).toString('hex'), userId: found.p.id, text, sentAt: this.now() };
     if (videoTime !== undefined) msg.videoTime = videoTime; // 보낸 시점의 재생 위치(초)
+    if (replyTo !== undefined) msg.replyTo = replyTo; // 답장 대상 메시지 id
     this.#broadcast(found.room, msg);
   }
 
@@ -259,6 +318,25 @@ export class RoomManager {
     if (p.id !== room.hostId || room.mode === mode) return;
     room.mode = mode;
     this.#broadcast(room, { type: S2C.MODE_CHANGED, mode });
+  }
+
+  // 방장이 비밀번호/최대 인원을 바꾼다. 이미 방에 있는 사람은 그대로 두고, 새로 들어오는 사람부터 적용된다. 방장이 아니면 무시.
+  setOptions(conn, { password, maxMembers }) {
+    const found = this.#find(conn);
+    if (!found) return;
+    const { room, p } = found;
+    if (p.id !== room.hostId) return;
+    const passwordChanged = password !== undefined;
+    if (passwordChanged) room.password = password === null ? null : hashPassword(password);
+    if (maxMembers !== undefined) room.maxMembers = maxMembers;
+    room.lastActivityAt = this.now();
+    this.#broadcast(room, {
+      type: S2C.ROOM_OPTIONS,
+      hasPassword: !!room.password,
+      maxMembers: room.maxMembers,
+      passwordChanged,
+      fromId: p.id,
+    });
   }
 
   shutdown() {
@@ -412,6 +490,8 @@ export class RoomManager {
       roomCode: room.code,
       hostId: room.hostId,
       mode: room.mode,
+      hasPassword: !!room.password, // 비밀번호/해시는 절대 내려보내지 않는다
+      maxMembers: room.maxMembers,
       participants: [...room.participants.values()].sort((a, b) => a.joinSeq - b.joinSeq).map(pub),
       video: { ...room.video },
       waitingIds: [...room.waiting],

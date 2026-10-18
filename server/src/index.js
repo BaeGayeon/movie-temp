@@ -47,7 +47,8 @@ export function createServer({ port = Number(process.env.PORT) || 8080, host = '
         res.end(JSON.stringify({ error: 'rate_limited' }));
       } else {
         res.writeHead(200, { ...cors, 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ exists: rooms.rooms.has(check[1].toUpperCase()) }));
+        const room = rooms.rooms.get(check[1].toUpperCase());
+        res.end(JSON.stringify({ exists: !!room, hasPassword: !!room?.password })); // 방 정보는 이것만 내보낸다(비밀번호 유무는 초대 배너에서 입력칸을 미리 보여 주는 데 쓴다)
       }
       return;
     }
@@ -63,8 +64,9 @@ export function createServer({ port = Number(process.env.PORT) || 8080, host = '
 
   const wss = new WebSocketServer({ server, maxPayload: MAX_PAYLOAD });
 
-  wss.on('connection', (ws) => {
+  wss.on('connection', (ws, req) => {
     const conn = {
+      ip: clientIp(req),
       userId: null,
       roomCode: null,
       send: (obj) => ws.readyState === ws.OPEN && ws.send(JSON.stringify(obj)),
@@ -89,10 +91,10 @@ export function createServer({ port = Number(process.env.PORT) || 8080, host = '
 
       switch (msg.type) {
         case C2S.CREATE_ROOM:
-          rooms.create(conn, msg.userId);
+          rooms.create(conn, msg.userId, { password: msg.password, maxMembers: msg.maxMembers });
           break;
         case C2S.JOIN_ROOM:
-          rooms.join(conn, msg.roomCode, msg.userId);
+          rooms.join(conn, msg.roomCode, msg.userId, msg.password);
           break;
         case C2S.LEAVE_ROOM:
           rooms.leave(conn);
@@ -102,6 +104,9 @@ export function createServer({ port = Number(process.env.PORT) || 8080, host = '
           break;
         case C2S.SET_PERMISSION:
           rooms.setPermission(conn, msg.mode);
+          break;
+        case C2S.SET_ROOM_OPTIONS:
+          rooms.setOptions(conn, msg);
           break;
         case C2S.COUNTDOWN_START:
           rooms.countdown(conn, msg.seconds);
@@ -116,7 +121,7 @@ export function createServer({ port = Number(process.env.PORT) || 8080, host = '
           rooms.profileUpdate(conn, msg.profile);
           break;
         case C2S.CHAT:
-          rooms.chat(conn, msg.text, msg.videoTime);
+          rooms.chat(conn, msg.text, msg.videoTime, msg.replyTo);
           break;
         case C2S.TYPING:
           rooms.typing(conn, msg.isTyping);

@@ -10,6 +10,7 @@
     if (!t || t.nodeType !== 1 || !t.hasAttribute('data-bmt-layer')) return;
     // 전파를 끊으면 채팅 입력칸 자신의 리스너(엔터로 전송)도 못 받으므로, 끊기 전에 채팅 쪽 처리기를 먼저 부른다
     window.__bmtKeyHook?.(e);
+    window.__bmtInviteKeyHook?.(e); // 초대 배너의 비밀번호 칸(엔터로 참가)
     e.stopImmediatePropagation();
   };
   for (const type of ['keydown', 'keyup', 'keypress']) window.addEventListener(type, block, true);

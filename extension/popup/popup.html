@@ -19,12 +19,19 @@
   <main>
     <!-- 방이 없을 때 -->
     <section id="lobby" class="card" hidden>
+      <details class="opts" id="createOpts">
+        <summary>방 옵션 (선택)</summary>
+        <p class="optnote">둘 다 비워 두면 누구나 들어올 수 있고 인원 제한이 없어요.</p>
+        <label><span class="lbl">🔒 비밀번호</span> <span class="pwwrap"><input id="createPw" type="password" placeholder="영문·숫자 4~32자" autocomplete="new-password"></span></label>
+        <label><span class="lbl">👥 최대 인원</span> <input id="createMax" type="number" min="2" max="20" placeholder="2~20명"></label>
+      </details>
       <button id="create" class="btn primary big">🎬 방 만들기</button>
       <div class="or">또는 코드로 참가</div>
       <div class="join">
-        <input id="code" maxlength="6" placeholder="방 코드 6자리" autocomplete="off" spellcheck="false">
+        <input id="code" placeholder="방 코드 6자리" autocomplete="off" spellcheck="false">
         <button id="join" class="btn">참가</button>
       </div>
+      <span class="pwwrap full"><input id="joinPw" class="joinpw" type="password" placeholder="비밀번호 (있는 방만)" autocomplete="off"></span>
       <p class="hint" id="noVideo" hidden>이 페이지에서는 영상을 찾지 못했어요. 쿠팡플레이·넷플릭스·웨이브·티빙의 영상 페이지에서 시도해 주세요.</p>
       <div id="reloadHint" hidden>
         <p class="hint">이 탭에서 확장 프로그램이 아직 시작되지 않았어요. 확장을 새로 설치하거나 업데이트한 뒤에는 열려 있던 탭을 한 번 새로고침해야 해요.</p>
@@ -78,6 +85,33 @@
             </select>
             <button id="countdown" class="btn primary">⏱️ 카운트다운 시작</button>
           </div>
+        </div>
+      </details>
+      <!-- 방장만 보인다: 방 안에서 비밀번호/최대 인원을 바꾼다 -->
+      <details class="card" id="optBox" data-fold="options" hidden>
+        <summary>🔒 방 옵션</summary>
+        <div class="inner">
+          <div class="optline">
+            <span class="lbl">비밀번호</span>
+            <span class="optval" id="pwValue"></span>
+            <button id="pwEye" class="iconbtn" type="button" hidden></button>
+            <button id="pwCopy" class="btn small" type="button" hidden>복사</button>
+          </div>
+          <div class="row nowrap" id="pwButtons">
+            <button id="pwEdit" class="btn small" type="button">설정</button>
+            <button id="pwRemove" class="btn small danger" type="button">삭제</button>
+          </div>
+          <div class="row nowrap" id="pwForm" hidden>
+            <span class="pwwrap"><input id="pwNew" type="password" placeholder="새 비밀번호 (영문·숫자 4~32자)" autocomplete="new-password"></span>
+            <button id="pwSave" class="btn small primary" type="button">저장</button>
+            <button id="pwCancel" class="btn small" type="button">취소</button>
+          </div>
+          <div class="optline">
+            <span class="lbl">최대 인원</span>
+            <input id="maxEdit" type="number" min="2" max="20" placeholder="제한 없음">
+            <button id="maxSave" class="btn small" type="button">저장</button>
+          </div>
+          <p class="optnote">바꿔도 이미 있는 사람은 나가지 않아요. 새로 들어오는 사람부터 적용돼요.</p>
         </div>
       </details>
       <p class="wait" id="waitInfo" hidden></p>

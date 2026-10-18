@@ -100,9 +100,11 @@ test('GET /rooms/<코드>: 방 존재 여부만 돌려준다', async () => {
   const yes = await fetch(url(code));
   assert.equal(yes.status, 200);
   assert.equal(yes.headers.get('access-control-allow-origin'), '*');
-  assert.deepEqual(await yes.json(), { exists: true });
-  assert.deepEqual(await (await fetch(url(code.toLowerCase()))).json(), { exists: true });
-  assert.deepEqual(await (await fetch(url('ZZZZZZ'))).json(), { exists: false });
+  assert.deepEqual(await yes.json(), { exists: true, hasPassword: false });
+  assert.deepEqual(await (await fetch(url(code.toLowerCase()))).json(), { exists: true, hasPassword: false });
+  assert.deepEqual(await (await fetch(url('ZZZZZZ'))).json(), { exists: false, hasPassword: false });
+  const locked = await makeRoomWith({ password: 'secret1' });
+  assert.deepEqual(await (await fetch(url(locked.code))).json(), { exists: true, hasPassword: true });
   assert.equal((await fetch(url('abc'))).status, 404); // 형식이 다르면 없는 주소
 });
 
@@ -165,7 +167,7 @@ test('없는 방 참가는 error, 잘못된 메시지는 무시하고 연결 유
   c.send({ type: 'video', action: 'explode', time: 1, sentAt: 1 });
   c.send({ type: 'join_room', roomCode: 'x', userId: 'short' });
   c.send({ type: 'unknown_type' });
-  c.send(JSON.stringify({ type: 'video', action: 'play', time: 1, sentAt: 1, pad: 'x'.repeat(5000) }));
+  c.send(JSON.stringify({ type: 'video', action: 'play', time: 1, sentAt: 1, pad: 'x'.repeat(9000) }));
   c.send({ type: 'ping' });
   await c.next('pong');
   c.close();
@@ -485,14 +487,50 @@ test('채팅: 본인 포함 전체 전달, userId 만 붙고 서버 시각, 길�
   const cb = await b.next('chat');
   assert.deepEqual(ca, cb);
   assert.equal(ca.userId, a.userId);
-  assert.equal(ca.text, '안녕하세요 <b>x</b> 둘째줄'); // 태그는 그대로(클라이언트가 textContent 로 렌더링)
+  assert.equal(ca.text, '안녕하세요 <b>x</b>\n둘째줄'); // 태그는 그대로(클라이언트가 textContent 로 렌더링), 줄바꿈은 유지
   assert.ok(Math.abs(ca.sentAt - Date.now()) < 1000);
-  assert.deepEqual(Object.keys(ca).sort(), ['sentAt', 'text', 'type', 'userId']);
+  assert.deepEqual(Object.keys(ca).sort(), ['id', 'sentAt', 'text', 'type', 'userId']);
+  assert.match(ca.id, /^[0-9a-f]{8}$/);
 
   a.send({ type: 'chat', text: '   ' });
-  a.send({ type: 'chat', text: 'x'.repeat(301) });
+  a.send({ type: 'chat', text: 'x'.repeat(2001) });
   a.send({ type: 'chat', text: 123 });
+  a.send({ type: 'chat', text: 'a\u0007b' }); // 제어문자
   await b.none('chat');
+  a.close();
+  b.close();
+});
+
+test('채팅 답장: replyTo 는 형식이 맞을 때만 전달, 메시지마다 id 가 다름', async () => {
+  const { a, code } = await makeRoom();
+  const { c: b } = await joinRoom(code);
+  a.send({ type: 'chat', text: '원본' });
+  const orig = await b.next('chat');
+  b.send({ type: 'chat', text: '답장', replyTo: orig.id });
+  const reply = await a.next('chat'); // 원본(a 본인 수신분)
+  const got = await a.next('chat');
+  assert.equal(reply.id, orig.id);
+  assert.equal(got.replyTo, orig.id);
+  assert.notEqual(got.id, orig.id);
+  b.send({ type: 'chat', text: '엉뚱', replyTo: '<script>' });
+  const bad = await a.next('chat');
+  assert.equal(bad.text, '엉뚱');
+  assert.equal('replyTo' in bad, false);
+  a.close();
+  b.close();
+});
+
+test('채팅: 긴 글(2000자)과 줄바꿈 정리', async () => {
+  const { a, code } = await makeRoom();
+  const { c: b } = await joinRoom(code);
+  const long = '가'.repeat(2000);
+  a.send({ type: 'chat', text: long });
+  assert.equal((await b.next('chat')).text, long);
+  const quoted = '"'.repeat(2000); // JSON 이스케이프로 크기가 두 배가 돼도 통과
+  a.send({ type: 'chat', text: quoted });
+  assert.equal((await b.next('chat')).text, quoted);
+  a.send({ type: 'chat', text: '첫 줄  \r\n\r\n\r\n\r\n셋째\t줄' });
+  assert.equal((await b.next('chat')).text, '첫 줄\n\n셋째 줄');
   a.close();
   b.close();
 });
@@ -623,10 +661,10 @@ test('이미지 프로필 변경은 빈도 제한(증폭 방지), 이모지 프�
   b.close();
 });
 
-test('profile_update 만 큰 메시지 허용, 다른 타입은 4KB 초과 거부', async () => {
+test('profile_update 만 큰 메시지 허용, 다른 타입은 8KB 초과 거부', async () => {
   const { a, code } = await makeRoom();
   const { c: b } = await joinRoom(code);
-  a.send(JSON.stringify({ type: 'chat', text: 'ok', pad: 'x'.repeat(5000) }));
+  a.send(JSON.stringify({ type: 'chat', text: 'ok', pad: 'x'.repeat(9000) }));
   await b.none('chat');
   a.send({ type: 'ping' });
   await a.next('pong'); // 연결은 유지
@@ -771,4 +809,146 @@ test('채팅/재생 같은 활동이 있으면 idle 시간이 다시 시작됨',
   rm.closeIdleRooms();
   assert.equal(rm.rooms.size, 0, '활동이 멈추면 닫힘');
   rm.shutdown();
+});
+
+// ---------- 방 비밀번호 / 인원 제한 / 참가 시도 제한 ----------
+
+async function makeRoomWith(opts) {
+  const a = await new Client().open();
+  a.send({ type: 'create_room', userId: a.userId, ...opts });
+  const created = await a.next('room_created');
+  const state = await a.next('room_state');
+  return { a, code: created.roomCode, state };
+}
+
+test('비밀번호 방: 비밀번호 없이/틀리게 참가하면 거부, 맞으면 입장', async () => {
+  const { a, code, state } = await makeRoomWith({ password: 'secret1' });
+  assert.equal(state.hasPassword, true);
+  assert.equal(JSON.stringify(state).includes('secret1'), false, '비밀번호는 내려보내지 않음');
+  const c = await new Client().open();
+  c.send({ type: 'join_room', roomCode: code, userId: c.userId });
+  assert.equal((await c.next('error')).code, 'password_required');
+  c.send({ type: 'join_room', roomCode: code, userId: c.userId, password: 'nope' });
+  assert.equal((await c.next('error')).code, 'wrong_password');
+  await a.none('participant_joined');
+  c.send({ type: 'join_room', roomCode: code, userId: c.userId, password: 'secret1' });
+  assert.equal((await c.next('room_state')).hasPassword, true);
+  assert.equal((await a.next('participant_joined')).user.id, c.userId);
+});
+
+test('비밀번호 방: 이미 방에 있는 사람의 재접속은 비밀번호 없이 가능', async () => {
+  const { a, code } = await makeRoomWith({ password: 'secret1' });
+  const again = await new Client(a.userId).open();
+  again.send({ type: 'join_room', roomCode: code, userId: a.userId });
+  assert.equal((await again.next('room_state')).roomCode, code);
+});
+
+test('비밀번호 없는 방은 hasPassword=false, password 를 보내도 무시되지 않고 입장', async () => {
+  const { code, state } = await makeRoomWith({});
+  assert.equal(state.hasPassword, false);
+  assert.equal(state.maxMembers, null);
+  const c = await new Client().open();
+  c.send({ type: 'join_room', roomCode: code, userId: c.userId, password: 'whatever' });
+  await c.next('room_state');
+});
+
+test('인원 제한: 가득 차면 거부, 재접속은 자리를 차지하지 않음', async () => {
+  const { a, code, state } = await makeRoomWith({ maxMembers: 2 });
+  assert.equal(state.maxMembers, 2);
+  const { c: b } = await joinRoom(code);
+  const c = await new Client().open();
+  c.send({ type: 'join_room', roomCode: code, userId: c.userId });
+  assert.equal((await c.next('error')).code, 'room_full');
+  const again = await new Client(b.userId).open();
+  again.send({ type: 'join_room', roomCode: code, userId: b.userId });
+  await again.next('room_state');
+  b.close();
+  a.close();
+});
+
+test('잘못된 방 옵션은 무시된다', async () => {
+  const c = await new Client().open();
+  for (const bad of [{ password: 'abc' }, { password: 'x'.repeat(33) }, { password: '비밀번호1234' }, { password: 'pass word1' }, { password: 'pass!word1' }, { maxMembers: 1 }, { maxMembers: 99 }, { maxMembers: '5' }]) {
+    c.send({ type: 'create_room', userId: c.userId, ...bad });
+  }
+  await c.none('room_created');
+  c.close();
+});
+
+test('참가 실패가 잦으면 IP 별로 잠시 차단', () => {
+  let t = 0;
+  const rm = new RoomManager({ joinFailLimit: 3, joinFailWindowMs: 60_000, idleSweepMs: 3_600_000, now: () => t });
+  const host = fakeConn();
+  rm.create(host, 'user-aaaa-testtest', { password: 'secret1' });
+  const code = [...rm.rooms.keys()][0];
+  const guess = () => {
+    const g = fakeConn();
+    g.ip = '1.2.3.4';
+    return g;
+  };
+  const codes = [];
+  for (let i = 0; i < 5; i++) {
+    const g = guess();
+    rm.join(g, i % 2 ? 'ZZZZZZ' : code, `user-guess${i}-testtest`, i % 2 ? undefined : 'wrong');
+    codes.push(g.sent.find((m) => m.type === 'error').code);
+  }
+  assert.deepEqual(codes, ['wrong_password', 'room_not_found', 'wrong_password', 'too_many_attempts', 'too_many_attempts']);
+  const other = fakeConn();
+  other.ip = '5.6.7.8';
+  rm.join(other, code, 'user-other-testtest', 'secret1');
+  assert.ok(other.sent.some((m) => m.type === 'room_state'), '다른 IP 는 영향 없음');
+  t = 61_000;
+  const later = guess();
+  rm.join(later, code, 'user-later-testtest', 'secret1');
+  assert.ok(later.sent.some((m) => m.type === 'room_state'), '시간이 지나면 풀림');
+  rm.shutdown();
+});
+
+test('방장이 방 옵션을 바꾼다: 비밀번호 설정/변경/해제, 최대 인원', async () => {
+  const { a, code } = await makeRoomWith({});
+  const { c: b } = await joinRoom(code);
+  await a.next('participant_joined');
+  // 설정: 모두에게 알림(비밀번호 내용은 없음), 이미 있는 사람은 그대로
+  a.send({ type: 'set_room_options', password: 'newpass1', maxMembers: 3 });
+  const opt = await b.next('room_options');
+  assert.deepEqual({ ...opt }, { type: 'room_options', hasPassword: true, maxMembers: 3, passwordChanged: true, fromId: a.userId });
+  assert.equal(JSON.stringify(opt).includes('newpass1'), false);
+  await a.next('room_options');
+  // 새로 오는 사람은 새 비밀번호가 필요
+  const c = await new Client().open();
+  c.send({ type: 'join_room', roomCode: code, userId: c.userId });
+  assert.equal((await c.next('error')).code, 'password_required');
+  c.send({ type: 'join_room', roomCode: code, userId: c.userId, password: 'newpass1' });
+  await c.next('room_state');
+  // 인원을 현재(3)보다 줄여도 있는 사람은 유지, 새로 오는 사람만 막힘
+  a.send({ type: 'set_room_options', maxMembers: 2 });
+  const opt2 = await b.next('room_options');
+  assert.equal(opt2.passwordChanged, false);
+  assert.equal(opt2.maxMembers, 2);
+  const d = await new Client().open();
+  d.send({ type: 'join_room', roomCode: code, userId: d.userId, password: 'newpass1' });
+  assert.equal((await d.next('error')).code, 'room_full');
+  // 해제
+  a.send({ type: 'set_room_options', password: null, maxMembers: null });
+  const opt3 = await b.next('room_options');
+  assert.deepEqual([opt3.hasPassword, opt3.maxMembers], [false, null]);
+  d.send({ type: 'join_room', roomCode: code, userId: d.userId });
+  await d.next('room_state');
+});
+
+test('방 옵션은 방장만 바꿀 수 있고, 잘못된 값은 무시된다', async () => {
+  const { a, code } = await makeRoomWith({ password: 'secret1' });
+  const b = await new Client().open();
+  b.send({ type: 'join_room', roomCode: code, userId: b.userId, password: 'secret1' });
+  await b.next('room_state');
+  b.send({ type: 'set_room_options', password: null });
+  await a.none('room_options');
+  for (const bad of [{}, { password: 'abc' }, { password: '비밀번호1234' }, { maxMembers: 1 }, { maxMembers: 21 }, { maxMembers: '5' }, { password: 1234 }]) {
+    a.send({ type: 'set_room_options', ...bad });
+  }
+  await a.none('room_options');
+  // 비밀번호는 그대로
+  const c = await new Client().open();
+  c.send({ type: 'join_room', roomCode: code, userId: c.userId });
+  assert.equal((await c.next('error')).code, 'password_required');
 });

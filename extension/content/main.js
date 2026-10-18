@@ -23,6 +23,7 @@
   const AD_EVENTS = ['durationchange', 'loadedmetadata', 'emptied']; // 같은 <video> 에서 광고 <-> 본편이 바뀌는 신호
 
   const isTop = window === window.top;
+  let onInviteState = null; // 초대 배너가 열려 있을 때 방 상태 변화를 받는 처리기
   // 재생 위치(초) = 본편 위치. 보통은 <video>.currentTime 과 같지만, 넷플릭스는 광고가 지나가면 영상 시간이 광고 때 시간에 이어져
   // 본편 위치와 달라지고(예: 화면 39:39, 영상 시간 0:27) 가까운 곳으로 이동해도 그 차이가 남는다. 그 차이(timeOffset)를 재서 더한다.
   //  - 우리가 이동시킨 경우: 이동한 위치(본편) - 이동 직후 영상 시간 (adapter.contentSeek)
@@ -62,7 +63,7 @@
   const chat = isTop
     ? createChat({
         getState: () => state,
-        onSend: (text) => send({ cmd: CMD.CHAT_SEND, text, videoTime: currentVideoTime() }),
+        onSend: (text, replyTo) => send({ cmd: CMD.CHAT_SEND, text, videoTime: currentVideoTime(), replyTo }),
         getInviteLink: () => {
           const u = new URL(location.href);
           u.searchParams.set('wp', state?.roomCode ?? '');
@@ -741,6 +742,7 @@
       case CMD.STATE: {
         const wasActive = active();
         state = m.state;
+        onInviteState?.(state);
         if (!wasActive && active()) alignNoticeUntil = Date.now() + 10000;
         setAdNotice(inAd); // 광고 안내는 방에 있을 때만(방에 들어오면 켜고, 나가면 끈다)
         log('state', state.roomCode ?? '방 없음', state.connection);
@@ -848,8 +850,33 @@
         // 방이 아직 있는지 먼저 확인한다. 확인할 수 없으면(null) 일단 초대를 보여 주고, 참가가 실패하면 그때 안내한다
         const reply = await chrome.runtime.sendMessage({ cmd: CMD.CHECK_ROOM, roomCode }).catch(() => null);
         if (state?.roomCode === roomCode) return; // 확인하는 사이 이미 들어간 경우
-        if (reply?.exists === false) ui.showExpiredInvite(roomCode, clearWp);
-        else ui.showInvite(roomCode, () => send({ cmd: CMD.JOIN_ROOM, roomCode: code, site: location.hostname }), clearWp);
+        if (reply?.exists === false) {
+          ui.showExpiredInvite(roomCode, clearWp);
+          return;
+        }
+        // 참가 결과(비밀번호 필요/틀림, 가득 참 등)는 상태로 오므로 배너 안에서 보여 준다
+        let joining = false;
+        onInviteState = (st) => {
+          if (!ui.inviteOpen) return (onInviteState = null);
+          if (st.roomCode === roomCode) return ui.inviteJoined(); // 참가 성공
+          if (!joining || st.roomCode) return;
+          if (st.needPassword?.roomCode === roomCode) {
+            joining = false;
+            ui.inviteNeedsPassword(st.needPassword.wrong ? '비밀번호가 맞지 않아요.' : '비밀번호가 필요한 방이에요.');
+          } else if (st.error) {
+            joining = false;
+            ui.inviteFailed(st.error);
+          }
+        };
+        ui.showInvite(
+          roomCode,
+          (password) => {
+            joining = true;
+            send({ cmd: CMD.JOIN_ROOM, roomCode: code, site: location.hostname, password });
+          },
+          clearWp,
+          { passwordRequired: reply?.hasPassword === true },
+        );
       }, 700);
     }
   }
