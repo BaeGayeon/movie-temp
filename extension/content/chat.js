@@ -703,9 +703,6 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     if (p.failed || !pendingSends.includes(p)) return;
     clearTimeout(p.timer);
     p.failed = true;
-    const st = p.entry.statusEl;
-    st.className = `sendstat fail${getState()?.restarting ? ' restart' : ''}`; // 재배포는 차분하게, 진짜 오류는 빨갛게
-    st.replaceChildren(t(getState()?.restarting ? 'chat.sendFailedRestart' : 'chat.sendFailedError'));
     const again = el('button', 'link', t('chat.resend'));
     again.addEventListener('click', () => {
       if (getState()?.connection !== 'connected') return onNotify(t(getState()?.restarting ? 'chat.notConnectedRestart' : 'chat.notConnected'));
@@ -714,7 +711,15 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     });
     const drop = el('button', 'link', t('chat.discard'));
     drop.addEventListener('click', () => dropPending(p));
-    st.append(again, drop);
+    p.buttons = [again, drop];
+    paintFail(p);
+  }
+  // 끊긴 직후에는 재배포인지 오류인지 아직 모른다(판정은 조금 뒤에 나온다). 그래서 상태가 바뀔 때마다 문구를 다시 칠한다.
+  function paintFail(p) {
+    const restart = !!getState()?.restarting;
+    const st = p.entry.statusEl;
+    st.className = `sendstat fail${restart ? ' restart' : ''}`; // 재배포는 차분하게, 진짜 오류는 빨갛게
+    st.replaceChildren(t(restart ? 'chat.sendFailedRestart' : 'chat.sendFailedError'), ...p.buttons);
   }
   function dropPending(p) {
     clearTimeout(p.timer);
@@ -1368,8 +1373,11 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     // 프로필이 바뀌면 기존 메시지의 이름/프사/색도 갱신
     // 연결 상태가 바뀔 때: 끊겼으면 아직 돌아오지 않은 내 메시지를 바로 "전달되지 않았을 수 있어요"로 바꾼다
     onConnection(st) {
-      if (!built || st?.connection === 'connected') return;
-      for (const p of [...pendingSends]) failPending(p);
+      if (!built) return;
+      for (const p of [...pendingSends]) {
+        if (p.failed) paintFail(p);
+        else if (st?.connection !== 'connected') failPending(p);
+      }
     },
 
     refreshProfiles() {
