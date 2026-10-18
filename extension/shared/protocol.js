@@ -137,6 +137,8 @@ export const isValidNewPassword = (v) =>
 export const isValidMaxMembers = (v) => Number.isInteger(v) && v >= MIN_ROOM_MEMBERS && v <= MAX_ROOM_MEMBERS;
 
 export const ROOM_CODE_RE = /^[A-Z0-9]{6}$/;
+// 방 만들기/참가 때 클라이언트가 보내는 표시 언어(기본 닉네임 "게스트1234"/"Guest1234" 을 고르는 데만 쓴다). 틀린 값은 무시한다
+const LANGS = ['ko', 'en'];
 const USER_ID_RE = /^[A-Za-z0-9_-]{8,64}$/;
 const MAX_TIME = 24 * 60 * 60; // 초
 
@@ -149,6 +151,7 @@ const validators = {
   [C2S.CREATE_ROOM]: (m) => {
     if (typeof m.userId !== 'string' || !USER_ID_RE.test(m.userId)) return null;
     const out = { type: m.type, userId: m.userId };
+    if (LANGS.includes(m.lang)) out.lang = m.lang;
     if (m.password !== undefined) {
       if (!isValidNewPassword(m.password)) return null;
       out.password = m.password;
@@ -166,6 +169,7 @@ const validators = {
     const roomCode = m.roomCode.toUpperCase();
     if (!ROOM_CODE_RE.test(roomCode)) return null;
     const out = { type: m.type, userId: m.userId, roomCode };
+    if (LANGS.includes(m.lang)) out.lang = m.lang;
     if (m.password !== undefined) {
       if (typeof m.password !== 'string' || m.password.length > MAX_PASSWORD_LENGTH) return null;
       out.password = m.password;

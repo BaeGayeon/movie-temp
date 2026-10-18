@@ -963,3 +963,17 @@ test('방 옵션은 방장만 바꿀 수 있고, 잘못된 값은 무시된다',
   c.send({ type: 'join_room', roomCode: code, userId: c.userId });
   assert.equal((await c.next('error')).code, 'password_required');
 });
+
+test('기본 닉네임: 클라이언트 언어(lang)에 따라 게스트/Guest, 잘못된 값은 게스트', async () => {
+  const en = await makeRoomWith({ lang: 'en' });
+  assert.match(en.state.participants[0].name, /^Guest\d{4}$/);
+  const bad = await new Client().open();
+  bad.send({ type: 'join_room', roomCode: en.code, userId: bad.userId, lang: 'fr' });
+  const st = await bad.next('room_state');
+  assert.match(st.participants.find((p) => p.id === bad.userId).name, /^게스트\d{4}$/);
+  const ko = await new Client().open();
+  ko.send({ type: 'join_room', roomCode: en.code, userId: ko.userId, lang: 'en' });
+  const st2 = await ko.next('room_state');
+  assert.match(st2.participants.find((p) => p.id === ko.userId).name, /^Guest\d{4}$/);
+  en.a.close(); bad.close(); ko.close();
+});

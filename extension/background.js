@@ -2,7 +2,7 @@
 import { SERVER_URL } from './config.js';
 import { C2S, S2C, ERR, MODES, ROOM_CODE_RE, isValidNewPassword, isValidMaxMembers, MAX_PASSWORD_LENGTH } from './shared/protocol.js';
 import { CMD } from './shared/cmd.js';
-import { initI18n, t, serverErrorText } from './shared/i18n.js';
+import { initI18n, t, getLang, serverErrorText } from './shared/i18n.js';
 
 initI18n(); // 서비스 워커가 다시 떠도 저장된 언어 설정을 읽는다(그 전에는 브라우저 언어)
 
@@ -207,7 +207,7 @@ function connect() {
       rawSend(pending);
       pending = null;
     } else if (room.roomCode) {
-      rawSend({ type: C2S.JOIN_ROOM, roomCode: room.roomCode, userId, ...(roomPw ? { password: roomPw } : {}) }); // 이전 방으로 복귀
+      rawSend({ type: C2S.JOIN_ROOM, roomCode: room.roomCode, userId, lang: getLang(), ...(roomPw ? { password: roomPw } : {}) }); // 이전 방으로 복귀
     }
   };
   sock.onmessage = (e) => {
@@ -565,6 +565,7 @@ function leaveRoom(notifyServer = true) {
 }
 
 function enterRoom(msg, tabId, site = null) {
+  msg.lang = getLang(); // 서버가 기본 닉네임(게스트/Guest)을 이 언어로 정한다
   if (room.roomCode) leaveRoom();
   lastError = null;
   needPassword = null;

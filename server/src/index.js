@@ -96,10 +96,10 @@ export function createServer({ port = Number(process.env.PORT) || 8080, host = '
 
       switch (msg.type) {
         case C2S.CREATE_ROOM:
-          rooms.create(conn, msg.userId, { password: msg.password, maxMembers: msg.maxMembers });
+          rooms.create(conn, msg.userId, { password: msg.password, maxMembers: msg.maxMembers, lang: msg.lang });
           break;
         case C2S.JOIN_ROOM:
-          rooms.join(conn, msg.roomCode, msg.userId, msg.password);
+          rooms.join(conn, msg.roomCode, msg.userId, msg.password, msg.lang);
           break;
         case C2S.LEAVE_ROOM:
           rooms.leave(conn);
