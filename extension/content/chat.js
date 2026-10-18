@@ -35,10 +35,12 @@ const CSS = `
   .menu[hidden] { display: none; }
   .menu label { display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 500; }
   .menu input[type=range], .menu input[type=checkbox] { accent-color: var(--accent); }
-  .menu input[type=range] { flex: 1; }
+  .menu input[type=range] { flex: 1; min-width: 0; width: 100%; } /* 메뉴가 좁아도 칸 안에서 줄어들게 */
   .seg { display: flex; gap: 2px; padding: 2px; background: var(--bg); border-radius: 10px; }
   .seg button { flex: 1; background: transparent; color: var(--ink-soft); border-radius: 8px; padding: 4px 0; font-size: 12px; }
   .seg button.on { background: var(--surface-3); color: var(--ink); }
+  .menu .sec { font-size: 11px; font-weight: 700; color: var(--ink-soft); margin-top: 4px; }
+  .menu .sec:first-child { margin-top: 0; }
   .menu .act { background: var(--surface-2); color: var(--ink); font-weight: 500; border-radius: 10px; padding: 6px 12px; text-align: left; }
   .menu .act:hover { background: var(--surface-3); }
 
@@ -66,7 +68,13 @@ const CSS = `
   .list.plain .text, .list.plain .msg.me .text, .list.compact .text, .list.compact .msg.me .text { background: none; padding: 0; border-radius: 0; }
   .sys { align-self: center; text-align: center; color: var(--ink-soft); font-size: .857em; padding: 0 8px; max-width: 100%; } /* 안내 문구: 어느 모드에서나 가운데, 말풍선 없이 글만 */
   .sys .ev-name { font-weight: 600; }
+  .sys .evi { display: inline-block; width: 1em; height: 1em; vertical-align: -.12em; margin-right: .3em; fill: currentColor; }
   .no-events .sys { display: none; }
+  .listwrap { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .newmsg { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); z-index: 2; max-width: calc(100% - 20px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    padding: 5px 14px; border-radius: 999px; background: var(--accent); color: var(--on-accent); font-size: 12px; font-weight: 600; box-shadow: 0 2px 8px rgba(0,0,0,.4); }
+  .newmsg:hover { background: var(--accent-light); }
+  .newmsg[hidden] { display: none; }
   .empty { color: var(--ink-soft); text-align: center; padding: 18px 0; font-size: 13px; }
 
   .typing { min-height: 18px; padding: 0 14px 2px; font-size: 12px; color: var(--ink-soft); }
@@ -81,9 +89,13 @@ const CSS = `
   .reacts button { background: transparent; font-size: 17px; border-radius: 8px; padding: 2px 4px; transition: transform .08s; }
   .reacts button:hover { background: var(--surface-2); transform: scale(1.15); }
   ::selection { background: var(--accent); color: var(--on-accent); } /* 사이트 기본 선택색이 안 보이는 경우가 있어 직접 지정 */
-  .form { display: flex; gap: 6px; padding: 6px 8px 10px; align-items: stretch; }
+  .form { display: flex; gap: 6px; padding: 6px 8px 10px; align-items: flex-end; }
+  .rtoggle { flex: none; width: 34px; height: 34px; padding: 0; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: transparent; font-size: 16px; line-height: 1; opacity: .55; } /* 한 줄일 때의 입력칸 높이(34px)와 같게 */
+  .rtoggle:hover { background: var(--surface-2); opacity: 1; }
+  .rtoggle.on { opacity: 1; background: var(--surface-2); }
+  .reacts[hidden] { display: none; }
   .compose { flex: 1; min-width: 0; position: relative; display: flex; }
-  .form textarea { flex: 1; min-width: 0; display: block; resize: none; overflow-y: auto; font: inherit; line-height: 1.4; height: calc(2.8em + 14px); color: var(--ink); background: var(--surface); border: 1px solid var(--border-2); border-radius: 14px; padding: 6px 12px; outline: none;
+  .form textarea { flex: 1; box-sizing: border-box; min-width: 0; display: block; resize: none; overflow-y: auto; font: inherit; line-height: 1.4; height: calc(1.4em + 14px); max-height: calc(7em + 14px); color: var(--ink); background: var(--surface); border: 1px solid var(--border-2); border-radius: 14px; padding: 6px 12px; outline: none;
     scrollbar-width: thin; scrollbar-color: var(--surface-3) transparent; }
   .form textarea::placeholder { color: var(--placeholder); }
   .form textarea:focus { border-color: var(--border-3); }
@@ -125,8 +137,6 @@ const CSS = `
     100% { background: transparent; box-shadow: 0 0 0 5px transparent; } }
   .list.plain .msg.hl, .list.compact .msg.hl { border-radius: 8px; animation: hlrow 1.4s ease-out; }
   .list.plain .msg.hl .text, .list.compact .msg.hl .text { animation: none; }
-  .form .send { color: var(--on-accent); font-weight: 600; background: var(--accent); border-radius: 14px; padding: 6px 14px; flex: none; }
-  .form .send:hover { background: var(--accent-light); }
 
   .rz { position: absolute; }
   .rz-l { left: 0; top: 0; bottom: 0; width: 6px; cursor: ew-resize; }
@@ -180,6 +190,7 @@ const DEFAULT_PREFS = {
   style: 'bubble', // 대화 표시 방식: 'bubble' = 말풍선, 'plain' = 줄글(프사 + 이름/내용), 'compact' = 간단(이름/내용)
   theme: 'charcoal', // 채팅 바탕색: 'charcoal' = 차콜, 'black' = 검정
   hidden: false, // 채팅을 완전히 숨김(팝업에서 다시 켠다)
+  reactsOpen: true, // 리액션 줄을 펼쳐 둠(입력칸 왼쪽 버튼으로 접고 편다)
   v: 3,
 };
 const MIN_W = 220;
@@ -297,7 +308,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
   let unread = 0;
 
   // DOM 참조
-  let wrap, panel, head, list, typingLine, input, counter, replyBar, replyText, bubbleBox, badge, floats, menu, opacity, clockCb, videoCb, eventsCb, modeBtn, pop, picker, styleSeg, themeSeg;
+  let wrap, panel, head, list, typingLine, input, counter, replyBar, replyText, bubbleBox, badge, floats, menu, opacity, clockCb, videoCb, eventsCb, modeSeg, pop, picker, styleSeg, themeSeg, panelReacts, reactToggle;
 
   try {
     chrome.storage.local.get('chatPrefs').then((r) => {
@@ -449,30 +460,6 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
   const isShrink = () => prefs.mode === 'dock'; // 영상(페이지)을 줄이는 배치
   // 창 모드는 버튼 하나로 전환: 떠 있는 창 <-> 오른쪽에 붙이기
   const modeState = () => (prefs.mode === 'dock' || prefs.mode === 'side' ? prefs.mode : 'float');
-  // 모드 아이콘(모두 속이 빈 선 그림): 떠 있는 창 / 오른쪽에 띄우기(영상 위에 겹침, 점선) / 오른쪽에 붙이기(화면 분할)
-  const ICONS = {
-    float: [['rect', { x: 2, y: 3, width: 16, height: 12, rx: 2.5 }], ['rect', { x: 9, y: 8, width: 7, height: 5, rx: 1.5 }]],
-    side: [['rect', { x: 2, y: 3, width: 16, height: 12, rx: 2.5 }], ['rect', { x: 11.5, y: 3, width: 6.5, height: 12, rx: 2.5, 'stroke-dasharray': '2 1.6' }]],
-    dock: [['rect', { x: 2, y: 3, width: 16, height: 12, rx: 2.5 }], ['path', { d: 'M12 3v12' }]],
-  };
-  function modeIcon(kind) {
-    const NS = 'http://www.w3.org/2000/svg';
-    const svg = document.createElementNS(NS, 'svg');
-    for (const [k, v] of Object.entries({ width: 18, height: 18, viewBox: '0 0 20 18', fill: 'none', stroke: 'currentColor', 'stroke-width': 1.7, 'stroke-linecap': 'round' })) svg.setAttribute(k, v);
-    for (const [tag, attrs] of ICONS[kind]) {
-      const n = document.createElementNS(NS, tag);
-      for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
-      svg.append(n);
-    }
-    return svg;
-  }
-  const MODE_UI = {
-    float: ['float', 'chat.mode.float'],
-    side: ['side', 'chat.mode.side'],
-    dock: ['dock', 'chat.mode.dock'],
-  };
-  const NEXT_MODE = { float: 'side', side: 'dock', dock: 'float' };
-
   function applyPrefs() {
     const vw = window.innerWidth;
     const vh = window.innerHeight;
@@ -488,6 +475,9 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     videoCb.checked = prefs.showVideoTime;
     eventsCb.checked = prefs.showEvents;
     list.classList.toggle('no-events', !prefs.showEvents);
+    panelReacts.hidden = !prefs.reactsOpen;
+    reactToggle.classList.toggle('on', prefs.reactsOpen);
+    reactToggle.setAttribute('aria-pressed', String(prefs.reactsOpen));
     wrap.dataset.theme = prefs.theme === 'black' ? 'black' : 'charcoal';
     themeSeg?.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.theme === wrap.dataset.theme));
     list.classList.toggle('plain', prefs.style === 'plain');
@@ -498,9 +488,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     panel.classList.toggle('dock', isDock());
     panel.classList.toggle('side', prefs.mode === 'side');
     panel.classList.toggle('free', !isDock()); // (리액션 애니메이션 클래스 .float 와 이름이 겹치면 안 된다)
-    const [icon, tip] = MODE_UI[modeState()];
-    modeBtn.replaceChildren(modeIcon(icon));
-    modeBtn.title = t(tip);
+    for (const b of modeSeg.children) b.classList.toggle('on', b.dataset.mode === modeState());
 
     let inset = 0;
     if (isDock()) {
@@ -539,11 +527,27 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
   // 맨 아래에 붙어 있는지는 "새 메시지가 붙기 전"의 위치로 기억한다. 메시지를 붙인 뒤에 재면 새 메시지 높이만으로 기준(글자/프사를 키우면 더 커짐)을
   // 넘어 위로 스크롤한 것으로 오해해 자동 스크롤이 멈춘다. 사용자가 직접 위로 올리면(scroll 이벤트) 붙어 있지 않은 것으로 본다.
   let pinned = true;
-  const updatePinned = () => (pinned = list.scrollHeight - list.scrollTop - list.clientHeight < 40);
+  const updatePinned = () => {
+    pinned = list.scrollHeight - list.scrollTop - list.clientHeight < 40;
+    if (pinned) clearNewMsgs();
+  };
   function scrollToBottom(force) {
     if (!force && !pinned) return;
     list.scrollTop = list.scrollHeight;
     pinned = true;
+    clearNewMsgs();
+  }
+  // 위로 스크롤해 지난 대화를 보는 중에 온 새 메시지 수. 맨 아래에 닿으면(스크롤/버튼/내가 보냄) 없앤다
+  let newMsgs = 0;
+  let newMsgBtn;
+  function renderNewMsgs() {
+    newMsgBtn.hidden = newMsgs === 0;
+    newMsgBtn.textContent = t('chat.newMsgs', { n: newMsgs > 99 ? '99+' : newMsgs });
+  }
+  function clearNewMsgs() {
+    if (!newMsgs) return;
+    newMsgs = 0;
+    renderNewMsgs();
   }
 
   // ---------- 이모지 선택기 (채팅 입력 / 리액션) ----------
@@ -765,9 +769,22 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     if (m.action === 'join') return { icon: '🎈', name, color, rest: t('chat.ev.join') };
     if (m.action === 'leave') return { icon: '👋', name, color, rest: t('chat.ev.leave') };
     const tm = fmtVideo(m.time);
-    if (m.action === 'play') return { icon: '▶', name, color, rest: t('chat.ev.play', { t: tm }) };
-    if (m.action === 'pause') return { icon: '⏸', name, color, rest: t('chat.ev.pause', { t: tm }) };
-    return { icon: '⏩', name, color, rest: t('chat.ev.seek', { t: tm }) }; // 이동(+재생)은 한 가지 문구로
+    if (m.action === 'play') return { icon: '▶', svg: 'play', name, color, rest: t('chat.ev.play', { t: tm }) };
+    if (m.action === 'pause') return { icon: '⏸', svg: 'pause', name, color, rest: t('chat.ev.pause', { t: tm }) };
+    return { icon: '⏩', svg: 'seek', name, color, rest: t('chat.ev.seek', { t: tm }) }; // 이동(+재생)은 한 가지 문구로
+  }
+  // 재생/일시정지/이동 아이콘: 이모지는 하나만 색이 입혀져 튀므로 셋 다 글자색을 따르는 단색 도형으로 그린다
+  const EV_ICON_PATHS = { play: 'M4 2.5v11l9-5.5z', pause: 'M4 2.5h3v11H4zM9 2.5h3v11H9z', seek: 'M1.5 2.5v11l6-5.5zM8.5 2.5v11l6-5.5z' };
+  function evIcon(kind) {
+    const NS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('viewBox', '0 0 16 16');
+    svg.setAttribute('class', 'evi');
+    svg.setAttribute('aria-hidden', 'true');
+    const path = document.createElementNS(NS, 'path');
+    path.setAttribute('d', EV_ICON_PATHS[kind]);
+    svg.append(path);
+    return svg;
   }
   // 토스트 등 글자만 필요한 곳
   const eventText = (m) => {
@@ -779,7 +796,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     const e = eventParts(m);
     const nm = el('span', 'ev-name', e.name);
     if (e.color) nm.style.color = pastelize(e.color);
-    row.replaceChildren(`${e.icon} `, nm, e.rest);
+    row.replaceChildren(e.svg ? evIcon(e.svg) : `${e.icon} `, nm, e.rest);
   }
 
   function renderEvent(m) {
@@ -947,12 +964,6 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     head = el('div', 'head');
     const settingsBtn = el('button', 'iconbtn', '⚙');
     L(settingsBtn, 'title', 'chat.settings');
-    modeBtn = el('button', 'iconbtn');
-    modeBtn.addEventListener('click', () => {
-      prefs.mode = NEXT_MODE[modeState()];
-      applyPrefs();
-      savePrefs();
-    });
     const collapseBtn = el('button', 'iconbtn', '—');
     L(collapseBtn, 'title', 'chat.collapse');
     collapseBtn.addEventListener('click', () => {
@@ -962,7 +973,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
       applyPrefs();
       savePrefs();
     });
-    head.append(L(el('span', 'title'), 'textContent', 'chat.title'), settingsBtn, modeBtn, collapseBtn);
+    head.append(L(el('span', 'title'), 'textContent', 'chat.title'), settingsBtn, collapseBtn);
 
     // 설정 메뉴: 투명도, 시간 표시, 링크/코드 복사
     menu = el('div', 'menu');
@@ -1023,23 +1034,35 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     copyLink.addEventListener('click', async () => (await copyText(getInviteLink())) && flash(copyLink, t('chat.copied')));
     const copyCode = L(el('button', 'act'), 'textContent', 'chat.copyCode');
     copyCode.addEventListener('click', async () => (await copyText(getState()?.roomCode ?? '')) && flash(copyCode, t('chat.copied')));
-    const hideBtn = L(el('button', 'act'), 'textContent', 'chat.hide');
-    hideBtn.addEventListener('click', () => {
-      prefs.hidden = true;
-      menu.hidden = true;
-      applyPrefs();
-      savePrefs();
-    });
-    menu.append(opLabel, styleSeg, themeSeg, clockLabel, videoLabel, eventsLabel, copyLink, copyCode, hideBtn);
+    modeSeg = el('div', 'seg');
+    for (const k of ['float', 'side', 'dock']) {
+      const b = L(el('button'), 'textContent', `chat.modeShort.${k}`);
+      b.dataset.mode = k;
+      L(b, 'title', `chat.mode.${k}`);
+      b.addEventListener('click', () => {
+        prefs.mode = k;
+        applyPrefs();
+        savePrefs();
+      });
+      modeSeg.append(b);
+    }
+    const sec = (key) => L(el('div', 'sec'), 'textContent', key);
+    menu.append(sec('chat.menu.window'), modeSeg, opLabel, sec('chat.menu.view'), styleSeg, sec('chat.menu.color'), themeSeg, sec('chat.menu.show'), clockLabel, videoLabel, eventsLabel, sec('chat.menu.invite'), copyLink, copyCode);
     settingsBtn.addEventListener('click', () => (menu.hidden = !menu.hidden));
 
     list = el('div', 'list');
     list.addEventListener('scroll', updatePinned);
+    newMsgBtn = el('button', 'newmsg');
+    newMsgBtn.hidden = true;
+    newMsgBtn.addEventListener('click', () => scrollToBottom(true));
+    relabels.push(renderNewMsgs); // 언어가 바뀌면 문구를 다시 만든다
+    const listWrap = el('div', 'listwrap');
+    listWrap.append(list, newMsgBtn);
     typingLine = el('div', 'typing');
 
     // 입력줄: 이모지 선택기 버튼 + 입력 + 전송
     input = el('textarea');
-    input.rows = 2;
+    input.rows = 1;
     L(input, 'placeholder', 'chat.placeholder');
     L(input, 'title', 'chat.inputTip');
     input.maxLength = MAX_CHAT_LENGTH;
@@ -1054,8 +1077,19 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
       counter.classList.toggle('warn', n >= MAX_CHAT_LENGTH);
       counter.textContent = pasteCut ? t('chat.limit', { max: MAX_CHAT_LENGTH }) : `${n}/${MAX_CHAT_LENGTH}`;
     };
-    updateInputCounter = updateCounter;
-    input.addEventListener('input', updateCounter);
+    // 한 줄로 시작해서 글이 길어지면 늘어난다(최대 줄 수는 CSS max-height)
+    const fitInput = () => {
+      input.style.height = 'auto';
+      if (input.scrollHeight > 0) input.style.height = `${input.scrollHeight + 2}px`;
+    };
+    updateInputCounter = () => {
+      updateCounter();
+      fitInput();
+    };
+    input.addEventListener('input', () => {
+      updateCounter();
+      fitInput();
+    });
     input.addEventListener('paste', (e) => {
       const pasted = e.clipboardData?.getData('text') ?? '';
       const kept = input.value.length - (input.selectionEnd - input.selectionStart);
@@ -1096,12 +1130,18 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
       if (e.composedPath?.()[0] === input || input.getRootNode().activeElement === input) onInputKey(e);
     };
     input.addEventListener('input', noteTyping);
-    const send = L(el('button', 'send'), 'textContent', 'chat.send');
-    send.addEventListener('click', submit);
     const form = el('div', 'form');
     const compose = el('div', 'compose');
     compose.append(input, counter);
-    form.append(compose, send);
+    reactToggle = el('button', 'rtoggle', '😊');
+    L(reactToggle, 'title', 'chat.reactToggle');
+    reactToggle.addEventListener('click', () => {
+      prefs.reactsOpen = !prefs.reactsOpen;
+      closePicker();
+      applyPrefs();
+      savePrefs();
+    });
+    form.append(reactToggle, compose);
 
     // 크기 조절 핸들
     const handles = [
@@ -1124,7 +1164,8 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     L(replyX, 'title', 'chat.replyCancel');
     replyX.addEventListener('click', cancelReply);
     replyBar.append(replyText, replyX);
-    panel.append(head, list, typingLine, reactionRow(), replyBar, form, ...handles);
+    panelReacts = reactionRow();
+    panel.append(head, listWrap, typingLine, panelReacts, replyBar, form, ...handles);
 
     // 접힌 상태: 말풍선 + 배지, 마우스를 올리면 리액션 버튼
     bubbleBox = el('div', 'dock-bubble');
@@ -1241,6 +1282,10 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
       }
       const mine = m.userId === getState()?.userId;
       renderMessage(m);
+      if (!mine && !pinned) {
+        newMsgs++; // 위를 보는 중이면 자동 스크롤하지 않고 "새 메시지" 표시만
+        renderNewMsgs();
+      }
       scrollToBottom(mine);
       // 발신자의 입력 중 표시 해제
       clearTimeout(typingTimers.get(m.userId));

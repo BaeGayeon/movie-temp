@@ -116,11 +116,6 @@ export function createNetflixAdapter() {
       return leafTime(document.querySelector(TRICK_PLAY));
     },
 
-    // 진단 기록용
-    debug() {
-      return { adOnScreen: lastScan.ad, ui: timeLabels().map((l) => `${l.text}@${l.uia}`) };
-    },
-
     isAd(_video) {
       return adOnScreen(); // 짧은 영상(미리보기/예고편)은 광고가 아니다. 넷플릭스는 영상 길이가 광고에서도 본편 길이 그대로라 화면 표시만 본다
     },

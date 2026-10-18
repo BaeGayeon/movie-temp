@@ -3,8 +3,17 @@ export const MSG = {
   ko: {
     'popup.pageTitle': '같이보기',
     'popup.tagline': '같이 보면 더 재밌어요 🍿',
+    'popup.segCreate': '만들기',
+    'popup.segJoin': '참가',
+    'popup.decorate': '꾸미기 (닉네임 색 · 프사)',
+    'popup.secFont': '글꼴',
+    'popup.secSize': '크기',
+    'popup.tabRoom': '방',
+    'popup.tabMe': '내 설정',
+    'popup.roomSettings': '방 설정',
+    'popup.sync': '동기화 설정',
     'popup.lang': '🌐 언어',
-    'popup.langAuto': '자동 (브라우저 설정)',
+    'popup.langAuto': '자동',
 
     // 로비
     'popup.createOpts': '방 옵션 (선택)',
@@ -14,10 +23,9 @@ export const MSG = {
     'popup.maxLabelIcon': '👥 최대 인원',
     'popup.maxPlaceholder': '2~20명',
     'popup.create': '🎬 방 만들기',
-    'popup.orJoin': '또는 코드로 참가',
     'popup.codePlaceholder': '방 코드 6자리',
     'popup.join': '참가',
-    'popup.joinPwPlaceholder': '비밀번호 (있는 방만)',
+    'popup.joinPwPlaceholder': '비밀번호',
     'popup.noVideo': '이 페이지에서는 영상을 찾지 못했어요. 쿠팡플레이·넷플릭스·웨이브·티빙의 영상 페이지에서 시도해 주세요.',
 
     // 다른 탭에서 방에 있을 때
@@ -30,7 +38,7 @@ export const MSG = {
     'popup.cancel': '취소',
 
     // 방
-    'popup.roomCode': '🏠 방 코드',
+    'popup.roomCode': '방 코드',
     'popup.copyLink': '🔗 링크 복사',
     'popup.copyCode': '📋 코드 복사',
     'popup.copiedBang': '✅ 복사됨!',
@@ -42,14 +50,14 @@ export const MSG = {
     'popup.connDisconnected': '🔴 끊김 · 재연결 중',
     'popup.waking': '서버를 깨우는 중이에요 (최대 1분)…',
     'popup.connectingServer': '서버에 연결하는 중이에요…',
-    'popup.people': '🧑‍🤝‍🧑 같이 보는 사람',
+    'popup.people': '같이 보는 사람',
     'popup.count': '{n}명',
     'popup.countOne': '1명',
     'popup.badgeHost': '👑 방장',
     'popup.badgeMe': '나',
     'popup.someone': '누군가',
     'popup.waiting': '⏳ {names} 님을 기다리는 중이에요',
-    'popup.control': '🎮 조작 권한',
+    'popup.control': '조작 권한',
     'popup.modeEveryone': '🙌 모두 조작',
     'popup.modeHost': '👑 방장만',
     'popup.secondsLabel': '카운트다운 초',
@@ -59,7 +67,7 @@ export const MSG = {
     'popup.countdown': '⏱️ 카운트다운 시작',
 
     // 방 옵션(방장)
-    'popup.roomOpts': '🔒 방 옵션',
+    'popup.roomOpts': '방 옵션',
     'popup.pwLabel': '비밀번호',
     'popup.pwNone': '설정 안 함',
     'popup.pwUnknown': '설정돼 있어요 (이 기기에서는 볼 수 없어요)',
@@ -80,7 +88,7 @@ export const MSG = {
     'popup.pwRemoveAsk': '비밀번호를 없앨까요? 누구나 방 코드만 알면 들어올 수 있게 돼요.',
 
     // 프로필
-    'popup.profile': '🎨 내 프로필',
+    'popup.profile': '내 프로필',
     'popup.namePlaceholder': '닉네임 (최대 16자)',
     'popup.namePreview': '닉네임',
     'popup.saveNeeded': '저장해야 반영돼요',
@@ -103,7 +111,7 @@ export const MSG = {
     'popup.imageLoadFail': '이미지를 불러올 수 없어요. 다른 사진을 골라 주세요.',
 
     // 채팅 글꼴·크기
-    'popup.font': '🔤 채팅 글꼴·크기',
+    'popup.font': '채팅 모양',
     'popup.fontSample': '안녕하세요, 같이 봐요 ABC 123 ♥',
     'popup.fontDefault': '기본 글꼴 (SUIT)',
     'popup.fontLoad': '💻 내 컴퓨터 글꼴 허용하고 불러오기',
@@ -116,22 +124,17 @@ export const MSG = {
     'popup.fontUnfav': '즐겨찾기에서 빼기',
     'popup.fontLoadHint': '허용 창이 뜨면 팝업이 닫힐 수 있어요. 닫히면 확장 아이콘을 다시 눌러 글꼴 카드를 열어 주세요.',
     'popup.fontReset': '기본으로',
-    'popup.fontNamePlaceholder': '글꼴 이름 직접 입력',
     'popup.fontSize': '글자 크기',
     'popup.avatarSize': '프사 크기',
-    'popup.sizeReset': '크기 기본값',
-    'popup.fontNeedPermission': '글꼴 목록을 볼 수 있는 권한이 필요해요. 허용하지 않으면 아래에 글꼴 이름을 직접 입력해 주세요.',
-    'popup.fontLoadFail': '글꼴 목록을 불러오지 못했어요({err}). 아래에 글꼴 이름을 직접 입력해 주세요.',
+    'popup.sizeReset': '기본으로',
+    'popup.fontNeedPermission': '글꼴 목록을 볼 수 있는 권한이 필요해요.',
+    'popup.fontLoadFail': '글꼴 목록을 불러오지 못했어요({err}).',
     'popup.fontErrorFallback': '오류',
-    'popup.fontBlocked': '글꼴 접근이 차단돼 있어요. 크롬 설정에서 허용하거나, 아래에 글꼴 이름을 직접 입력해 주세요.',
+    'popup.fontBlocked': '글꼴 접근이 차단돼 있어요. 크롬 설정에서 허용해 주세요.',
 
     // 동기화 설정
-    'popup.sync': '⚙️ 동기화 설정',
     'popup.adDetect': '광고 구간은 동기화에서 제외',
     'popup.adDetectTip': '90초보다 짧은 영상은 광고로 보고, 광고 중에는 재생·일시정지·이동을 주고받지 않아요',
-    'popup.copyDiag': '🛠 진단 정보 복사',
-    'popup.copyDiagTip': '재생 위치/광고/주고받은 동작의 최근 기록을 복사해요. 문제가 생겼을 때 붙여 넣어 알려 주세요',
-    'popup.noDiag': '이 탭에는 기록이 없어요',
 
     // 이모지 선택기
     'picker.searchPlaceholder': '이모지 검색 (예: 웃음, 하트, ㅋㅋ, cry)',
@@ -160,8 +163,17 @@ export const MSG = {
   en: {
     'popup.pageTitle': 'Watch Together',
     'popup.tagline': 'Everything is more fun together 🍿',
+    'popup.segCreate': 'Create',
+    'popup.segJoin': 'Join',
+    'popup.decorate': 'Customize (name color · avatar)',
+    'popup.secFont': 'Font',
+    'popup.secSize': 'Size',
+    'popup.tabRoom': 'Room',
+    'popup.tabMe': 'My settings',
+    'popup.roomSettings': 'Room settings',
+    'popup.sync': 'Sync settings',
     'popup.lang': '🌐 Language',
-    'popup.langAuto': 'Auto (browser)',
+    'popup.langAuto': 'Auto',
 
     // Lobby
     'popup.createOpts': 'Room options (optional)',
@@ -171,10 +183,9 @@ export const MSG = {
     'popup.maxLabelIcon': '👥 Max people',
     'popup.maxPlaceholder': '2–20',
     'popup.create': '🎬 Create room',
-    'popup.orJoin': 'or join with a code',
     'popup.codePlaceholder': 'Room code',
     'popup.join': 'Join',
-    'popup.joinPwPlaceholder': 'Password (if any)',
+    'popup.joinPwPlaceholder': 'Password',
     'popup.noVideo': "Couldn't find a video on this page. Try a video page on Coupang Play, Netflix, Wavve or TVING.",
 
     // In a room from another tab
@@ -187,7 +198,7 @@ export const MSG = {
     'popup.cancel': 'Cancel',
 
     // Room
-    'popup.roomCode': '🏠 Room code',
+    'popup.roomCode': 'Room code',
     'popup.copyLink': '🔗 Copy link',
     'popup.copyCode': '📋 Copy code',
     'popup.copiedBang': '✅ Copied!',
@@ -199,14 +210,14 @@ export const MSG = {
     'popup.connDisconnected': '🔴 Disconnected · reconnecting',
     'popup.waking': 'Waking up the server (up to 1 min)…',
     'popup.connectingServer': 'Connecting to the server…',
-    'popup.people': '🧑‍🤝‍🧑 Watching together',
+    'popup.people': 'Watching together',
     'popup.count': '{n} people',
     'popup.countOne': '1 person',
     'popup.badgeHost': '👑 Host',
     'popup.badgeMe': 'Me',
     'popup.someone': 'Someone',
     'popup.waiting': '⏳ Waiting for {names}',
-    'popup.control': '🎮 Controls',
+    'popup.control': 'Controls',
     'popup.modeEveryone': '🙌 Everyone',
     'popup.modeHost': '👑 Host only',
     'popup.secondsLabel': 'Countdown seconds',
@@ -216,7 +227,7 @@ export const MSG = {
     'popup.countdown': '⏱️ Start countdown',
 
     // Room options (host)
-    'popup.roomOpts': '🔒 Room options',
+    'popup.roomOpts': 'Room options',
     'popup.pwLabel': 'Password',
     'popup.pwNone': 'Not set',
     'popup.pwUnknown': "Set (can't be shown on this device)",
@@ -237,7 +248,7 @@ export const MSG = {
     'popup.pwRemoveAsk': 'Remove the password? Anyone with the room code will be able to join.',
 
     // Profile
-    'popup.profile': '🎨 My profile',
+    'popup.profile': 'My profile',
     'popup.namePlaceholder': 'Nickname (max 16 characters)',
     'popup.namePreview': 'Nickname',
     'popup.saveNeeded': 'Save to apply',
@@ -260,7 +271,7 @@ export const MSG = {
     'popup.imageLoadFail': "Couldn't load that image. Please pick another photo.",
 
     // Chat font & size
-    'popup.font': '🔤 Chat font & size',
+    'popup.font': 'Chat appearance',
     'popup.fontSample': 'Hello, let’s watch together ABC 123 ♥',
     'popup.fontDefault': 'Default font (SUIT)',
     'popup.fontLoad': '💻 Allow & load my computer’s fonts',
@@ -273,22 +284,17 @@ export const MSG = {
     'popup.fontUnfav': 'Remove from favorites',
     'popup.fontLoadHint': 'The popup may close when the permission prompt appears. If it does, click the extension icon and open the font card again.',
     'popup.fontReset': 'Reset',
-    'popup.fontNamePlaceholder': 'Type a font name',
     'popup.fontSize': 'Text size',
     'popup.avatarSize': 'Avatar size',
-    'popup.sizeReset': 'Reset sizes',
-    'popup.fontNeedPermission': 'Permission to see your fonts is needed. If you don’t allow it, type a font name below.',
-    'popup.fontLoadFail': 'Couldn’t load the font list ({err}). Type a font name below.',
+    'popup.sizeReset': 'Reset',
+    'popup.fontNeedPermission': 'Permission to see your fonts is needed.',
+    'popup.fontLoadFail': 'Couldn’t load the font list ({err}).',
     'popup.fontErrorFallback': 'error',
-    'popup.fontBlocked': 'Font access is blocked. Allow it in Chrome settings, or type a font name below.',
+    'popup.fontBlocked': 'Font access is blocked. Allow it in Chrome settings.',
 
     // Sync settings
-    'popup.sync': '⚙️ Sync settings',
     'popup.adDetect': 'Skip ad breaks when syncing',
     'popup.adDetectTip': 'Videos shorter than 90 seconds are treated as ads, and play/pause/seek aren’t shared during ads',
-    'popup.copyDiag': '🛠 Copy diagnostics',
-    'popup.copyDiagTip': 'Copies recent playback position, ad and sync activity. Paste it when reporting a problem.',
-    'popup.noDiag': 'No logs on this tab',
 
     // Emoji picker
     'picker.searchPlaceholder': 'Search emoji (e.g. smile, heart, cry)',

@@ -30,6 +30,25 @@ for (const d of document.querySelectorAll('details[data-fold]')) {
   });
 }
 
+// 탭: 방 / 내 설정. 마지막으로 본 탭을 기억한다
+const TABS = { room: $('tabRoom'), me: $('tabMe') };
+function showTab(name) {
+  if (!(name in TABS)) name = 'room';
+  for (const [k, pane] of Object.entries(TABS)) pane.hidden = k !== name;
+  for (const b of document.querySelectorAll('.tabs [data-tab]')) {
+    const on = b.dataset.tab === name;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-selected', String(on));
+  }
+}
+showTab((await chrome.storage.local.get('popupTab')).popupTab);
+$('tabBtnRoom').parentElement.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-tab]');
+  if (!b) return;
+  showTab(b.dataset.tab);
+  chrome.storage.local.set({ popupTab: b.dataset.tab });
+});
+
 // 글자 앞 이모지를 따로 감싸서 글자와 세로 가운데를 맞추고 간격을 둔다(동적으로 바뀌는 문구도 포함)
 const LEAD_EMOJI = /^(\p{Extended_Pictographic}\uFE0F?(?:\u200d\p{Extended_Pictographic}\uFE0F?)*)(\s+)(?=\S)/u;
 function decorate(root) {
@@ -70,6 +89,8 @@ function render() {
   // 방은 한 탭에만 묶인다: 다른 탭에서 연 팝업에서는 방 UI 대신 "어디서 하는 중인지"만 보여준다
   const here = inRoom && state.tabId === curTabId;
   const elsewhere = inRoom && !here;
+  document.body.classList.toggle('in-room', here); // 방에 있을 땐 헤더를 얇게
+  $('conn').hidden = !here;
   $('lobby').hidden = inRoom;
   $('room').hidden = !here;
   $('elsewhere').hidden = !elsewhere;
@@ -81,8 +102,10 @@ function render() {
   $('error').classList.toggle('info', !state?.error && !!wait);
   applyLobbyDisabled();
   // 비밀번호가 필요한 방에 참가하려다 거절됨: 코드를 채워 두고 비밀번호 칸으로 안내
+  $('joinPwWrap').hidden = !state?.needPassword || inRoom;
   if (state?.needPassword && !inRoom && document.activeElement !== $('joinPw') && $('joinPw').dataset.askedFor !== state.needPassword.roomCode) {
     $('joinPw').dataset.askedFor = state.needPassword.roomCode;
+    showLobby('join');
     $('code').value = state.needPassword.roomCode;
     $('joinPw').focus();
   }
@@ -99,6 +122,7 @@ function render() {
   const [connKey, connCls] = CONN[state.connection] ?? CONN.disconnected;
   $('conn').textContent = t(connKey);
   $('conn').className = `status ${connCls}`;
+  $('conn').hidden = false;
   const n = state.participants.length;
   $('count').textContent = `${state.hasPassword ? '🔒 ' : ''}${n === 1 && !state.maxMembers ? t('popup.countOne') : t('popup.count', { n: state.maxMembers ? `${n}/${state.maxMembers}` : n })}`;
 
@@ -219,6 +243,22 @@ function badge(text, cls) {
 // 영상이 있는 탭에서만 방 만들기/참가 가능(영상은 나중에 뜰 수 있으니 열려 있는 동안 계속 확인)
 let hasVideo = null; // 아직 확인 전이면 null
 let busy = false; // 방 만들기/참가 요청이 서버 연결을 기다리는 중: 버튼을 막아 중복으로 누르지 않게 한다
+// 로비: 만들기 / 참가 전환. 참가 쪽 비밀번호 칸은 방이 요구할 때만 보인다
+let lobbyMode = 'create';
+function showLobby(mode) {
+  lobbyMode = mode;
+  $('lobbyCreate').hidden = mode !== 'create';
+  $('lobbyJoin').hidden = mode !== 'join';
+  for (const b of $('lobbySeg').children) {
+    b.classList.toggle('on', b.dataset.lobby === mode);
+    b.setAttribute('aria-selected', String(b.dataset.lobby === mode));
+  }
+}
+$('lobbySeg').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-lobby]');
+  if (b) showLobby(b.dataset.lobby);
+});
+showLobby('create');
 function applyLobbyDisabled() {
   for (const id of ['create', 'join', 'code', 'joinPw', 'createPw', 'createMax']) $(id).disabled = hasVideo === false || busy;
   $('noVideo').hidden = hasVideo !== false;
@@ -356,19 +396,6 @@ $('copy').addEventListener('click', async () => {
     return;
   }
   setTimeout(() => ($('copy').textContent = t('popup.copyLink')), 1500);
-});
-
-// ---------- 진단 정보: 현재 탭의 최근 동작 기록을 클립보드로 ----------
-$('copyDiag').addEventListener('click', async () => {
-  try {
-    const tab = await activeTab();
-    const reply = await chrome.tabs.sendMessage(tab.id, { cmd: CMD.DIAG });
-    await navigator.clipboard.writeText(reply.text);
-    $('copyDiag').textContent = t('popup.copiedBang');
-  } catch {
-    $('copyDiag').textContent = t('popup.noDiag');
-  }
-  setTimeout(() => ($('copyDiag').textContent = t('popup.copyDiag')), 1800);
 });
 
 // ---------- 동기화 설정: 광고 구간 제외 ----------
@@ -682,7 +709,6 @@ $('fontList').addEventListener('mouseleave', () => {
 });
 addEventListener('pagehide', () => chrome.storage.local.set({ chatFontPreview: null })); // 팝업이 닫히면 미리보기 해제
 const paintFont = (name) => {
-  $('fontName').value = name;
   committedFont = name;
   sampleFont(name);
   renderFontList(name);
@@ -708,8 +734,6 @@ chrome.storage.onChanged.addListener((ch, area) => {
   }
   if (ch.localFonts || ch.chatPrefs) chrome.storage.local.get('chatPrefs').then((r) => paintFont(cleanFont(r.chatPrefs?.fontFamily)));
 });
-$('fontApply').addEventListener('click', () => setChatFont($('fontName').value));
-$('fontName').addEventListener('keydown', (e) => e.key === 'Enter' && !e.isComposing && setChatFont($('fontName').value));
 $('fontReset').addEventListener('click', () => setChatFont(''));
 // 내 컴퓨터 글꼴 목록(queryLocalFonts): 글꼴 카드를 열면 자동으로 불러온다.
 //  - 이미 허용했으면 조용히 불러옴
@@ -723,10 +747,8 @@ async function loadLocalFonts() {
     const families = [...new Set(fonts.map((f) => f.family))].sort((x, y) => x.localeCompare(y, 'ko'));
     if (families.length) await chrome.storage.local.set({ localFonts: families });
     $('fontLoad').hidden = true;
-    $('fontManual').hidden = true;
   } catch (err) {
     $('fontLoad').hidden = false;
-    $('fontManual').hidden = false; // 목록을 못 불러올 때만 이름 직접 입력을 보여 준다
     $('ferror').textContent =
       err?.name === 'NotAllowedError' || err?.name === 'SecurityError'
         ? t('popup.fontNeedPermission')
@@ -734,13 +756,12 @@ async function loadLocalFonts() {
   }
 }
 async function autoLoadFonts() {
-  if (typeof window.queryLocalFonts !== 'function') return $('fontManual').hidden = false; // 미지원: 이름 직접 입력만
+  if (typeof window.queryLocalFonts !== 'function') return; // 미지원: 기본 목록만
   let state = 'prompt';
   try {
     state = (await navigator.permissions.query({ name: 'local-fonts' })).state;
   } catch {}
   if (state === 'denied') {
-    $('fontManual').hidden = false;
     $('ferror').textContent = t('popup.fontBlocked');
     return;
   }

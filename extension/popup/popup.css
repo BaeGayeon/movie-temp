@@ -118,7 +118,6 @@ details.card[open] > summary { border-bottom: 2px solid var(--border); }
 #pname { width: 100%; }
 .sub { font-size: 12px; font-weight: 700; color: var(--ink-soft); margin-top: 2px; }
 .fontsample { padding: 8px 10px; border-radius: 12px; background: var(--bg); font-size: 15px; }
-#fontName { flex: 1; min-width: 0; }
 .sizerow { display: flex; align-items: center; gap: 10px; }
 .sizerow span { width: 62px; flex: none; font-size: 13px; }
 .sizerow input { flex: 1; accent-color: var(--accent); }
@@ -219,8 +218,65 @@ summary > .ic { margin-right: .45em; }
 #pwButtons, #pwForm { margin-bottom: 10px; }
 #pwForm .pwwrap { flex: 1; }
 
-/* ---- 언어 선택 ---- */
-.langrow { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin: 10px 2px 2px; font-size: 12px; color: var(--ink-soft); }
-.langrow select { font-size: 12px; padding: 4px 26px 4px 10px; }
-
 .sec { font-size: 13px; font-weight: 800; margin-top: 6px; padding-top: 10px; border-top: 1px solid var(--border-3); }
+
+/* ---- 탭(방 / 내 설정) ---- */
+.tabs { display: flex; padding: 3px; gap: 3px; background: var(--surface-2); border-radius: 999px; }
+.tabs button { flex: 1; font: inherit; font-weight: 700; padding: 7px 4px; border: 0; border-radius: 999px; background: transparent; color: var(--ink-soft); cursor: pointer; }
+.tabs button.on { background: var(--surface); color: var(--accent-ink); box-shadow: 0 2px 6px var(--btn-shadow); }
+.tabs button:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--border-3); }
+.tabpane { display: flex; flex-direction: column; gap: 12px; }
+.roomfoot { justify-content: space-between; }
+.roomfoot .btn { flex: 0 0 auto; }
+#optBox { display: flex; flex-direction: column; gap: 8px; }
+#optBox[hidden] { display: none; }
+#optBox .optline, #optBox #pwButtons, #optBox #pwForm { margin-bottom: 0; }
+
+/* 탭 줄 오른쪽 언어 선택 */
+.tabbar { display: flex; align-items: stretch; gap: 8px; } /* 탭 묶음과 언어 선택의 높이를 같게 */
+.tabbar .tabs { flex: 1; min-width: 0; }
+.lang { flex: none; display: flex; align-items: center; gap: 4px; padding: 0 2px 0 12px; border-radius: 999px; background: var(--surface-2); color: var(--ink-soft); font-size: 14px; font-weight: 700; }
+.lang-ic { line-height: 1; }
+.lang select { font-size: 14px; font-weight: 700; color: var(--ink-soft); padding: 7px 24px 7px 2px; border: 0; background-color: transparent; background-position: right 9px center; }
+
+/* 같은 줄의 버튼/선택칸은 높이를 맞춘다(파란 버튼 아래 입체 그림자만 조금 더 나온다) */
+.row.nowrap { align-items: stretch; }
+.row.nowrap > .btn:not(.small), .row.nowrap > select { min-height: 42px; }
+.row.nowrap > .btn:not(.small) { display: flex; align-items: center; justify-content: center; }
+.row.nowrap > .btn:not(.small):not(.primary):not(.ghost):not(.danger) { box-shadow: 0 3px 0 var(--border-2); } /* 파란 버튼의 입체감(아래 두께)과 맞춘다 */
+.row.nowrap > select { padding-top: 0; padding-bottom: 0; }
+/* 아래 두께(그림자)만큼 아래 줄과 벌어져 보이도록 세로 간격을 가로 간격(8px)과 같게 맞춘다 */
+.row.nowrap:has(> .btn:not(.small):not(.ghost):not(.danger)) { margin-bottom: 3px; }
+
+/* 로비: 만들기 / 참가 */
+#lobbySeg { margin-bottom: 12px; }
+#lobbySeg button { font-size: 14px; padding: 7px 4px; }
+#lobbyCreate .opts { margin-bottom: 10px; }
+
+/* 프로필: 꾸미기(접힘) */
+.deco { margin-top: 2px; }
+.deco > summary { cursor: pointer; font-size: 13px; font-weight: 700; color: var(--ink-soft); padding: 6px 2px; user-select: none; }
+.deco[open] > summary { color: var(--ink); }
+.deco-inner { display: flex; flex-direction: column; gap: 8px; padding-top: 4px; }
+
+/* 글꼴 카드: 제목 줄 오른쪽에 그 항목만 되돌리는 버튼 */
+.sechead { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.sechead .t { font-size: 13px; font-weight: 800; }
+.sechead.sep { margin-top: 6px; padding-top: 10px; border-top: 1px solid var(--border-3); }
+
+/* 인라인 스타일 정리 */
+.row.wrap { flex-wrap: wrap; }
+.saverow { margin-top: 10px; }
+.saverow .btn { flex: 0 0 auto; }
+
+/* 방에 있을 때: 헤더를 얇게(태그라인 숨김) + 연결 상태는 헤더 오른쪽에 */
+.top > .status { position: absolute; right: 16px; top: 50%; transform: translateY(-50%); z-index: 2; padding: 3px 10px; }
+.in-room .top { padding: 10px 16px 14px; border-radius: 0 0 20px 20px; }
+.in-room .tagline { display: none; }
+.in-room .logo { width: 32px; height: 32px; font-size: 18px; border-radius: 11px; }
+.in-room h1 { font-size: 16px; }
+.in-room .top::before { font-size: 34px; }
+.in-room .top::after { display: none; }
+.in-room h1 small { display: none; } /* 한글 병기는 숨겨 연결 상태 칩과 겹치지 않게 */
+.in-room .brand { padding-right: 96px; }
+.in-room h1 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
