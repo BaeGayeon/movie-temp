@@ -143,6 +143,7 @@ details.card[open] > summary { border-bottom: 2px solid var(--border); }
 .check { display: flex; align-items: center; gap: 8px; font-weight: 700; cursor: pointer; }
 .check input { width: 18px; height: 18px; accent-color: var(--accent); }
 .error { color: var(--danger); font-size: 12px; font-weight: 700; min-height: 0; text-align: center; }
+.error.info { color: var(--ink-soft); }
 .error:empty { display: none; }
 
 .card > summary .status, .card > summary .count { margin-left: 2px; }
