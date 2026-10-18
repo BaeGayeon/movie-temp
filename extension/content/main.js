@@ -707,6 +707,7 @@
         setAdNotice(inAd); // 광고 안내는 방에 있을 때만(방에 들어오면 켜고, 나가면 끈다)
         // 서버와 연결이 끊긴 동안은 이유와 함께 알린다(그동안 재생/채팅은 전달되지 않는다)
         updateConnNotice();
+        chat?.onConnection(state); // 끊겼으면 보내는 중이던 채팅을 "못 보냄"으로
         log('state', state.roomCode ?? '방 없음', state.connection);
         if (!active()) {
           ui.hideClickPrompt();
