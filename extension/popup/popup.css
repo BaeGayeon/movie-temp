@@ -234,11 +234,11 @@ summary > .ic { margin-right: .45em; }
 #optBox .optline, #optBox #pwButtons, #optBox #pwForm { margin-bottom: 0; }
 
 /* 탭 줄 오른쪽 언어 선택 */
-.tabbar { display: flex; align-items: center; gap: 8px; }
+.tabbar { display: flex; align-items: stretch; gap: 8px; } /* 탭 묶음과 언어 선택의 높이를 같게 */
 .tabbar .tabs { flex: 1; min-width: 0; }
-.lang { flex: none; display: flex; align-items: center; gap: 4px; padding: 0 2px 0 10px; height: 100%; border-radius: 999px; background: var(--surface-2); color: var(--ink-soft); font-size: 12px; }
+.lang { flex: none; display: flex; align-items: center; gap: 4px; padding: 0 2px 0 12px; border-radius: 999px; background: var(--surface-2); color: var(--ink-soft); font-size: 14px; font-weight: 700; }
 .lang-ic { line-height: 1; }
-.lang select { font-size: 12px; padding: 6px 22px 6px 2px; border: 0; background-color: transparent; background-position: right 7px center; }
+.lang select { font-size: 14px; font-weight: 700; color: var(--ink-soft); padding: 7px 24px 7px 2px; border: 0; background-color: transparent; background-position: right 9px center; }
 
 /* 같은 줄의 버튼/선택칸은 높이를 맞춘다(파란 버튼 아래 입체 그림자만 조금 더 나온다) */
 .row.nowrap { align-items: stretch; }
