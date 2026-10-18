@@ -563,6 +563,8 @@ $('fontTabs').addEventListener('click', (e) => {
   if (!b) return;
   fontTab = b.dataset.tab;
   filterFontList();
+  $('fontList').scrollTop = 0;
+  $('fontList').querySelector('[aria-selected=true]:not([hidden])')?.scrollIntoView({ block: 'center' }); // 지금 선택된 글꼴이 보이게
   $('fontSearch').focus();
 });
 const visibleOptions = () => [...$('fontList').querySelectorAll('[role=option]:not([hidden])')];
