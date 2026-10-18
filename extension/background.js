@@ -92,8 +92,13 @@ let restoring = false; // 내가 방 복구(create_room)를 요청한 상태
 let restartingUntil = 0; // 서버가 곧 재시작한다고 알려 온 뒤 이 시각까지는 "재시작 중"으로 본다(재연결이 죽어가는 서버에 잠깐 붙어도 표시가 지워지지 않게 시간으로 정한다)
 const RESTARTING_MS = 30_000;
 const isRestarting = () => Date.now() < restartingUntil;
+// 끊긴 이유: 'restart' = 재배포/서버 재시작(예정된 일), 'error' = 그 밖의 끊김(네트워크 문제 등 진짜 오류).
+// 서버가 알려 온 경우(server_restarting), 연결이 서버의 정상 종료 코드(1012/1001)로 닫힌 경우, 끊긴 직후 /health 에 물었더니 서버 식별값이 바뀐 경우 'restart'.
+let outageKind = 'error';
+let classifyRun = 0;
 let joinRetryTimer = null;
 // 복구 뒤에는 돌아오는 사람마다 "입장했어요"를 띄우지 않고, 모두 돌아오면 한 번에 알린다(나간 적이 없는데 입장했다고 뜨면 어색하다)
+const QUIET_MS = 10_000; // 이보다 짧게 끊겼다 모두 돌아오면 채팅에는 아무 줄도 남기지 않는다(영상 위 상자로 충분하다). 길어졌거나 안 돌아온 사람이 있을 때만 남긴다
 const REJOIN_WAIT_MS = 20_000; // 이 시간까지 안 돌아온 사람은 따로 알린다
 let lostIds = new Set(); // 연결이 끊기던 때 방에 있던 다른 사람들
 let roomWasLost = false; // 서버에서 방이 사라져 있었다(복구가 필요했다)
@@ -132,7 +137,7 @@ async function init() {
 function publicState() {
   const { chat, restoreToken, ...rest } = room;
   const askPw = needPassword && Date.now() - needPassword.at < 2 * 60_000 ? { roomCode: needPassword.roomCode, wrong: needPassword.wrong } : null; // 오래된 요청은 버린다
-  return { ...rest, userId, connection, error: lastError, waking, busy: pending !== null, restarting: isRestarting(), needPassword: askPw }; // busy: 방 만들기/참가 요청을 서버 연결 전에 쥐고 있는 중
+  return { ...rest, userId, connection, error: lastError, waking, busy: pending !== null, restarting: outageKind === 'restart', needPassword: askPw }; // busy: 방 만들기/참가 요청을 서버 연결 전에 쥐고 있는 중
 }
 
 function persist() {
@@ -174,7 +179,6 @@ function sendToTab(msg, tabId = room.tabId) {
 function toast(text, ms) {
   sendToTab({ cmd: CMD.TOAST, text, ms });
 }
-const LONG_TOAST_MS = 5000; // 재시작/복구 같은 알림은 몇 초 안에 끝나는 일이라 놓치기 쉬워서 길게 보여 준다
 
 // 저장된 내 프로필이 서버에 등록된 것과 다르면 (입장/재접속 직후) 등록한다
 function syncProfile() {
@@ -205,15 +209,16 @@ function pushNotice(action, extra = {}) {
 }
 
 // 복구된 방(또는 이미 복구돼 있는 방)에 다시 들어왔다: 연결이 끊기던 때 같이 있던 사람들 중 아직 안 보이는 사람을 기다린다
-function waitForOthersBack(current) {
+function waitForOthersBack(current, since = Date.now()) {
   clearTimeout(backWait?.timer);
   backWait = null;
   const here = new Set((current ?? []).map((p) => p.id));
   const ids = new Set([...lostIds].filter((id) => !here.has(id)));
   if (!lostIds.size) return;
-  if (!ids.size) return pushNotice('allback');
+  if (!ids.size) return Date.now() - since >= QUIET_MS && pushNotice('allback');
   backWait = {
     ids,
+    since,
     timer: setTimeout(() => {
       const names = [...(backWait?.ids ?? [])].map((id) => room.known[id]?.name ?? t('common.someone'));
       backWait = null;
@@ -302,11 +307,11 @@ function connect() {
     }
     handleServer(m);
   };
-  sock.onclose = () => onSocketClosed(sock);
+  sock.onclose = (e) => onSocketClosed(sock, e?.code);
   sock.onerror = () => {};
 }
 
-function onSocketClosed(sock) {
+function onSocketClosed(sock, code) {
   if (ws !== sock) return;
   ws = null;
   clearInterval(pingTimer);
@@ -315,9 +320,34 @@ function onSocketClosed(sock) {
   if (room.roomCode && lostAt === null) {
     lostAt = Date.now();
     lostIds = new Set(room.participants.map((p) => p.id).filter((id) => id !== userId));
+    outageKind = isRestarting() || code === 1012 || code === 1001 ? 'restart' : 'error';
+    if (outageKind === 'error') classifyOutage(); // 이유를 모르겠으면 서버에 물어서 재배포인지 확인한다
   }
   if (room.roomCode || pending) scheduleReconnect();
   else broadcast();
+}
+
+// 끊긴 직후 서버의 /health 에 물어 본다: 새 서버가 이미 떠 있어서 식별값이 바뀌어 있으면 재배포다(종료 신호를 못 받았어도 알 수 있다).
+// 같은 서버가 멀쩡히 답하는데 연결만 끊겼으면 진짜 오류다. 서버가 아직 안 답하면 잠시 기다리며 다시 묻는다.
+async function classifyOutage() {
+  const run = ++classifyRun;
+  const url = `${SERVER_URL.replace(/^ws/, 'http')}/health`;
+  for (let i = 0; i < 8 && run === classifyRun && lostAt !== null; i++) {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(2500), cache: 'no-store' });
+      const body = res.ok ? await res.json() : null;
+      if (run !== classifyRun || lostAt === null) return;
+      if (body?.serverId && room.serverId) {
+        const kind = body.serverId !== room.serverId ? 'restart' : 'error';
+        if (kind !== outageKind) {
+          outageKind = kind;
+          broadcast();
+        }
+        return;
+      }
+    } catch {}
+    await new Promise((r) => setTimeout(r, 1000));
+  }
 }
 
 // 서버에서 한참 아무 소식이 없는 연결: 닫히길 기다리지 않고 끊긴 것으로 처리해 바로 다시 연결한다
@@ -438,6 +468,7 @@ function handleServer(m) {
   switch (m.type) {
     case S2C.SERVER_RESTARTING:
       restartingUntil = Date.now() + RESTARTING_MS;
+      outageKind = 'restart';
       broadcast(); // 끊기기 전에 미리 알려, 끊기는 순간부터 "재시작 중" 안내가 뜨게 한다
       break;
 
@@ -475,11 +506,13 @@ function handleServer(m) {
       // 방이 사라져 있었거나(복구가 필요했다), 서버가 재시작한다고 알려 왔다면: 먼저 돌아온 쪽(방이 없어 복구)이든 나중에 돌아온 쪽(이미 복구된 방에 참가)이든 똑같이 안내한다
       if (roomWasLost || (lostAt !== null && (serverChanged || isRestarting()))) {
         // 방이 사라졌다가 복구됐다: 언제 끊겼는지 채팅 기록에 남기고, 나머지가 돌아오길 기다렸다 한 번에 알린다
-        toast(t('bg.roomRestored'), LONG_TOAST_MS); // 직접 복구한 쪽이든 이미 복구된 방에 참가한 쪽이든 똑같이 알린다
-        pushNotice('down', { at: lostAt ?? Date.now(), secs: lostAt ? Math.max(1, Math.round((Date.now() - lostAt) / 1000)) : null }); // 얼마나 끊겼는지도 남긴다
-        waitForOthersBack(m.participants);
+        const outageMs = lostAt ? Date.now() - lostAt : 0;
+        if (outageMs >= QUIET_MS) pushNotice('down', { at: lostAt, secs: Math.round(outageMs / 1000) }); // 길게 끊긴 경우에만 기록을 남긴다
+        waitForOthersBack(m.participants, lostAt ?? Date.now());
       }
       roomWasLost = false;
+      classifyRun++; // 복구됐으니 끊긴 이유를 더 묻지 않는다
+      restartingUntil = 0; // 복구가 끝났다: 이 알림이 다음 끊김(진짜 오류)을 재배포로 오인하지 않게 지운다
       lostAt = null;
       restoreTries = 0;
       restoring = false;
@@ -509,8 +542,9 @@ function handleServer(m) {
         // 복구 뒤에 돌아오는 사람: 개별 입장 알림 대신, 모두 돌아오면 한 번에 알린다
         if (!backWait.ids.size) {
           clearTimeout(backWait.timer);
+          const slow = Date.now() - backWait.since >= QUIET_MS;
           backWait = null;
-          pushNotice('allback');
+          if (slow) pushNotice('allback');
         }
       } else pushMembershipNotice(m.user, 'join'); // 채팅창에 표시(채팅이 접혀 있으면 토스트)
       break;

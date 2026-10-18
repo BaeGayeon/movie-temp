@@ -1294,3 +1294,12 @@ test('room_state 에 서버 실행 식별값(serverId)이 있고, 서버마다 �
   }
   a.close();
 });
+
+test('GET /health 에 serverId 가 있고 room_state 의 serverId 와 같다', async () => {
+  const body = await (await fetch(`http://127.0.0.1:${port}/health`)).json();
+  assert.match(body.serverId, /^[0-9a-f]{12}$/);
+  const a = await new Client().open();
+  a.send({ type: 'create_room', userId: a.userId, secret: 's'.repeat(43) });
+  assert.equal((await a.next('room_state')).serverId, body.serverId);
+  a.close();
+});

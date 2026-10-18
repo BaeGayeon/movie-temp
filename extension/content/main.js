@@ -61,7 +61,7 @@
   const chat = isTop
     ? createChat({
         getState: () => state,
-        onSend: (text, replyTo) => send({ cmd: CMD.CHAT_SEND, text, videoTime: currentVideoTime(), replyTo }),
+        onSend: (text, replyTo) => (noteDropped(), send({ cmd: CMD.CHAT_SEND, text, videoTime: currentVideoTime(), replyTo })),
         getInviteLink: () => {
           const u = new URL(location.href);
           u.searchParams.set('wp', state?.roomCode ?? '');
@@ -100,6 +100,48 @@
       }
     });
   } catch {}
+
+  // ---------- 서버 연결이 끊겼을 때의 안내 ----------
+  // 몰입을 깨지 않게, 평소의 짧은 끊김(1~2초)에는 아무것도 띄우지 않는다. 아래 경우에만 영상 위 상자를 띄운다:
+  //  - 끊긴 채로 CONN_SHOW_DELAY_MS 가 지났을 때
+  //  - 끊긴 동안 내가 재생/정지/이동/채팅을 시도했을 때(그 동작은 전달되지 않으므로 바로 알린다)
+  // 상자가 떴던 경우에만 복구될 때 "다시 연결됐어요"를 보여 준다.
+  const CONN_SHOW_DELAY_MS = 3000;
+  let connTimer = null;
+  let connShown = false;
+  let droppedAction = false;
+  const connLost = () => active() && state.connection !== 'connected';
+  function showConnNotice() {
+    if (!isTop || !connLost()) return;
+    connShown = true;
+    const restart = !!state.restarting; // 재배포/서버 재시작(예정된 일)인지, 진짜 오류인지
+    ui.showConnection(
+      tr(droppedAction ? (restart ? 'content.droppedActionRestart' : 'content.droppedAction') : restart ? 'content.serverRestarting' : 'content.reconnecting'),
+      undefined,
+      false,
+      restart ? 'restart' : 'error',
+    );
+  }
+  function updateConnNotice() {
+    if (!isTop) return;
+    if (connLost()) {
+      if (connShown) showConnNotice(); // 문구만 갱신(재시작 알림이 뒤늦게 온 경우 등)
+      else if (droppedAction) showConnNotice();
+      else if (!connTimer) connTimer = setTimeout(() => ((connTimer = null), showConnNotice()), CONN_SHOW_DELAY_MS);
+    } else {
+      clearTimeout(connTimer);
+      connTimer = null;
+      droppedAction = false;
+      if (connShown) ui.showConnection(null, tr(state.restarting ? 'content.reconnectedRestart' : 'content.reconnected'));
+      connShown = false;
+    }
+  }
+  // 끊긴 동안 한 동작은 서버로 가지 않는다: 바로 알린다
+  function noteDropped() {
+    if (!isTop || !connLost()) return;
+    droppedAction = true;
+    showConnNotice();
+  }
 
   function setAdNotice(on) {
     if (isTop) ui.showAd(on && active() ? tr('content.adSelf') : null);
@@ -486,6 +528,7 @@
       applyRoomVideo();
       return;
     }
+    if (!silent) noteDropped(); // 끊겨 있으면 이 동작은 전달되지 않는다
     log('local', action, '전송', pos().toFixed(1), 'vct', video.currentTime.toFixed(1), 'dur', video.duration, 'inAd', inAd);
     // background 는 자기 쪽 미러만 갱신하므로, 내 조작도 여기 상태에 반영해 둔다(채팅의 재생 시각, 싱크 보정 기준)
     state.video = {
@@ -685,13 +728,17 @@
         if (!wasActive && active()) alignNoticeUntil = Date.now() + 10000;
         setAdNotice(inAd); // 광고 안내는 방에 있을 때만(방에 들어오면 켜고, 나가면 끈다)
         // 서버와 연결이 끊긴 동안은 이유와 함께 알린다(그동안 재생/채팅은 전달되지 않는다)
-        if (isTop) ui.showConnection(active() && state.connection !== 'connected' ? tr(state.restarting ? 'content.serverRestarting' : 'content.reconnecting') : null);
+        updateConnNotice();
         log('state', state.roomCode ?? '방 없음', state.connection);
         if (!active()) {
           ui.hideClickPrompt();
           ui.hideCountdown();
           ui.showWaiting(null);
-          ui.showConnection(null);
+          clearTimeout(connTimer);
+          connTimer = null;
+          connShown = false;
+          droppedAction = false;
+          ui.showConnection(null, null, true);
           chat?.hide();
         } else if (chat) {
           ensureSuitFont(); // 채팅/안내 글꼴(처음 한 번만 불러온다)
