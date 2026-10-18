@@ -94,6 +94,7 @@ const RESTARTING_MS = 30_000;
 const isRestarting = () => Date.now() < restartingUntil;
 let joinRetryTimer = null;
 // 복구 뒤에는 돌아오는 사람마다 "입장했어요"를 띄우지 않고, 모두 돌아오면 한 번에 알린다(나간 적이 없는데 입장했다고 뜨면 어색하다)
+const QUIET_MS = 10_000; // 이보다 짧게 끊겼다 모두 돌아오면 채팅에는 아무 줄도 남기지 않는다(영상 위 상자로 충분하다). 길어졌거나 안 돌아온 사람이 있을 때만 남긴다
 const REJOIN_WAIT_MS = 20_000; // 이 시간까지 안 돌아온 사람은 따로 알린다
 let lostIds = new Set(); // 연결이 끊기던 때 방에 있던 다른 사람들
 let roomWasLost = false; // 서버에서 방이 사라져 있었다(복구가 필요했다)
@@ -204,15 +205,16 @@ function pushNotice(action, extra = {}) {
 }
 
 // 복구된 방(또는 이미 복구돼 있는 방)에 다시 들어왔다: 연결이 끊기던 때 같이 있던 사람들 중 아직 안 보이는 사람을 기다린다
-function waitForOthersBack(current) {
+function waitForOthersBack(current, since = Date.now()) {
   clearTimeout(backWait?.timer);
   backWait = null;
   const here = new Set((current ?? []).map((p) => p.id));
   const ids = new Set([...lostIds].filter((id) => !here.has(id)));
   if (!lostIds.size) return;
-  if (!ids.size) return pushNotice('allback');
+  if (!ids.size) return Date.now() - since >= QUIET_MS && pushNotice('allback');
   backWait = {
     ids,
+    since,
     timer: setTimeout(() => {
       const names = [...(backWait?.ids ?? [])].map((id) => room.known[id]?.name ?? t('common.someone'));
       backWait = null;
@@ -474,8 +476,9 @@ function handleServer(m) {
       // 방이 사라져 있었거나(복구가 필요했다), 서버가 재시작한다고 알려 왔다면: 먼저 돌아온 쪽(방이 없어 복구)이든 나중에 돌아온 쪽(이미 복구된 방에 참가)이든 똑같이 안내한다
       if (roomWasLost || (lostAt !== null && (serverChanged || isRestarting()))) {
         // 방이 사라졌다가 복구됐다: 언제 끊겼는지 채팅 기록에 남기고, 나머지가 돌아오길 기다렸다 한 번에 알린다
-        pushNotice('down', { at: lostAt ?? Date.now(), secs: lostAt ? Math.max(1, Math.round((Date.now() - lostAt) / 1000)) : null }); // 얼마나 끊겼는지도 남긴다
-        waitForOthersBack(m.participants);
+        const outageMs = lostAt ? Date.now() - lostAt : 0;
+        if (outageMs >= QUIET_MS) pushNotice('down', { at: lostAt, secs: Math.round(outageMs / 1000) }); // 길게 끊긴 경우에만 기록을 남긴다
+        waitForOthersBack(m.participants, lostAt ?? Date.now());
       }
       roomWasLost = false;
       lostAt = null;
@@ -507,8 +510,9 @@ function handleServer(m) {
         // 복구 뒤에 돌아오는 사람: 개별 입장 알림 대신, 모두 돌아오면 한 번에 알린다
         if (!backWait.ids.size) {
           clearTimeout(backWait.timer);
+          const slow = Date.now() - backWait.since >= QUIET_MS;
           backWait = null;
-          pushNotice('allback');
+          if (slow) pushNotice('allback');
         }
       } else pushMembershipNotice(m.user, 'join'); // 채팅창에 표시(채팅이 접혀 있으면 토스트)
       break;
