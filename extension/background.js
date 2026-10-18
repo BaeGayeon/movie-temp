@@ -6,10 +6,14 @@ import { initI18n, t, getLang, serverErrorText } from './shared/i18n.js';
 
 initI18n(); // 서비스 워커가 다시 떠도 저장된 언어 설정을 읽는다(그 전에는 브라우저 언어)
 
-const PING_MS = 5_000;
+const PING_MS = 3_000;
 // 연결이 조용히 죽는 경우(공유기/프록시가 연결을 닫지 않고 멈춤)는 브라우저가 한참 뒤에야 알려 준다.
 // 서버는 ping 마다 바로 응답하므로, 이 시간 동안 서버에서 아무 메시지도 없으면 끊긴 것으로 보고 직접 다시 연결한다.
-const DEAD_MS = 15_000;
+const DEAD_MS = 9_000;
+// 사용자가 무언가를 보냈는데(채팅/정지/재생 등) 서버에서 SILENT_MS 넘게 아무 소식이 없었다면, 기다리지 않고 바로 ping 으로 확인한다.
+// PROBE_MS 안에 응답이 없으면 끊긴 것으로 본다(보낸 게 전달되지 않는 걸 사용자가 가장 먼저 느끼는 순간이다).
+const SILENT_MS = 2_000;
+const PROBE_MS = 3_000;
 const CONNECT_TIMEOUT_MS = 10_000; // 연결을 시작했는데 이 시간 안에 열리지 않으면(핸드셰이크가 멈춤) 포기하고 다시 시도한다
 const MAX_BACKOFF_MS = 30_000;
 const MAX_CLOCK_SAMPLES = 5;
@@ -304,7 +308,21 @@ function scheduleReconnect() {
 }
 
 function rawSend(msg) {
-  if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
+  if (ws?.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify(msg));
+  if (msg.type !== C2S.PING) probeIfSilent();
+}
+
+let probeTimer = null;
+function probeIfSilent() {
+  if (probeTimer || Date.now() - lastRecvAt < SILENT_MS) return;
+  const sock = ws;
+  const sentAt = Date.now();
+  sock.send(JSON.stringify({ type: C2S.PING, clientTime: sentAt }));
+  probeTimer = setTimeout(() => {
+    probeTimer = null;
+    if (ws === sock && lastRecvAt < sentAt) dropSocket(sock);
+  }, PROBE_MS);
 }
 
 // 무료 호스팅 서버는 한동안 접속이 없으면 잠들어서 깨우는 데 30초~1분쯤 걸린다.
