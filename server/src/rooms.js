@@ -39,11 +39,9 @@ export class RoomManager {
     bufferWaitMs = 15_000, // 버퍼링 대기 상한
     adWaitMs = 10 * 60_000, // 광고 대기 상한(광고는 길 수 있다)
     resumeDelayMs = 500, // 모두 준비된 뒤 함께 재개하기까지의 여유
+    maxRooms = 3000, // 서버 전체 방 수 상한(방은 메모리에 있다)
     joinFailLimit = 10, // 연결 주소(IP) 당 이 횟수만큼 참가에 실패(없는 방/틀린 비밀번호)하면 잠시 차단
     joinFailWindowMs = 60_000,
-    maxRooms = 2000, // 서버 전체 방 수 상한(메모리 보호)
-    createLimit = 10, // 연결 주소(IP) 당 이 횟수만큼 방을 만들면 잠시 차단
-    createWindowMs = 60_000,
     now = () => Date.now(),
   } = {}) {
     this.graceMs = graceMs; // 연결이 끊긴 참가자를 유지하는 시간(재접속 대기)
@@ -53,13 +51,10 @@ export class RoomManager {
     this.adWaitMs = adWaitMs;
     this.resumeDelayMs = resumeDelayMs;
     this.now = now;
+    this.maxRooms = maxRooms;
     this.joinFailLimit = joinFailLimit;
     this.joinFailWindowMs = joinFailWindowMs;
     this.joinFails = new Map(); // ip -> { count, resetAt }
-    this.maxRooms = maxRooms;
-    this.createLimit = createLimit;
-    this.createWindowMs = createWindowMs;
-    this.creates = new Map(); // ip -> { count, resetAt }
     this.rooms = new Map();
     this.idleTimer = setInterval(() => this.closeIdleRooms(), idleSweepMs);
     this.idleTimer.unref?.();
@@ -82,33 +77,21 @@ export class RoomManager {
     }
   }
 
-  // 방 만들기 빈도(IP 당). 허용되면 true
-  #createAllowed(ip) {
-    if (!ip) return true;
-    const now = this.now();
-    let e = this.creates.get(ip);
-    if (!e || e.resetAt <= now) {
-      for (const [k, v] of this.creates) if (v.resetAt <= now) this.creates.delete(k);
-      e = { count: 0, resetAt: now + this.createWindowMs };
-      this.creates.set(ip, e);
-    }
-    return ++e.count <= this.createLimit;
-  }
-
-  create(conn, userId, { password, maxMembers, lang, secret } = {}) {
-    if (!this.#createAllowed(conn.ip)) {
-      conn.send({ type: S2C.ERROR, code: ERR.TOO_MANY_ATTEMPTS, message: '방을 너무 자주 만들고 있어요. 잠시 뒤에 다시 해 주세요.' });
+  // roomCode/mode 가 있으면 서버 재시작으로 사라진 방을 같은 코드로 복구하는 것이다(만든 사람이 방장이 된다)
+  create(conn, userId, { password, maxMembers, lang, roomCode, mode, secret } = {}) {
+    this.leave(conn);
+    if (roomCode && this.rooms.has(roomCode)) {
+      conn.send({ type: S2C.ERROR, code: ERR.ROOM_EXISTS, message: '이미 복구된 방이에요. 참가해 주세요.' });
       return;
     }
     if (this.rooms.size >= this.maxRooms) {
-      conn.send({ type: S2C.ERROR, code: ERR.SERVER_BUSY, message: '지금은 방을 더 만들 수 없어요. 잠시 뒤에 다시 해 주세요.' });
+      conn.send({ type: S2C.ERROR, code: ERR.SERVER_FULL, message: '지금 서버가 가득 찼어요. 잠시 뒤에 다시 시도해 주세요.' });
       return;
     }
-    this.leave(conn);
     const room = {
-      code: this.#newCode(),
+      code: roomCode ?? this.#newCode(),
       hostId: null,
-      mode: 'everyone',
+      mode: mode ?? 'everyone',
       video: { playing: false, time: 0, updatedAt: this.now() },
       participants: new Map(),
       profiles: new Map(), // userId -> { name, avatar, color } (재입장 시 유지)

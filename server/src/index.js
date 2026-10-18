@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import { pathToFileURL } from 'node:url';
 import { WebSocketServer } from 'ws';
-import { C2S, S2C, parseMessage } from './protocol.js';
+import { C2S, S2C, ERR, parseMessage } from './protocol.js';
 import { RoomManager } from './rooms.js';
 
 const PRIVACY_HTML = {
@@ -12,55 +12,60 @@ const PRIVACY_HTML = {
 const MAX_PAYLOAD = 64 * 1024; // 이미지 프사 포함 profile_update 를 받기 위함(메시지 타입별 상한은 protocol.js)
 const RATE_CAPACITY = 60; // 연결당 버스트
 const RATE_PER_SEC = 30; // 연결당 초당 평균 메시지 수
-const ROOM_CHECK_PER_MIN = 20; // IP 당 방 존재 확인(GET /rooms/<코드>) 분당 횟수. 방 코드 무작위 대입 방지
-const MAX_CONNS_PER_IP = 20; // IP 당 동시 연결 수(같은 공유기 뒤의 여러 명을 감안해 넉넉하게)
-const MAX_CONNS = 5000; // 서버 전체 동시 연결 수
+const ROOM_CHECK_PER_MIN = 60; // IP 당 방 존재 확인(GET /rooms/<코드>) 분당 횟수. 방 코드 무작위 대입 방지(같은 공유기의 여러 명이 초대 링크를 열어도 되게 넉넉히)
+const MAX_CONN_PER_IP = 20; // IP 당 동시 WebSocket 연결 수(같은 공유기의 가족/기숙사가 같이 쓸 수 있는 정도)
+const MAX_CONNECTIONS = 10_000; // 서버 전체 동시 연결 수(5,000명에서 메모리 약 130MB 였다)
+const CREATE_ROOM_PER_MIN = 10; // IP 당 분당 방 만들기 횟수
 // 브라우저는 WebSocket/fetch 에 항상 Origin 을 붙인다. 확장(chrome-extension://<ID>)이 아닌 웹페이지가 서버에 붙는 것을 막는다.
 // Origin 이 없는 요청(브라우저가 아닌 클라이언트)은 막지 않는다. 방 접근은 어차피 방 코드/비밀번호가 지킨다.
 const EXTENSION_ORIGIN_RE = /^chrome-extension:\/\/[a-p]{32}$/;
+const SECURITY_HEADERS = { 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' };
 const ROOM_CHECK_PATH = /^\/rooms\/([A-Za-z0-9]{6})$/;
 
-const SECURITY_HEADERS = {
-  'X-Content-Type-Options': 'nosniff',
-  'Referrer-Policy': 'no-referrer',
-};
+const envInt = (name, fallback) => (Number.isInteger(Number(process.env[name])) && Number(process.env[name]) > 0 ? Number(process.env[name]) : fallback);
 
 export function createServer({
   port = Number(process.env.PORT) || 8080,
   host = '0.0.0.0',
   roomCheckPerMin = ROOM_CHECK_PER_MIN,
+  maxConnPerIp = envInt('MAX_CONN_PER_IP', MAX_CONN_PER_IP),
+  maxConnections = envInt('MAX_CONNECTIONS', MAX_CONNECTIONS),
+  createRoomPerMin = CREATE_ROOM_PER_MIN,
   // 프록시(Render 등) 뒤에서만 true. 프록시 없이 X-Forwarded-For 를 믿으면 헤더를 위조해 IP 별 제한을 피할 수 있다
   trustProxy = process.env.TRUST_PROXY === '1',
   // 스토어에 올린 확장의 ID(32자). 정하면 그 확장의 Origin 만 허용하고, 없으면 아무 확장의 Origin 이나 허용한다
   extensionId = process.env.EXTENSION_ID,
-  maxConnsPerIp = MAX_CONNS_PER_IP,
-  maxConns = MAX_CONNS,
+  maxRooms = envInt('MAX_ROOMS', undefined),
   ...roomOpts
 } = {}) {
-  const rooms = new RoomManager(roomOpts);
-  const originOk = (origin) => (origin === undefined ? true : extensionId ? origin === `chrome-extension://${extensionId}` : EXTENSION_ORIGIN_RE.test(origin));
-  const connsByIp = new Map(); // ip -> 동시 연결 수
-  let connCount = 0;
+  const rooms = new RoomManager({ ...roomOpts, ...(maxRooms ? { maxRooms } : {}) });
 
   // IP 별 방 존재 확인 횟수(1분 창). Render 같은 프록시 뒤에서는 프록시가 덧붙인 마지막 X-Forwarded-For 값을 클라이언트로 본다
-  const checks = new Map(); // ip -> { count, resetAt }
   const clientIp = (req) => (trustProxy && String(req.headers['x-forwarded-for'] ?? '').split(',').pop().trim()) || req.socket.remoteAddress || '';
-  const checkLimited = (ip) => {
-    const now = Date.now();
-    let e = checks.get(ip);
-    if (!e || e.resetAt <= now) {
-      for (const [k, v] of checks) if (v.resetAt <= now) checks.delete(k);
-      e = { count: 0, resetAt: now + 60_000 };
-      checks.set(ip, e);
-    }
-    return ++e.count > roomCheckPerMin;
-  };
-
+  const originOk = (origin) => (origin === undefined ? true : extensionId ? origin === `chrome-extension://${extensionId}` : EXTENSION_ORIGIN_RE.test(origin));
   // 확장 background 의 fetch 만 읽을 수 있게 한다: 허용된 Origin 이면 그 값을 그대로 돌려준다(웹페이지의 읽기 요청에는 CORS 헤더를 주지 않는다)
   const cors = (req) => {
     const o = req.headers.origin;
     return o !== undefined && originOk(o) ? { 'Access-Control-Allow-Origin': o, Vary: 'Origin' } : { Vary: 'Origin' };
   };
+  // IP 별 1분 창 횟수 제한(메모리에서만 세고 창이 지나면 지운다). 넘으면 true
+  const windowLimiter = (limit) => {
+    const map = new Map(); // ip -> { count, resetAt }
+    return (ip) => {
+      const now = Date.now();
+      let e = map.get(ip);
+      if (!e || e.resetAt <= now) {
+        for (const [k, v] of map) if (v.resetAt <= now) map.delete(k);
+        e = { count: 0, resetAt: now + 60_000 };
+        map.set(ip, e);
+      }
+      return ++e.count > limit;
+    };
+  };
+  const checkLimited = windowLimiter(roomCheckPerMin);
+  const createLimited = windowLimiter(createRoomPerMin);
+  const connsByIp = new Map(); // ip -> 지금 열려 있는 연결 수
+  let connTotal = 0;
 
   const server = http.createServer((req, res) => {
     if (req.method === 'GET' && req.url === '/health') {
@@ -108,17 +113,25 @@ export function createServer({
   const wss = new WebSocketServer({
     server,
     maxPayload: MAX_PAYLOAD,
-    verifyClient: ({ origin, req }, done) => {
-      if (!originOk(origin)) return done(false, 403, 'Forbidden');
-      if (connCount >= maxConns || (connsByIp.get(clientIp(req)) ?? 0) >= maxConnsPerIp) return done(false, 429, 'Too Many Connections');
-      done(true);
-    },
+    verifyClient: ({ origin }, done) => (originOk(origin) ? done(true) : done(false, 403, 'Forbidden')),
   });
 
   wss.on('connection', (ws, req) => {
     const ip = clientIp(req);
-    connCount++;
+    // 연결 수 상한: 넘으면 이유를 알리고 바로 닫는다(확장이 안내를 띄우고 다시 시도하지 않는다)
+    if (connTotal >= maxConnections || (connsByIp.get(ip) ?? 0) >= maxConnPerIp) {
+      ws.send(JSON.stringify({ type: S2C.ERROR, code: ERR.TOO_MANY_CONNECTIONS, message: '접속이 너무 많아요. 잠시 뒤에 다시 시도해 주세요.' }));
+      ws.close(1013, 'too many connections'); // 1013: try again later
+      return;
+    }
+    connTotal++;
     connsByIp.set(ip, (connsByIp.get(ip) ?? 0) + 1);
+    ws.on('close', () => {
+      connTotal--;
+      const n = (connsByIp.get(ip) ?? 1) - 1;
+      if (n > 0) connsByIp.set(ip, n);
+      else connsByIp.delete(ip);
+    });
     const conn = {
       ip,
       userId: null,
@@ -145,7 +158,11 @@ export function createServer({
 
       switch (msg.type) {
         case C2S.CREATE_ROOM:
-          rooms.create(conn, msg.userId, { password: msg.password, maxMembers: msg.maxMembers, lang: msg.lang, secret: msg.secret });
+          if (createLimited(ip)) {
+            conn.send({ type: S2C.ERROR, code: ERR.TOO_MANY_ROOMS, message: '방을 너무 자주 만들고 있어요. 잠시 뒤에 다시 해 주세요.' });
+            break;
+          }
+          rooms.create(conn, msg.userId, { password: msg.password, maxMembers: msg.maxMembers, lang: msg.lang, roomCode: msg.roomCode, mode: msg.mode, secret: msg.secret });
           break;
         case C2S.JOIN_ROOM:
           rooms.join(conn, msg.roomCode, msg.userId, msg.password, msg.lang, msg.secret);
@@ -193,13 +210,7 @@ export function createServer({
       }
     });
 
-    ws.on('close', () => {
-      connCount--;
-      const n = (connsByIp.get(ip) ?? 1) - 1;
-      if (n > 0) connsByIp.set(ip, n);
-      else connsByIp.delete(ip);
-      rooms.disconnect(conn);
-    });
+    ws.on('close', () => rooms.disconnect(conn));
     ws.on('error', () => {});
   });
 
@@ -222,6 +233,14 @@ export function createServer({
     rooms,
     listen: () =>
       new Promise((resolve) => server.listen(port, host, () => resolve(server.address().port))),
+    // 배포 등으로 곧 꺼질 때: 연결된 모두에게 알리고 닫는다(1012 = service restart). 확장이 바로 다시 연결해 방을 복구한다
+    announceRestart: () => {
+      for (const ws of wss.clients) {
+        if (ws.readyState !== ws.OPEN) continue;
+        ws.send(JSON.stringify({ type: S2C.SERVER_RESTARTING }));
+        ws.close(1012, 'service restart');
+      }
+    },
     close: () =>
       new Promise((resolve) => {
         clearInterval(heartbeat);
@@ -235,4 +254,17 @@ export function createServer({
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const app = createServer();
   app.listen().then((p) => console.log(`server listening on :${p}`));
+  // Render 는 배포할 때 새 서버를 먼저 띄우고 옛 서버에 SIGTERM 을 보낸다(기본 30초 뒤 강제 종료).
+  // 옛 서버는 모두에게 재시작을 알리고 닫아서, 확장이 바로 새 서버로 다시 연결해 방을 복구하게 한다.
+  let stopping = false;
+  const stop = (sig) => {
+    if (stopping) return;
+    stopping = true;
+    console.log(`${sig}: 재시작을 알리고 종료합니다`);
+    app.announceRestart();
+    setTimeout(() => app.close().then(() => process.exit(0)), 1000);
+    setTimeout(() => process.exit(0), 10_000).unref(); // 닫히지 않아도 10초 안에는 끝낸다
+  };
+  process.on('SIGTERM', () => stop('SIGTERM'));
+  process.on('SIGINT', () => stop('SIGINT'));
 }

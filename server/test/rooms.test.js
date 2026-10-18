@@ -6,7 +6,8 @@ import WebSocket from 'ws';
 import { createServer } from '../src/index.js';
 import { RoomManager } from '../src/rooms.js';
 
-const app = createServer({ port: 0, host: '127.0.0.1', maxConnsPerIp: 1e6, createLimit: 1e6, graceMs: 200, emptyTtlMs: 200, bufferWaitMs: 400, resumeDelayMs: 100 });
+// 테스트는 모두 같은 주소(127.0.0.1)에서 오므로 IP 당 제한은 넉넉하게 둔다(제한 자체는 아래 별도 테스트가 확인)
+const app = createServer({ port: 0, host: '127.0.0.1', graceMs: 200, emptyTtlMs: 200, bufferWaitMs: 400, resumeDelayMs: 100, maxConnPerIp: 1000, createRoomPerMin: 1000 });
 let port;
 before(async () => {
   port = await app.listen();
@@ -840,12 +841,6 @@ async function makeRoomWith(opts) {
   return { a, code: created.roomCode, state };
 }
 
-async function joinRoomWith(code, opts) {
-  const c = await new Client().open();
-  c.send({ type: 'join_room', roomCode: code, userId: c.userId, ...opts });
-  return { c, state: await c.next('room_state') };
-}
-
 test('비밀번호 방: 비밀번호 없이/틀리게 참가하면 거부, 맞으면 입장', async () => {
   const { a, code, state } = await makeRoomWith({ password: 'secret1' });
   assert.equal(state.hasPassword, true);
@@ -994,6 +989,159 @@ test('기본 닉네임: 클라이언트 언어(lang)에 따라 게스트/Guest, 
   en.a.close(); bad.close(); ko.close();
 });
 
+
+// ---- 남용 방지: 연결 수 / 방 수 상한 (이슈 #39)
+async function limitedServer(opts) {
+  const srv = createServer({ port: 0, host: '127.0.0.1', ...opts });
+  const p = await srv.listen();
+  const open = () =>
+    new Promise((resolve, reject) => {
+      const ws = new WebSocket(`ws://127.0.0.1:${p}`);
+      const msgs = [];
+      const closed = new Promise((r) => ws.once('close', (code) => r(code)));
+      ws.on('message', (d) => msgs.push(JSON.parse(d.toString())));
+      ws.once('open', () => resolve({ ws, msgs, closed }));
+      ws.once('error', reject);
+    });
+  return { srv, open };
+}
+
+test('IP 당 동시 연결 수 상한: 넘으면 too_many_connections 를 알리고 닫는다, 하나 닫으면 다시 가능', async () => {
+  const { srv, open } = await limitedServer({ maxConnPerIp: 2 });
+  try {
+    const a = await open();
+    const b = await open();
+    const c = await open();
+    assert.equal(await c.closed, 1013);
+    assert.equal(c.msgs[0].type, 'error');
+    assert.equal(c.msgs[0].code, 'too_many_connections');
+    assert.equal(a.ws.readyState, WebSocket.OPEN, '이미 열린 연결은 그대로');
+    a.ws.close();
+    await a.closed;
+    await sleep(50);
+    const d = await open();
+    await sleep(100);
+    assert.equal(d.ws.readyState, WebSocket.OPEN);
+    assert.equal(d.msgs.length, 0);
+    b.ws.close();
+    d.ws.close();
+  } finally {
+    await srv.close();
+  }
+});
+
+test('서버 전체 연결 수 상한', async () => {
+  const { srv, open } = await limitedServer({ maxConnections: 2, maxConnPerIp: 100 });
+  try {
+    const a = await open();
+    const b = await open();
+    const c = await open();
+    assert.equal(await c.closed, 1013);
+    assert.equal(c.msgs[0].code, 'too_many_connections');
+    a.ws.close();
+    b.ws.close();
+  } finally {
+    await srv.close();
+  }
+});
+
+test('IP 당 분당 방 만들기 횟수 상한: 넘으면 too_many_rooms, 방은 만들어지지 않는다', async () => {
+  const { srv, open } = await limitedServer({ createRoomPerMin: 2 });
+  try {
+    const a = await open();
+    for (let i = 0; i < 3; i++) a.ws.send(JSON.stringify({ type: 'create_room', userId: `ratelimit-user-${i}`, secret: secretOf(`ratelimit-user-${i}`) }));
+    await sleep(200);
+    assert.equal(a.msgs.filter((m) => m.type === 'room_created').length, 2);
+    assert.equal(a.msgs.filter((m) => m.code === 'too_many_rooms').length, 1);
+    assert.equal(srv.rooms.rooms.size, 2);
+    a.ws.close();
+  } finally {
+    await srv.close();
+  }
+});
+
+test('서버 전체 방 수 상한: 넘으면 server_full, 방이 닫히면 다시 만들 수 있다', async () => {
+  const { srv, open } = await limitedServer({ maxRooms: 1, createRoomPerMin: 100 });
+  try {
+    const a = await open();
+    const b = await open();
+    a.ws.send(JSON.stringify({ type: 'create_room', userId: 'fullserver-user-a', secret: secretOf('fullserver-user-a') }));
+    await sleep(100);
+    assert.equal(a.msgs.some((m) => m.type === 'room_created'), true);
+    b.ws.send(JSON.stringify({ type: 'create_room', userId: 'fullserver-user-b', secret: secretOf('fullserver-user-b') }));
+    await sleep(100);
+    assert.equal(b.msgs.find((m) => m.type === 'error')?.code, 'server_full');
+    assert.equal(b.msgs.some((m) => m.type === 'room_created'), false);
+    a.ws.send(JSON.stringify({ type: 'leave_room' }));
+    await sleep(100);
+    // 방에서 나가도 비어 있는 방은 잠시 남는다: 전체 방 수는 방이 실제로 삭제될 때 줄어든다
+    for (const code of [...srv.rooms.rooms.keys()]) srv.rooms.rooms.delete(code);
+    b.ws.send(JSON.stringify({ type: 'create_room', userId: 'fullserver-user-b', secret: secretOf('fullserver-user-b') }));
+    await sleep(100);
+    assert.equal(b.msgs.some((m) => m.type === 'room_created'), true);
+    a.ws.close();
+    b.ws.close();
+  } finally {
+    await srv.close();
+  }
+});
+
+// ---- 서버 재시작 대비: 방 복구와 재시작 알림
+test('방 복구: create_room 에 roomCode/mode/옵션을 주면 같은 코드로 다시 만든다, 이미 있으면 room_exists', async () => {
+  const a = await new Client().open();
+  a.send({ type: 'create_room', userId: a.userId, roomCode: 'rst234', mode: 'host_only', maxMembers: 3, password: 'secret1' });
+  const created = await a.next('room_created');
+  assert.equal(created.roomCode, 'RST234', '소문자로 보내도 대문자로 만든다');
+  const state = await a.next('room_state');
+  assert.equal(state.mode, 'host_only');
+  assert.equal(state.maxMembers, 3);
+  assert.equal(state.hasPassword, true);
+  assert.equal(state.hostId, a.userId);
+
+  // 같은 코드로 또 복구하려 하면(다른 사람이 먼저 복구한 경우) 에러, 방은 그대로
+  const b = await new Client().open();
+  b.send({ type: 'create_room', userId: b.userId, roomCode: 'RST234' });
+  assert.equal((await b.next('error')).code, 'room_exists');
+  await b.none('room_created');
+  // 비밀번호는 복구된 방에서도 지켜진다
+  b.send({ type: 'join_room', roomCode: 'RST234', userId: b.userId });
+  assert.equal((await b.next('error')).code, 'password_required');
+  b.send({ type: 'join_room', roomCode: 'RST234', userId: b.userId, password: 'secret1' });
+  assert.equal((await b.next('room_state')).roomCode, 'RST234');
+  a.close();
+  b.close();
+});
+
+test('방 복구: 잘못된 코드/모드는 무시된다', async () => {
+  const a = await new Client().open();
+  a.send({ type: 'create_room', userId: a.userId, roomCode: 'xx' });
+  a.send({ type: 'create_room', userId: a.userId, mode: 'nope' });
+  await a.none('room_created', 250);
+  a.close();
+});
+
+test('재시작 알림: announceRestart 는 모두에게 server_restarting 을 보내고 1012 로 닫는다', async () => {
+  const { srv, open } = await limitedServer({});
+  try {
+    const a = await open();
+    const b = await open();
+    srv.announceRestart();
+    assert.equal(await a.closed, 1012);
+    assert.equal(await b.closed, 1012);
+    assert.equal(a.msgs[0].type, 'server_restarting');
+    assert.equal(b.msgs[0].type, 'server_restarting');
+  } finally {
+    await srv.close();
+  }
+});
+
+// ---- 배포 전 보안 점검
+async function joinRoomWith(code, opts) {
+  const c = await new Client().open();
+  c.send({ type: 'join_room', roomCode: code, userId: c.userId, ...opts });
+  return { c, state: await c.next('room_state') };
+}
+
 test('보안: 방에 공개된 userId 로 재접속해도 secret 이 다르면 거절(방장 가로채기 방지)', async () => {
   const { a, code } = await makeRoomWith({ password: 'secret1' });
   const { c: guest, state } = await joinRoomWith(code, { password: 'secret1' });
@@ -1016,20 +1164,6 @@ test('보안: secret 없는/형식이 틀린 create_room, join_room 은 무시',
   c.close();
 });
 
-test('보안: 방 만들기는 IP 당 횟수 제한, 서버 전체 방 수 상한', () => {
-  const rm = new RoomManager({ createLimit: 2, maxRooms: 3, idleSweepMs: 3_600_000 });
-  const mk = (ip, n) => {
-    const c = fakeConn();
-    c.ip = ip;
-    rm.create(c, `user-${n}-testtest`, { secret: secretOf(`user-${n}`) });
-    return c.sent.find((m) => m.type === 'error')?.code;
-  };
-  assert.deepEqual([mk('1.1.1.1', 1), mk('1.1.1.1', 2), mk('1.1.1.1', 3)], [undefined, undefined, 'too_many_attempts']);
-  assert.equal(mk('2.2.2.2', 4), undefined);
-  assert.equal(mk('3.3.3.3', 5), 'server_busy');
-  rm.shutdown();
-});
-
 test('보안: 한 방의 인원은 최대 인원을 정하지 않아도 50명까지', () => {
   const rm = new RoomManager({ idleSweepMs: 3_600_000 });
   const host = fakeConn();
@@ -1046,35 +1180,26 @@ test('보안: 한 방의 인원은 최대 인원을 정하지 않아도 50명까
   rm.shutdown();
 });
 
-test('보안: 확장이 아닌 Origin 의 WebSocket 은 거절, 연결 수는 IP 당 제한', async () => {
-  const s = createServer({ port: 0, host: '127.0.0.1', maxConnsPerIp: 2 });
-  const p = await s.listen();
-  const tryOpen = (origin) =>
+test('보안: 확장이 아닌 Origin 의 WebSocket 은 거절, EXTENSION_ID 를 정하면 그 확장만 허용', async () => {
+  const status = (p, origin) =>
     new Promise((resolve) => {
       const ws = new WebSocket(`ws://127.0.0.1:${p}`, origin ? { headers: { Origin: origin } } : {});
-      ws.once('open', () => resolve({ ws, status: 101 }));
-      ws.once('unexpected-response', (_req, res) => resolve({ status: res.statusCode }));
-      ws.once('error', () => {});
-    });
-  try {
-    assert.equal((await tryOpen('https://evil.example')).status, 403);
-    assert.equal((await tryOpen(EXT_ORIGIN)).status, 101);
-    assert.equal((await tryOpen()).status, 101);
-    assert.equal((await tryOpen()).status, 429);
-  } finally {
-    await s.close();
-  }
-  const pinned = createServer({ port: 0, host: '127.0.0.1', extensionId: 'b'.repeat(32) });
-  const p2 = await pinned.listen();
-  try {
-    const r = await new Promise((resolve) => {
-      const ws = new WebSocket(`ws://127.0.0.1:${p2}`, { headers: { Origin: EXT_ORIGIN } });
-      ws.once('open', () => resolve(101));
+      ws.once('open', () => (ws.close(), resolve(101)));
       ws.once('unexpected-response', (_q, res) => resolve(res.statusCode));
       ws.once('error', () => {});
     });
-    assert.equal(r, 403, 'EXTENSION_ID 를 정하면 그 확장만 허용');
+  const { srv } = await limitedServer({});
+  const pinned = createServer({ port: 0, host: '127.0.0.1', extensionId: 'b'.repeat(32) });
+  const p2 = await pinned.listen();
+  try {
+    const p = srv.server.address().port;
+    assert.equal(await status(p, 'https://evil.example'), 403);
+    assert.equal(await status(p, EXT_ORIGIN), 101);
+    assert.equal(await status(p), 101, 'Origin 이 없는 브라우저 밖 클라이언트는 막지 않는다');
+    assert.equal(await status(p2, EXT_ORIGIN), 403);
+    assert.equal(await status(p2, `chrome-extension://${'b'.repeat(32)}`), 101);
   } finally {
+    await srv.close();
     await pinned.close();
   }
 });

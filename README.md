@@ -19,6 +19,8 @@ npm test           # WebSocket 클라이언트로 방 생성/참가/중계 등�
 
 ## 배포
 
+> 까먹기 쉬운 것(서버·확장 같이 배포, `EXTENSION_ID`, 배포 후 IP 확인 등)은 [docs/deploy-checklist.md](docs/deploy-checklist.md) 에 적어 뒀다.
+
 **1. 서버 (Render)**
 1. Render 대시보드 → New → Blueprint → 이 저장소 선택. 저장소 루트의 `render.yaml` 이 `server/` 를 Node 웹 서비스로 만든다(`/health` 로 상태 확인, `PORT` 는 Render 가 넣어 준다).
 2. 배포가 끝나면 주소(예: `https://bae-movie-temp-server.onrender.com`)가 나온다. `https://주소/health` 와 `https://주소/privacy` 가 열리는지 확인.

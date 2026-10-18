@@ -43,6 +43,7 @@ export const S2C = {
   REACTION: 'reaction',
   // 4단계
   ROOM_OPTIONS: 'room_options', // { hasPassword, maxMembers, passwordChanged, fromId } — 방장이 방 옵션을 바꿈
+  SERVER_RESTARTING: 'server_restarting', // 서버가 곧 재시작(배포 등): 확장이 바로 다시 연결하고 방을 같은 코드로 복구한다
 };
 
 export const ERR = {
@@ -55,7 +56,10 @@ export const ERR = {
   ROOM_FULL: 'room_full', // 오류 메시지에 max(방의 최대 인원)를 함께 보낸다
   TOO_MANY_ATTEMPTS: 'too_many_attempts', // 참가 실패가 잦아 잠시 차단
   IDENTITY_MISMATCH: 'identity_mismatch', // 이미 방에 등록된 userId 인데 비공개 secret 이 맞지 않음(다른 사람의 userId 로 들어오려 함)
-  SERVER_BUSY: 'server_busy', // 서버가 만들 수 있는 방 수의 상한
+  TOO_MANY_CONNECTIONS: 'too_many_connections', // 같은 주소(IP)에서 동시 연결이 너무 많거나 서버 전체 연결 수가 가득 참(서버가 이 에러를 보내고 연결을 닫는다)
+  TOO_MANY_ROOMS: 'too_many_rooms', // 같은 주소(IP)에서 방을 너무 자주 만듦
+  SERVER_FULL: 'server_full', // 서버 전체 방 수가 가득 참
+  ROOM_EXISTS: 'room_exists', // 방 복구(create_room 에 roomCode)를 요청했는데 그 코드의 방이 이미 있음(다른 사람이 먼저 복구함 -> 참가하면 된다)
 };
 
 export const VIDEO_ACTIONS = ['play', 'pause', 'seek'];
@@ -158,6 +162,16 @@ const validators = {
     if (typeof m.secret !== 'string' || !SECRET_RE.test(m.secret)) return null;
     const out = { type: m.type, userId: m.userId, secret: m.secret };
     if (LANGS.includes(m.lang)) out.lang = m.lang;
+    // 방 복구: 서버가 재시작돼 방이 사라졌을 때 확장이 같은 코드/옵션으로 다시 만든다
+    if (m.roomCode !== undefined) {
+      const code = typeof m.roomCode === 'string' ? m.roomCode.toUpperCase() : '';
+      if (!ROOM_CODE_RE.test(code)) return null;
+      out.roomCode = code;
+    }
+    if (m.mode !== undefined) {
+      if (!MODES.includes(m.mode)) return null;
+      out.mode = m.mode;
+    }
     if (m.password !== undefined) {
       if (!isValidNewPassword(m.password)) return null;
       out.password = m.password;
