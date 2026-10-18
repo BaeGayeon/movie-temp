@@ -114,6 +114,11 @@ const CSS = `
   .replying button:hover { color: var(--ink); background: var(--surface-3); }
   @keyframes hl { 0%, 60% { box-shadow: 0 0 0 2px var(--accent); } 100% { box-shadow: 0 0 0 2px transparent; } }
   .msg.hl .text { animation: hl 1.4s ease-out; }
+  /* 줄글/간단: 말풍선이 없으니 각진 테두리 대신 줄 전체에 은은한 색이 깔렸다 사라지게 */
+  @keyframes hlrow { 0%, 50% { background: color-mix(in srgb, var(--accent) 28%, transparent); box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 28%, transparent); }
+    100% { background: transparent; box-shadow: 0 0 0 5px transparent; } }
+  .list.plain .msg.hl, .list.compact .msg.hl { border-radius: 8px; animation: hlrow 1.4s ease-out; }
+  .list.plain .msg.hl .text, .list.compact .msg.hl .text { animation: none; }
   .form .send { color: var(--on-accent); font-weight: 600; background: var(--accent); border-radius: 999px; padding: 6px 14px; }
   .form .send:hover { background: var(--accent-light); }
 
