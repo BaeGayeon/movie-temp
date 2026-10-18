@@ -66,6 +66,7 @@ export const MSG = {
     // 영상 페이지의 토스트/안내
     'content.adSelf': '광고 시청 중이에요. 끝나면 다 같이 이어서 재생해요.',
     'content.reconnected': '다시 연결됐어요',
+    'content.droppedAction': '방금 한 동작은 전달되지 않았어요. 서버와 다시 연결하는 중이에요.',
     'content.reconnecting': '서버와 연결이 끊겨서 다시 연결하는 중이에요. 그동안 재생과 채팅은 전달되지 않아요.',
     'content.serverRestarting': '서버가 재시작 중이에요. 곧 자동으로 다시 연결돼요. 그동안 재생과 채팅은 전달되지 않아요.',
     'content.aligned': '방 위치({t})로 맞췄어요',
@@ -140,6 +141,7 @@ export const MSG = {
     'ui.go': 'Play!',
     'content.adSelf': "You're watching an ad. Everyone will resume together when it ends.",
     'content.reconnected': 'Reconnected',
+    'content.droppedAction': 'That last action wasn’t sent. Reconnecting to the server…',
     'content.reconnecting': "Lost connection to the server — reconnecting. Playback and chat won't be shared until it's back.",
     'content.serverRestarting': "The server is restarting and will reconnect automatically. Playback and chat won't be shared until it's back.",
     'content.aligned': 'Synced to the room position ({t})',
