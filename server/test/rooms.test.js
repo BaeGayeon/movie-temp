@@ -1260,3 +1260,12 @@ test('방 복구 토큰: roomCode 가 있는데 토큰 형식이 없으면 메�
   await a.none('error');
   a.close();
 });
+
+test('재시작 알림 뒤에는 새 연결을 받지 않는다(재접속이 죽어가는 서버에 붙지 않게)', async () => {
+  const { srv, open } = await limitedServer({});
+  const a = await open();
+  srv.announceRestart();
+  await a.closed;
+  await assert.rejects(() => open(), /ECONNREFUSED|ECONNRESET/);
+  await srv.close();
+});

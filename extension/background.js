@@ -88,7 +88,9 @@ const RESTORE_WAIT_TRIES = 8; // 이만큼(약 16초) 기다려도 방이 없으
 let lostAt = null; // 방에 있다가 연결이 끊긴 시각(재접속 중)
 let restoreTries = 0;
 let restoring = false; // 내가 방 복구(create_room)를 요청한 상태
-let serverRestarting = false; // 서버가 곧 재시작한다고 알려 옴
+let restartingUntil = 0; // 서버가 곧 재시작한다고 알려 온 뒤 이 시각까지는 "재시작 중"으로 본다(재연결이 죽어가는 서버에 잠깐 붙어도 표시가 지워지지 않게 시간으로 정한다)
+const RESTARTING_MS = 30_000;
+const isRestarting = () => Date.now() < restartingUntil;
 let joinRetryTimer = null;
 // 복구 뒤에는 돌아오는 사람마다 "입장했어요"를 띄우지 않고, 모두 돌아오면 한 번에 알린다(나간 적이 없는데 입장했다고 뜨면 어색하다)
 const REJOIN_WAIT_MS = 20_000; // 이 시간까지 안 돌아온 사람은 따로 알린다
@@ -129,7 +131,7 @@ async function init() {
 function publicState() {
   const { chat, restoreToken, ...rest } = room;
   const askPw = needPassword && Date.now() - needPassword.at < 2 * 60_000 ? { roomCode: needPassword.roomCode, wrong: needPassword.wrong } : null; // 오래된 요청은 버린다
-  return { ...rest, userId, connection, error: lastError, waking, busy: pending !== null, restarting: serverRestarting, needPassword: askPw }; // busy: 방 만들기/참가 요청을 서버 연결 전에 쥐고 있는 중
+  return { ...rest, userId, connection, error: lastError, waking, busy: pending !== null, restarting: isRestarting(), needPassword: askPw }; // busy: 방 만들기/참가 요청을 서버 연결 전에 쥐고 있는 중
 }
 
 function persist() {
@@ -152,7 +154,7 @@ function resetRoom() {
   lostAt = null;
   restoreTries = 0;
   restoring = false;
-  serverRestarting = false;
+  restartingUntil = 0;
   clearTimeout(joinRetryTimer);
   persist();
 }
@@ -336,7 +338,7 @@ function scheduleReconnect() {
     return;
   }
   // 서버가 재시작한다고 알려 준 경우: 새 서버는 이미 떠 있을 테니 바로(모두가 한꺼번에 몰리지 않게 흩어서) 다시 연결한다
-  const delay = serverRestarting && retry === 0 ? 300 + Math.random() * 1200 : Math.min(MAX_BACKOFF_MS, 1000 * 2 ** retry) * (0.8 + Math.random() * 0.4);
+  const delay = isRestarting() && retry === 0 ? 300 + Math.random() * 1200 : Math.min(MAX_BACKOFF_MS, 1000 * 2 ** retry) * (0.8 + Math.random() * 0.4);
   retry++;
   broadcast();
   clearTimeout(reconnectTimer);
@@ -434,8 +436,8 @@ function sendOrQueue(msg) {
 function handleServer(m) {
   switch (m.type) {
     case S2C.SERVER_RESTARTING:
-      serverRestarting = true;
-      if (room.roomCode) toast(t('bg.serverRestarting'), LONG_TOAST_MS);
+      restartingUntil = Date.now() + RESTARTING_MS;
+      broadcast(); // 끊기기 전에 미리 알려, 끊기는 순간부터 "재시작 중" 안내가 뜨게 한다
       break;
 
     case S2C.ROOM_CREATED:
@@ -477,7 +479,6 @@ function handleServer(m) {
       lostAt = null;
       restoreTries = 0;
       restoring = false;
-      serverRestarting = false;
       clearTimeout(joinRetryTimer);
       syncProfile();
       lastError = null;
