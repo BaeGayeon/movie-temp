@@ -87,7 +87,9 @@ const CSS = `
   .sendstat .link:hover { color: var(--accent-ink, var(--ink)); }
 
   .typing { min-height: 18px; padding: 0 14px 2px; font-size: 12px; color: var(--ink-soft); }
-  .reacts { display: flex; gap: 0; padding: 2px 8px; flex-wrap: wrap; align-items: center; }
+  .reacts { display: flex; gap: 0; padding: 2px 4px 2px 8px; flex-wrap: wrap; align-items: center; justify-content: space-between; } /* 줄마다 남는 칸을 이모지 사이에 나눠, 오른쪽 끝이 왼쪽 여백과 비슷하게 맞는다 */
+  .reacts::after { content: ''; flex: 1 1 0; } /* 마지막 줄은 남는 칸을 이것이 차지해서 왼쪽부터 붙는다(펼치지 않음) */
+  .dock-bubble .reacts::after { display: none; }
   .reacts .grp { display: contents; } /* 묶음은 간격을 두는 용도일 뿐, 이모지는 낱개로 줄바꿈해서 줄 끝까지 채운다 */
   .reacts .grp > button:last-child { margin-right: 8px; } /* 감정이 비슷한 것끼리 묶고 묶음 사이에 간격 */
   .reacts .rlabel { font-size: 11px; color: var(--ink-soft); padding: 0 6px 0 4px; }
