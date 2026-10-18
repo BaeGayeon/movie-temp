@@ -756,7 +756,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     // 입장/퇴장: 알고 있는(방에 있거나 있었던) 사람의 현재 닉네임을 우선 쓰고, 모르면 알림이 만들어질 때 저장한 닉네임(m.name)을 쓴다
     const st = getState();
     const known = st?.participants?.find((x) => x.id === m.userId) ?? st?.known?.[m.userId];
-    if (m.action === 'down') return { icon: '🔌', name: '', color: null, rest: t('chat.ev.down', { time: fmtClock(m.at ?? m.sentAt) }) };
+    if (m.action === 'down') return { icon: '🔌', name: '', color: null, rest: t(m.secs ? 'chat.ev.downFor' : 'chat.ev.down', { time: fmtClock(m.at ?? m.sentAt), s: m.secs }) };
     if (m.action === 'allback') return { icon: '🙌', name: '', color: null, rest: t('chat.ev.allback') };
     if (m.action === 'missing') return { icon: '⏳', name: '', color: null, rest: t('chat.ev.missing', { names: (m.names ?? []).join(', ') }) };
     const isMembership = m.action === 'join' || m.action === 'leave';
