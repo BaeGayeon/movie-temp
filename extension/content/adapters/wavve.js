@@ -16,6 +16,24 @@ const SCAN_MS = 500;
 
 let cache = { at: 0, video: null, out: { ad: false, why: null, info: {} } };
 
+// 오탐 방지: 실제 광고 때는 메인 영상이 멈추고(광고 플레이어가 따로 재생) 광고 신호가 "메인이 멈추는 때에" 나타난다.
+// 그러니 메인 영상이 정상 재생(시간이 흐름) 중인데도 계속 보이는 신호는 광고가 아니라 사이트의 다른 요소(오버레이 iframe,
+// 미리보기 video 등)로 보고 무시한다. 또 같은 광고 신호가 너무 오래(MAX_AD_MS) 계속되면 광고가 끝났는데 요소가 남은 것으로 보고
+// 풀어 준다(안 그러면 방이 광고 대기에 걸린 채 멈춘다).
+const BENIGN_AFTER_MS = 1500;
+let MAX_AD_MS = 120000;
+export const __test = { setMaxAdMs: (ms) => (MAX_AD_MS = ms) }; // 테스트용
+const firstSeen = new Map(); // 신호 키 -> 메인이 재생 중인데 처음 같이 보인 시각
+let benign = new Set(); // 무시할 신호 키
+let adSince = 0; // 광고 신호가 연속으로 켜져 있는 시작 시각
+let lastTime = { t: 0, at: 0 }; // 메인 영상 시간이 흐르는지 보려는 이전 값
+
+function mainAdvancing(video, now) {
+  const advancing = !video.paused && video.readyState >= 3 && lastTime.at > 0 && video.currentTime > lastTime.t + 0.05;
+  lastTime = { t: video.currentTime, at: now };
+  return advancing;
+}
+
 const rectOf = (el) => el.getBoundingClientRect();
 function visible(el) {
   const r = rectOf(el);
@@ -37,10 +55,15 @@ const hostOf = (src) => {
   }
 };
 
-function scan(video) {
+function scan(video, advancing, now) {
   const vr = rectOf(video);
-  const info = { otherVideos: [], iframes: [], texts: [] };
+  const info = { otherVideos: [], iframes: [], texts: [], benign: [...benign] };
   let why = null;
+  const keys = new Set(); // 이번에 보인 신호 키
+  const hit = (key, reason) => {
+    keys.add(key);
+    if (!benign.has(key)) why ??= reason;
+  };
 
   // 1) 메인 영상을 덮는 외부 출처 iframe
   for (const f of document.querySelectorAll('iframe')) {
@@ -49,14 +72,14 @@ function scan(video) {
     const external = host && host !== location.hostname && !host.endsWith('.wavve.com') && host !== 'wavve.com';
     const cover = overlapRatio(rectOf(f), vr);
     info.iframes.push({ host: host || '(없음)', cover: +cover.toFixed(2), external });
-    if (external && cover >= 0.5) why ??= `외부 iframe(${host}) 이 영상을 덮음`;
+    if (external && cover >= 0.5) hit(`iframe:${host}`, `외부 iframe(${host}) 이 영상을 덮음`);
   }
   // 2) 다른 <video> 가 보이는 상태로 재생 중
   for (const v of document.querySelectorAll('video')) {
     if (v === video) continue;
     const vis = visible(v);
     info.otherVideos.push({ w: Math.round(rectOf(v).width), h: Math.round(rectOf(v).height), paused: v.paused, ready: v.readyState, dur: Number.isFinite(v.duration) ? Math.round(v.duration) : null, vis });
-    if (vis && !v.paused && v.readyState >= 2) why ??= '다른 <video> 가 재생 중';
+    if (vis && !v.paused && v.readyState >= 2) hit(`video:${Math.round(rectOf(v).width)}x${Math.round(rectOf(v).height)}`, '다른 <video> 가 재생 중');
   }
   // 3) "광고 0:15" 같은 짧은 표시(메인 영상 주변 몇 단계 위의 요소 안에서만 찾는다)
   let root = video;
@@ -67,7 +90,26 @@ function scan(video) {
     if (e.childElementCount !== 0 || e.textContent.length > 20) continue;
     const t = e.textContent.trim();
     if (t && /광고|^ads?\b/i.test(t) && info.texts.length < 4) info.texts.push(t);
-    if (AD_TEXT.test(t)) why ??= `광고 표시("${t}")`;
+    if (AD_TEXT.test(t)) hit('text', `광고 표시("${t}")`);
+  }
+  // 메인이 정상 재생 중에도 계속 보이는 신호는 광고가 아니라고 기억한다
+  for (const key of keys) {
+    if (!advancing) firstSeen.delete(key);
+    else if (!firstSeen.has(key)) firstSeen.set(key, now);
+    else if (now - firstSeen.get(key) >= BENIGN_AFTER_MS) benign.add(key);
+  }
+  for (const key of [...firstSeen.keys()]) if (!keys.has(key)) firstSeen.delete(key);
+  // 신호가 모두 사라지면 무시 목록도 비운다(다음에 새로 나타나는 광고는 다시 판단)
+  if (keys.size === 0) benign = new Set();
+  // 같은 광고 신호가 너무 오래 계속되면 풀어 준다
+  if (why) {
+    adSince ||= now;
+    if (now - adSince > MAX_AD_MS) {
+      for (const key of keys) benign.add(key);
+      why = null;
+    }
+  } else {
+    adSince = 0;
   }
   return { ad: !!why, why, info };
 }
@@ -77,7 +119,7 @@ function detect(video, fresh = false) {
   if (!fresh && cache.video === video && now - cache.at < SCAN_MS) return cache.out;
   let out;
   try {
-    out = scan(video);
+    out = scan(video, mainAdvancing(video, now), now);
   } catch {
     out = { ad: false, why: null, info: {} };
   }
