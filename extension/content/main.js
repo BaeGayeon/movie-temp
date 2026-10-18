@@ -57,7 +57,7 @@
   const chat = isTop
     ? createChat({
         getState: () => state,
-        onSend: (text) => send({ cmd: CMD.CHAT_SEND, text, videoTime: currentVideoTime() }),
+        onSend: (text, replyTo) => send({ cmd: CMD.CHAT_SEND, text, videoTime: currentVideoTime(), replyTo }),
         getInviteLink: () => {
           const u = new URL(location.href);
           u.searchParams.set('wp', state?.roomCode ?? '');
