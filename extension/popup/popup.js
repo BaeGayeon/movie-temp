@@ -521,9 +521,29 @@ function sendPreview(name) {
 function listOpen() {
   return !$('fontList').hidden;
 }
+// 검색: 글꼴 이름에 검색어가 들어 있는 항목만 보인다(대소문자·공백 무시)
+const norm = (s) => s.toLowerCase().replace(/\s+/g, '');
+function filterFontList() {
+  const q = norm($('fontSearch').value);
+  let shown = 0;
+  for (const o of $('fontList').querySelectorAll('[role=option]')) {
+    o.hidden = !!q && !norm(o.textContent).includes(q);
+    if (!o.hidden) shown++;
+  }
+  $('fontList').querySelector('.nomatch')?.remove();
+  if (!shown) {
+    const n = document.createElement('div');
+    n.className = 'nomatch';
+    n.textContent = t('popup.fontNoMatch');
+    $('fontList').append(n);
+  }
+}
+const visibleOptions = () => [...$('fontList').querySelectorAll('[role=option]:not([hidden])')];
 function closeFontList(commit) {
   clearInterval(previewBeat);
   $('fontList').hidden = true;
+  $('fontSearch').hidden = true;
+  $('fontSearch').value = '';
   $('fontCur').setAttribute('aria-expanded', 'false');
   chrome.storage.local.set({ chatFontPreview: null }); // 미리보기 해제(확정이면 chatPrefs 가 이미 같은 글꼴)
   if (!commit) sampleFont(committedFont);
@@ -552,13 +572,17 @@ function renderFontList(current) {
     }),
   );
   $('fontCur').textContent = current || t('popup.fontDefault');
+  filterFontList(); // 목록이 다시 그려져도(글꼴 불러오기 등) 검색어는 유지
 }
 function openFontList() {
   $('fontList').hidden = false;
+  $('fontSearch').hidden = false;
+  $('fontSearch').value = '';
+  filterFontList();
   $('fontCur').setAttribute('aria-expanded', 'true');
   const sel = $('fontList').querySelector('[aria-selected=true]');
   sel?.scrollIntoView({ block: 'center' });
-  $('fontList').focus();
+  $('fontSearch').focus(); // 바로 타이핑해서 찾을 수 있다(↑↓ 로 고르는 건 그대로)
   previewBeat = setInterval(() => sendPreview(activeOption()?.dataset.font ?? committedFont), 2000); // 채팅 쪽 4초 만료를 늦춘다
 }
 $('fontCur').addEventListener('click', () => (listOpen() ? closeFontList(false) : openFontList()));
@@ -572,8 +596,14 @@ $('fontList').addEventListener('click', (e) => {
   setChatFont(o.dataset.font);
   closeFontList(true);
 });
-$('fontList').addEventListener('keydown', (e) => {
-  const opts = [...$('fontList').querySelectorAll('[role=option]')];
+$('fontSearch').addEventListener('input', () => {
+  filterFontList();
+  setActive(visibleOptions()[0] && $('fontSearch').value ? visibleOptions()[0] : null); // 검색하면 첫 결과가 선택돼 Enter 로 바로 고를 수 있다
+  if (!$('fontSearch').value) sendPreview(committedFont);
+});
+const onFontKey = (e) => {
+  if (e.isComposing) return; // 한글 입력 중의 Enter/방향키는 글자 확정용
+  const opts = visibleOptions();
   const i = opts.indexOf(activeOption());
   if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
     e.preventDefault();
@@ -588,7 +618,9 @@ $('fontList').addEventListener('keydown', (e) => {
     closeFontList(false);
     $('fontCur').focus();
   }
-});
+};
+$('fontList').addEventListener('keydown', onFontKey);
+$('fontSearch').addEventListener('keydown', onFontKey);
 $('fontList').addEventListener('mouseleave', () => {
   if (!listOpen()) return; // 목록이 닫히며 생긴 mouseleave 는 무시
   $('fontList').querySelector('.on')?.classList.remove('on');

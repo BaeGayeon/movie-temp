@@ -58,7 +58,7 @@ main { padding: 14px 14px 16px; display: flex; flex-direction: column; gap: 12px
 .row > .btn { flex: 1; }
 .row.nowrap { flex-wrap: nowrap; }
 
-input[type=text], input[type=password], input[type=number], input:not([type]), select {
+input[type=text], input[type=password], input[type=number], input[type=search], input:not([type]), select {
   font: inherit; color: var(--ink); background: var(--bg); border: 2px solid var(--border-2);
   border-radius: 999px; padding: 8px 14px; min-width: 0;
 }
@@ -125,6 +125,9 @@ details.card[open] > summary { border-bottom: 2px solid var(--border); }
 .fontpick { display: flex; flex-direction: column; gap: 4px; }
 #fontCur { width: 100%; text-align: left; display: flex; justify-content: space-between; align-items: center; }
 #fontCur::after { content: '▾'; opacity: .7; margin-left: 8px; }
+#fontSearch { width: 100%; box-sizing: border-box; }
+#fontSearch::-webkit-search-cancel-button { filter: invert(.8); }
+#fontList .nomatch { padding: 8px 10px; color: var(--ink-soft); font-size: 13px; }
 #fontList { max-height: 190px; overflow-y: auto; border-radius: 12px; background: var(--bg); border: 1px solid var(--border-3); padding: 4px; scrollbar-width: thin; }
 #fontList [role=option] { padding: 6px 10px; border-radius: 8px; cursor: pointer; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #fontList [role=option].on, #fontList [role=option][aria-selected=true] { background: var(--surface-2); }
