@@ -40,6 +40,7 @@ let profile = null; // { name, avatar, color } — chrome.storage.local 에 저�
 let room = freshRoom();
 let connection = 'disconnected'; // disconnected | connecting | connected
 let lastError = null;
+const WAKING_MSG = '서버를 깨우는 중이에요 (최대 1분)…';
 let justCreated = false; // 내가 방금 방을 만들었음(첫 room_state 에서 서버 상태 대신 내 영상 상태로 방을 시작)
 
 let ws = null;
@@ -75,7 +76,7 @@ async function init() {
 
 function publicState() {
   const { chat, ...rest } = room;
-  return { ...rest, userId, connection, error: lastError };
+  return { ...rest, userId, connection, error: lastError, waking };
 }
 
 function persist() {
@@ -223,12 +224,66 @@ function rawSend(msg) {
   if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
 }
 
+// 무료 호스팅 서버는 한동안 접속이 없으면 잠들어서 깨우는 데 30초~1분쯤 걸린다.
+// 방 만들기/참가 때는 접속 전에 /health 로 서버를 먼저 깨우고, 오래 걸리면 안내를 띄운다. 깨어나면 이어서 접속한다.
+const WAKE_TOTAL_MS = 60_000;
+const WAKE_TRY_MS = 8000;
+const WAKE_RETRY_MS = 2000;
+const WAKE_SHOW_AFTER_MS = 2500; // 이보다 빨리 깨어나면(이미 켜져 있으면) 안내를 띄우지 않는다
+const WAKE_FAST_FAILS = 3; // 요청이 바로바로 실패하면(오프라인 등) 1분을 기다리지 않고 포기
+let waking = false;
+let wakeRun = 0; // 깨우기 시도 번호. 바뀌면 이전 시도는 취소된 것
+
+function cancelWake() {
+  wakeRun++;
+  waking = false;
+}
+
+async function wakeServer() {
+  const run = ++wakeRun;
+  const start = Date.now();
+  const showTimer = setTimeout(() => {
+    if (run !== wakeRun) return;
+    waking = true;
+    toast(WAKING_MSG);
+    broadcast();
+  }, WAKE_SHOW_AFTER_MS);
+  let ok = false;
+  let fastFails = 0;
+  while (run === wakeRun && Date.now() - start < WAKE_TOTAL_MS) {
+    const tried = Date.now();
+    try {
+      const res = await fetch(`${SERVER_URL.replace(/^ws/, 'http')}/health`, { signal: AbortSignal.timeout(WAKE_TRY_MS), cache: 'no-store' });
+      if (res.ok) {
+        ok = true;
+        break;
+      }
+    } catch {}
+    fastFails = Date.now() - tried < 1000 ? fastFails + 1 : 0;
+    if (fastFails >= WAKE_FAST_FAILS) break;
+    await new Promise((r) => setTimeout(r, WAKE_RETRY_MS));
+  }
+  clearTimeout(showTimer);
+  if (run !== wakeRun) return false; // 그 사이 방을 나가는 등으로 취소됨
+  waking = false;
+  return ok;
+}
+
 function sendOrQueue(msg) {
   if (ws?.readyState === WebSocket.OPEN) rawSend(msg);
   else {
     pending = msg;
     retry = 0;
-    connect();
+    wakeServer().then((ok) => {
+      if (pending !== msg) return; // 취소되었거나 다른 요청으로 바뀜
+      if (ok) connect();
+      else {
+        pending = null;
+        lastError = '서버에 연결하지 못했어요. 잠시 뒤 다시 시도해 주세요.';
+        broadcast();
+      }
+    });
+    broadcast();
   }
 }
 
@@ -435,6 +490,7 @@ function leaveRoom(notifyServer = true) {
     rawSend({ type: C2S.LEAVE_ROOM });
   }
   pending = null;
+  cancelWake();
   justCreated = false;
   resetRoom();
   clearTimeout(reconnectTimer);

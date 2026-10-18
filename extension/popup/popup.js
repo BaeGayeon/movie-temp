@@ -71,7 +71,8 @@ function render() {
   $('room').hidden = !here;
   $('elsewhere').hidden = !elsewhere;
   $('elsewhereSite').textContent = state?.site || '다른 탭';
-  $('error').textContent = state?.error ?? '';
+  $('error').textContent = state?.error ?? (state?.waking ? '서버를 깨우는 중이에요 (최대 1분)…' : '');
+  $('error').classList.toggle('info', !state?.error && !!state?.waking);
   if (!here) return;
 
   // 방 코드: 글자마다 칩으로
