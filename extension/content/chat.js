@@ -80,6 +80,7 @@ const CSS = `
   .msg.pending .text { opacity: .55; }
   .sendstat { font-size: .857em; color: var(--ink-soft); display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; margin-top: 2px; }
   .msg.me .sendstat { justify-content: flex-end; }
+  .sendstat:empty { display: none; }
   .sendstat.fail { color: #e5484d; }
   .sendstat.fail.restart { color: var(--ink-soft); }
   .sendstat .link { background: none; padding: 0; color: var(--ink); text-decoration: underline; font-size: 1em; }
@@ -680,6 +681,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
   // 서버가 내 메시지를 받아 돌려주기(echo) 전에는 흐린 "보내는 중" 말풍선으로 보여 준다. 돌려주면 진짜 메시지로 바뀐다.
   // 연결이 끊겼거나 PENDING_FAIL_MS 안에 안 돌아오면 이유(재배포/연결 문제)와 함께 "전달되지 않았을 수 있어요 · 다시 보내기"로 바꾼다.
   const PENDING_FAIL_MS = 4000;
+  const SENDING_SHOW_MS = 1200;
   const pendingSends = []; // { text, replyTo, entry, timer, failed }
   const normText = (s) => String(s).replace(/\r\n?/g, '\n').replace(/\t/g, ' ').replace(/ +\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim(); // 서버가 보내 주는 모양과 같게
   function removeEntry(entry) {
@@ -690,10 +692,15 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
   }
   function sendWithPending(text, replyToId) {
     const entry = renderMessage({ userId: getState()?.userId, text, sentAt: Date.now(), replyTo: replyToId });
-    entry.el.classList.add('pending');
-    entry.statusEl = el('div', 'sendstat', t('chat.sending'));
+    entry.statusEl = el('div', 'sendstat');
     entry.el.querySelector('.body').append(entry.statusEl);
     const p = { text: normText(text), raw: text, replyTo: replyToId, entry, failed: false };
+    // 정상이면 서버가 바로 돌려주니, 조금 늦을 때만 "보내는 중"으로 보여 준다(매번 깜빡이지 않게)
+    p.slowTimer = setTimeout(() => {
+      if (p.failed || !pendingSends.includes(p)) return;
+      entry.el.classList.add('pending');
+      entry.statusEl.textContent = t('chat.sending');
+    }, SENDING_SHOW_MS);
     p.timer = setTimeout(() => failPending(p), PENDING_FAIL_MS);
     pendingSends.push(p);
     onSend(text, replyToId);
@@ -701,7 +708,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
   }
   function failPending(p) {
     if (p.failed || !pendingSends.includes(p)) return;
-    clearTimeout(p.timer);
+    clearTimeout(p.timer); clearTimeout(p.slowTimer);
     p.failed = true;
     const again = el('button', 'link', t('chat.resend'));
     again.addEventListener('click', () => {
@@ -718,11 +725,12 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
   function paintFail(p) {
     const restart = !!getState()?.restarting;
     const st = p.entry.statusEl;
+    p.entry.el.classList.add('pending');
     st.className = `sendstat fail${restart ? ' restart' : ''}`; // 재배포는 차분하게, 진짜 오류는 빨갛게
     st.replaceChildren(t(restart ? 'chat.sendFailedRestart' : 'chat.sendFailedError'), ...p.buttons);
   }
   function dropPending(p) {
-    clearTimeout(p.timer);
+    clearTimeout(p.timer); clearTimeout(p.slowTimer);
     const i = pendingSends.indexOf(p);
     if (i >= 0) pendingSends.splice(i, 1);
     removeEntry(p.entry);
@@ -732,7 +740,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     const i = pendingSends.findIndex((p) => p.text === normText(m.text));
     if (i < 0) return;
     const p = pendingSends.splice(i, 1)[0];
-    clearTimeout(p.timer);
+    clearTimeout(p.timer); clearTimeout(p.slowTimer);
     removeEntry(p.entry);
   }
 
@@ -1320,7 +1328,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
       menu.hidden = true;
       mount.remove();
       stopTyping();
-      for (const p of pendingSends) clearTimeout(p.timer);
+      for (const p of pendingSends) { clearTimeout(p.timer); clearTimeout(p.slowTimer); }
       pendingSends.length = 0;
       for (const t of typingTimers.values()) clearTimeout(t);
       typingTimers.clear();
