@@ -87,17 +87,13 @@ const CSS = `
   .sendstat .link:hover { color: var(--accent-ink, var(--ink)); }
 
   .typing { min-height: 18px; padding: 0 14px 2px; font-size: 12px; color: var(--ink-soft); }
-  .reacts { display: flex; gap: 0; padding: 2px 0 2px 8px; flex-wrap: wrap; align-items: center; justify-content: space-between; } /* 줄마다 남는 칸을 묶음 사이에 나눠, 오른쪽 끝이 왼쪽 여백과 비슷하게 맞는다(묶음은 줄 사이에 쪼개지 않는다) */
-  .reacts::after { content: ''; flex: 1 1 0; } /* 마지막 줄은 남는 칸을 이것이 차지해서 왼쪽부터 붙는다(펼치지 않음) */
-  .dock-bubble .reacts::after { display: none; }
-  .reacts .grp { display: flex; margin-right: 8px; } /* 감정이 비슷한 것끼리 묶고 묶음 사이에 간격(오른쪽 여백도 겸해서 줄 끝이 왼쪽 여백과 같아진다). 묶음은 통째로 줄바꿈 */
-  .reacts > button, .reacts > .tail { margin-right: 8px; }
+  .reacts { display: flex; gap: 0 8px; padding: 2px 8px; flex-wrap: wrap; align-items: center; } /* 묶음 사이 간격은 gap 으로: 한 줄 안에서만 생기므로 줄 끝에 여백이 따로 필요하지 않다(왼쪽 여백만큼만 있으면 된다) */
+  .reacts .grp { display: flex; } /* 감정이 비슷한 것끼리 묶음. 묶음은 줄 사이에 쪼개지지 않고 통째로 줄바꿈 */
   .reacts .rlabel { font-size: 11px; color: var(--ink-soft); padding: 0 6px 0 4px; }
   .reacts .rlabel[hidden] { display: none; }
   .reacts .tail { display: flex; flex-wrap: wrap; align-items: center; }
   .reacts .tail[hidden] { display: none; }
   .reacts .grp[hidden] { display: none; }
-  .reacts .grp.recent { margin-right: 0; } /* 최근에 직접 고른 이모지(기본 목록에 없는 것) */
   .reacts button { background: transparent; font-size: 17px; border-radius: 8px; padding: 2px 4px; transition: transform .08s; }
   .reacts button:hover { background: var(--surface-2); transform: scale(1.15); }
   ::selection { background: var(--accent); color: var(--on-accent); } /* 사이트 기본 선택색이 안 보이는 경우가 있어 직접 지정 */
