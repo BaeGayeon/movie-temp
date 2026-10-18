@@ -118,11 +118,13 @@
       <div class="inner">
         <div class="preview"><span class="av" id="pav"></span><span id="pnamePreview"></span></div>
         <input id="pname" maxlength="16" placeholder="닉네임 (최대 16자)" autocomplete="off">
+        <div class="row"><button id="saveProfile" class="btn small" style="flex:0 0 auto" disabled>저장</button><span class="sub" id="saveHint"></span></div>
         <div class="sub">프사</div>
         <div class="grid" id="emojiGrid"></div>
-        <div class="row nowrap">
-          <button id="moreEmoji" class="btn small">＋ 모든 이모지</button>
+        <div class="row" style="flex-wrap:wrap">
           <button id="upload" class="btn small">📷 사진 올리기</button>
+          <button id="swapAvatar" class="btn small" hidden></button>
+          <button id="editPhoto" class="btn small" hidden>위치 조절</button>
           <button id="clearPhoto" class="btn small" hidden>지우기</button>
           <input type="file" id="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
         </div>

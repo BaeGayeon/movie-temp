@@ -1,7 +1,7 @@
 import { APP_NAME, APP_NAME_KO } from '../config.js';
 import { CMD } from '../shared/cmd.js';
 import { COLOR_PALETTE, MAX_NAME_LENGTH, MIN_PASSWORD_LENGTH, MAX_PASSWORD_LENGTH, MIN_ROOM_MEMBERS, MAX_ROOM_MEMBERS, isValidNewPassword, isValidMaxMembers } from '../shared/protocol.js';
-import { renderAvatar, bitmapToAvatarDataUrl } from '../shared/avatar.js';
+import { renderAvatar, bitmapToAvatarDataUrl, bitmapToSourceDataUrl, decode } from '../shared/avatar.js';
 import { createEmojiPicker, EMOJI_PICKER_CSS } from '../shared/emoji-picker.js';
 import { ROOT_THEME_CSS, pastelize } from '../shared/theme.js';
 import { createColorPicker, isHex } from '../shared/color-picker.js';
@@ -364,7 +364,11 @@ $('adDetect').addEventListener('change', async (e) => {
 // ---------- 프로필 (이름, 이모지 프사 + 배경색, 채팅 색) ----------
 const AVATARS = ['🙂', '😎', '🤓', '🥳', '😺', '🐶', '🐻', '🐼', '🦊', '🐸', '🐧', '🦄'];
 let profile = { name: '', avatar: { kind: 'emoji', value: AVATARS[0], bg: COLOR_PALETTE[5] }, color: COLOR_PALETTE[3] };
-let saveTimer = null;
+// 사진 프사와 이모지 프사를 오가도 서로 지워지지 않게 반대쪽을 기기에만 보관한다(서버로는 현재 쓰는 프사만 보낸다).
+// image: 이모지를 쓰는 동안 보관 중인 사진(64x64 데이터 URL), emoji: 사진을 쓰는 동안 보관 중인 최근 이모지
+let alt = { image: null, emoji: null };
+let hasPhotoSource = false; // 위치 다시 맞추기용 원본(photoSource)이 내 기기에 저장돼 있는지
+let draftSource; // 저장 전 변경: undefined=그대로, null=삭제, 문자열=새 원본. [저장]을 눌러야 기기에 반영된다
 
 // 기본 색 + 직접 고르기. 직접 고른 색은 기억해 두고, 다른 색으로 바꿨다가 다시 눌러도 그 색이 나온다.
 let customColors = {};
@@ -410,7 +414,11 @@ function swatches(container, pickerBox, key, colors, current, onPick) {
 
 function renderProfile() {
   renderAvatar($('pav'), profile.avatar, 38);
-  $('clearPhoto').hidden = profile.avatar.kind !== 'image';
+  const isImage = profile.avatar.kind === 'image';
+  $('clearPhoto').hidden = !isImage && !alt.image;
+  $('swapAvatar').hidden = isImage ? !alt.emoji : !alt.image;
+  $('swapAvatar').textContent = isImage ? `${alt.emoji} 이모지로` : '🖼 사진으로';
+  $('editPhoto').hidden = profile.avatar.kind !== 'image' || !(draftSource === undefined ? hasPhotoSource : draftSource);
   $('pnamePreview').textContent = profile.name || '닉네임';
   $('pnamePreview').style.color = pastelize(profile.color); // 채팅에서 보이는 대로(닉네임은 글자색)
   $('emojiGrid').replaceChildren(
@@ -418,41 +426,72 @@ function renderProfile() {
       const b = document.createElement('button');
       b.textContent = e;
       if (profile.avatar.kind === 'emoji' && e === profile.avatar.value) b.className = 'sel';
-      b.addEventListener('click', () => update({ avatar: { ...profile.avatar, kind: 'emoji', value: e } }));
+      b.addEventListener('click', () => pickEmoji(e));
       return b;
     }),
+    moreEmojiButton(),
   );
   swatches($('bgGrid'), $('bgPicker'), 'bg', COLOR_PALETTE, profile.avatar.bg, (c) => update({ avatar: { ...profile.avatar, bg: c } }));
   swatches($('colorGrid'), $('colorPicker'), 'color', COLOR_PALETTE, profile.color, (c) => update({ color: c }));
 }
 
-// 저장: chrome.storage.local 에 보관하고(background 담당), 방에 있으면 방 전체에 전파된다
+// 편집은 미리보기에만 반영하고, [저장]을 눌러야 chrome.storage.local 에 보관되며(background 담당) 방에 있으면 방 전체에 전파된다
+let dirty = false;
+function setDirty(v) {
+  dirty = v;
+  $('saveProfile').disabled = !v;
+  $('saveHint').textContent = v ? '저장해야 반영돼요' : '';
+}
+function pickEmoji(e) {
+  if (profile.avatar.kind === 'image') alt.image = profile.avatar.value; // 쓰던 사진은 보관
+  alt.emoji = e;
+  update({ avatar: { ...profile.avatar, kind: 'emoji', value: e } });
+}
 function update(patch) {
   profile = { ...profile, ...patch };
+  setDirty(true);
   renderProfile();
-  clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
-    // 닉네임을 비워 둬도 색/프사는 저장되도록, 비었으면 지금 쓰는 이름을 쓴다
-    const name = profile.name.trim() || state?.participants?.find((p) => p.id === state.userId)?.name || '';
-    if (name.length >= 1 && name.length <= MAX_NAME_LENGTH) {
-      chrome.runtime.sendMessage({ cmd: CMD.SET_PROFILE, profile: { ...profile, name } });
-    }
-  }, 300);
 }
+$('saveProfile').addEventListener('click', () => {
+  // 닉네임을 비워 둬도 색/프사는 저장되도록, 비었으면 지금 쓰는 이름을 쓴다
+  const name = profile.name.trim() || state?.participants?.find((p) => p.id === state.userId)?.name || '';
+  if (name.length < 1 || name.length > MAX_NAME_LENGTH) {
+    $('saveHint').textContent = '닉네임을 입력해 주세요';
+    return;
+  }
+  profile = { ...profile, name };
+  chrome.runtime.sendMessage({ cmd: CMD.SET_PROFILE, profile });
+  if (draftSource) chrome.storage.local.set({ photoSource: draftSource });
+  else if (draftSource === null) chrome.storage.local.remove('photoSource');
+  chrome.storage.local.set({ avatarAlt: alt });
+  hasPhotoSource = draftSource === undefined ? hasPhotoSource : !!draftSource;
+  draftSource = undefined;
+  setDirty(false);
+  $('saveHint').textContent = '저장했어요';
+  setTimeout(() => !dirty && ($('saveHint').textContent = ''), 1500);
+});
 
 $('pname').addEventListener('input', (e) => update({ name: e.target.value }));
 
 // 모든 이모지 선택기
 let picker = null;
-$('moreEmoji').addEventListener('click', () => {
+function moreEmojiButton() {
+  const b = document.createElement('button');
+  b.textContent = '＋';
+  b.title = '모든 이모지';
+  b.setAttribute('aria-label', '모든 이모지');
+  b.addEventListener('click', toggleEmojiPicker);
+  return b;
+}
+function toggleEmojiPicker() {
   const box = $('pickerBox');
   if (!picker) {
-    picker = createEmojiPicker({ onPick: (e) => update({ avatar: { ...profile.avatar, kind: 'emoji', value: e } }) });
+    picker = createEmojiPicker({ onPick: pickEmoji });
     box.append(picker.el);
   }
   box.hidden = !box.hidden;
   if (!box.hidden) picker.reset();
-});
+}
 
 // 사진 업로드: 내 컴퓨터에서 64x64 로 줄여 프로필에 포함한다
 
@@ -744,18 +783,56 @@ $('cropApply').addEventListener('click', () => {
   const s = crop.base * crop.zoom;
   try {
     const url = bitmapToAvatarDataUrl(crop.bmp, { x: -crop.ox / s, y: -crop.oy / s, size: VIEW / s });
+    const photoSource = crop.fromSource ? null : bitmapToSourceDataUrl(crop.bmp); // 저장된 원본에서 연 경우는 그대로 둔다
     closeCropper();
+    if (photoSource) draftSource = photoSource;
+    if (profile.avatar.kind === 'emoji') alt.emoji = profile.avatar.value; // 쓰던 이모지는 보관
+    alt.image = null;
     update({ avatar: { kind: 'image', value: url, bg: profile.avatar.bg } });
   } catch (err) {
     $('perror').textContent = err.message?.includes('20KB') ? err.message : '이미지를 불러올 수 없어요. 다른 사진을 골라 주세요.';
   }
 });
-$('clearPhoto').addEventListener('click', () => update({ avatar: { kind: 'emoji', value: AVATARS[0], bg: profile.avatar.bg } }));
+$('editPhoto').addEventListener('click', async () => {
+  $('perror').textContent = '';
+  const photoSource = draftSource === undefined ? (await chrome.storage.local.get('photoSource')).photoSource : draftSource;
+  const bmp = photoSource && (await decode(photoSource));
+  if (!bmp) {
+    hasPhotoSource = false;
+    draftSource = null;
+    renderProfile();
+    return;
+  }
+  openCropper(bmp);
+  crop.fromSource = true;
+});
+$('clearPhoto').addEventListener('click', () => {
+  draftSource = null;
+  alt.image = null;
+  const emoji = profile.avatar.kind === 'emoji' ? profile.avatar.value : (alt.emoji ?? AVATARS[0]);
+  update({ avatar: { kind: 'emoji', value: emoji, bg: profile.avatar.bg } });
+});
+$('swapAvatar').addEventListener('click', () => {
+  if (profile.avatar.kind === 'image') {
+    const image = profile.avatar.value;
+    update({ avatar: { ...profile.avatar, kind: 'emoji', value: alt.emoji } });
+    alt.image = image;
+  } else {
+    const emoji = profile.avatar.value;
+    update({ avatar: { ...profile.avatar, kind: 'image', value: alt.image } });
+    alt.emoji = emoji;
+    alt.image = null;
+  }
+  renderProfile();
+});
 
 pickers.push($('bgPicker'), $('colorPicker'));
 
 async function loadProfile() {
   customColors = (await chrome.storage.local.get('customColors')).customColors ?? {};
+  hasPhotoSource = !!(await chrome.storage.local.get('photoSource')).photoSource;
+  const savedAlt = (await chrome.storage.local.get('avatarAlt')).avatarAlt;
+  if (savedAlt?.image?.startsWith('data:image/') || typeof savedAlt?.emoji === 'string') alt = { image: savedAlt.image ?? null, emoji: savedAlt.emoji ?? null };
   const saved = (await chrome.storage.local.get('profile')).profile;
   if (saved) profile = saved;
   else {
