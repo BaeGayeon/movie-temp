@@ -626,6 +626,7 @@ async function onCommand(m, sender) {
 
     case CMD.CHECK_ROOM: {
       const code = String(m.roomCode ?? '').trim().toUpperCase();
+      if (code && code === room.roomCode) return { joined: true }; // 이미 이 방에 있다(다른 탭에서 연 초대 링크 등)
       return ROOM_CODE_RE.test(code) ? await roomInfo(code) : { exists: null };
     }
 

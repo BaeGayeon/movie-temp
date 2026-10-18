@@ -788,6 +788,12 @@
         // 방이 아직 있는지 먼저 확인한다. 확인할 수 없으면(null) 일단 초대를 보여 주고, 참가가 실패하면 그때 안내한다
         const reply = await chrome.runtime.sendMessage({ cmd: CMD.CHECK_ROOM, roomCode }).catch(() => null);
         if (state?.roomCode === roomCode) return; // 확인하는 사이 이미 들어간 경우
+        if (reply?.joined) {
+          // 이 방에는 이미 들어와 있다(다른 탭에서). 초대 배너 대신 알려 주고 주소의 ?wp= 를 지운다
+          clearWp();
+          ui.toast(`이미 방 ${roomCode}에 들어와 있어요 (다른 탭)`);
+          return;
+        }
         if (reply?.exists === false) {
           ui.showExpiredInvite(roomCode, clearWp);
           return;
