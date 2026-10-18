@@ -472,10 +472,10 @@ function handleServer(m) {
       const restored = entering && pendingRestore?.roomCode === m.roomCode;
       if (entering) pendingRestore = null;
       clockSamples = [];
-      if (restoring) toast(t('bg.roomRestored'), LONG_TOAST_MS);
       // 방이 사라져 있었거나(복구가 필요했다), 서버가 재시작한다고 알려 왔다면: 먼저 돌아온 쪽(방이 없어 복구)이든 나중에 돌아온 쪽(이미 복구된 방에 참가)이든 똑같이 안내한다
       if (roomWasLost || (lostAt !== null && (serverChanged || isRestarting()))) {
         // 방이 사라졌다가 복구됐다: 언제 끊겼는지 채팅 기록에 남기고, 나머지가 돌아오길 기다렸다 한 번에 알린다
+        toast(t('bg.roomRestored'), LONG_TOAST_MS); // 직접 복구한 쪽이든 이미 복구된 방에 참가한 쪽이든 똑같이 알린다
         pushNotice('down', { at: lostAt ?? Date.now() });
         waitForOthersBack(m.participants);
       }
