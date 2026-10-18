@@ -1,7 +1,7 @@
 import { APP_NAME, APP_NAME_KO } from '../config.js';
 import { CMD } from '../shared/cmd.js';
 import { COLOR_PALETTE, MAX_NAME_LENGTH, MIN_PASSWORD_LENGTH, MAX_PASSWORD_LENGTH, MIN_ROOM_MEMBERS, MAX_ROOM_MEMBERS, isValidNewPassword, isValidMaxMembers } from '../shared/protocol.js';
-import { renderAvatar, bitmapToAvatarDataUrl } from '../shared/avatar.js';
+import { renderAvatar, bitmapToAvatarDataUrl, bitmapToSourceDataUrl, decode } from '../shared/avatar.js';
 import { createEmojiPicker, EMOJI_PICKER_CSS } from '../shared/emoji-picker.js';
 import { ROOT_THEME_CSS, pastelize } from '../shared/theme.js';
 import { createColorPicker, isHex } from '../shared/color-picker.js';
@@ -365,6 +365,7 @@ $('adDetect').addEventListener('change', async (e) => {
 const AVATARS = ['🙂', '😎', '🤓', '🥳', '😺', '🐶', '🐻', '🐼', '🦊', '🐸', '🐧', '🦄'];
 let profile = { name: '', avatar: { kind: 'emoji', value: AVATARS[0], bg: COLOR_PALETTE[5] }, color: COLOR_PALETTE[3] };
 let saveTimer = null;
+let hasPhotoSource = false; // 위치 다시 맞추기용 원본(photoSource)이 내 기기에 있는지
 
 // 기본 색 + 직접 고르기. 직접 고른 색은 기억해 두고, 다른 색으로 바꿨다가 다시 눌러도 그 색이 나온다.
 let customColors = {};
@@ -411,6 +412,7 @@ function swatches(container, pickerBox, key, colors, current, onPick) {
 function renderProfile() {
   renderAvatar($('pav'), profile.avatar, 38);
   $('clearPhoto').hidden = profile.avatar.kind !== 'image';
+  $('editPhoto').hidden = profile.avatar.kind !== 'image' || !hasPhotoSource;
   $('pnamePreview').textContent = profile.name || '닉네임';
   $('pnamePreview').style.color = pastelize(profile.color); // 채팅에서 보이는 대로(닉네임은 글자색)
   $('emojiGrid').replaceChildren(
@@ -744,18 +746,40 @@ $('cropApply').addEventListener('click', () => {
   const s = crop.base * crop.zoom;
   try {
     const url = bitmapToAvatarDataUrl(crop.bmp, { x: -crop.ox / s, y: -crop.oy / s, size: VIEW / s });
+    const photoSource = crop.fromSource ? null : bitmapToSourceDataUrl(crop.bmp); // 저장된 원본에서 연 경우는 그대로 둔다
     closeCropper();
+    if (photoSource) {
+      hasPhotoSource = true;
+      chrome.storage.local.set({ photoSource });
+    }
     update({ avatar: { kind: 'image', value: url, bg: profile.avatar.bg } });
   } catch (err) {
     $('perror').textContent = err.message?.includes('20KB') ? err.message : '이미지를 불러올 수 없어요. 다른 사진을 골라 주세요.';
   }
 });
-$('clearPhoto').addEventListener('click', () => update({ avatar: { kind: 'emoji', value: AVATARS[0], bg: profile.avatar.bg } }));
+$('editPhoto').addEventListener('click', async () => {
+  $('perror').textContent = '';
+  const { photoSource } = await chrome.storage.local.get('photoSource');
+  const bmp = photoSource && (await decode(photoSource));
+  if (!bmp) {
+    hasPhotoSource = false;
+    renderProfile();
+    return;
+  }
+  openCropper(bmp);
+  crop.fromSource = true;
+});
+$('clearPhoto').addEventListener('click', () => {
+  hasPhotoSource = false;
+  chrome.storage.local.remove('photoSource');
+  update({ avatar: { kind: 'emoji', value: AVATARS[0], bg: profile.avatar.bg } });
+});
 
 pickers.push($('bgPicker'), $('colorPicker'));
 
 async function loadProfile() {
   customColors = (await chrome.storage.local.get('customColors')).customColors ?? {};
+  hasPhotoSource = !!(await chrome.storage.local.get('photoSource')).photoSource;
   const saved = (await chrome.storage.local.get('profile')).profile;
   if (saved) profile = saved;
   else {
