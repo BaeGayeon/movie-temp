@@ -34,7 +34,8 @@ export function createServer({ port = Number(process.env.PORT) || 8080, host = '
 
   const server = http.createServer((req, res) => {
     if (req.method === 'GET' && req.url === '/health') {
-      res.writeHead(200, { 'Content-Type': 'application/json' });
+      // 확장 background 가 잠든 서버를 깨울 때 이 주소를 fetch 한다. 스토어 빌드는 서버 주소에 대한 호스트 권한이 없어 CORS 헤더가 없으면 응답이 와도 fetch 가 실패한다
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' });
       res.end(JSON.stringify({ ok: true, rooms: rooms.rooms.size }));
       return;
     }

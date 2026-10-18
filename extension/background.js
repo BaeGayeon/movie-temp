@@ -589,17 +589,14 @@ async function getFontBase64() {
 }
 
 // 탭(모든 프레임)에 방과 동기화할 영상이 있는지. 영상이 있는 프레임의 content 만 true 로 응답한다(없으면 응답 없음 -> 거절됨).
-// 'ok' = 영상 있음, 'novideo' = 확장은 떠 있는데 영상이 없음, 'noscript' = 이 탭에 확장 스크립트가 없음
-// (확장을 새로 설치/업데이트하기 전에 열려 있던 탭은 새로고침해야 스크립트가 들어온다)
-async function videoStatus(tabId) {
-  if (tabId == null) return 'novideo';
+async function tabHasVideo(tabId) {
+  if (tabId == null) return false;
   try {
-    return (await chrome.tabs.sendMessage(tabId, { cmd: CMD.HAS_VIDEO })) === true ? 'ok' : 'novideo';
+    return (await chrome.tabs.sendMessage(tabId, { cmd: CMD.HAS_VIDEO })) === true;
   } catch {
-    return 'noscript';
+    return false;
   }
 }
-const tabHasVideo = async (tabId) => (await videoStatus(tabId)) === 'ok';
 // 이미 다른 탭에서 방에 있으면 새 방을 만들거나 참가할 수 없다(조용히 기존 방을 떠나지 않는다)
 function busyElsewhere(tabId) {
   if (!room.roomCode || tabId === room.tabId) return false;
@@ -637,10 +634,7 @@ async function onCommand(m, sender) {
     }
 
     case CMD.HAS_VIDEO:
-      {
-        const status = await videoStatus(m.tabId ?? fromTab);
-        return { ok: status === 'ok', status };
-      }
+      return { ok: await tabHasVideo(m.tabId ?? fromTab) };
 
     case CMD.CREATE_ROOM:
       if (busyElsewhere(m.tabId ?? fromTab)) return { ok: false };

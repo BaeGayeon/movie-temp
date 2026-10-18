@@ -219,29 +219,8 @@ async function checkVideo() {
   const reply = await chrome.runtime.sendMessage({ cmd: CMD.HAS_VIDEO, tabId: tab?.id }).catch(() => null);
   const ok = !!reply?.ok;
   for (const id of ['create', 'join', 'code', 'joinPw', 'createPw', 'createMax']) $(id).disabled = !ok;
-  // 지원 사이트인데 확장 스크립트가 없으면 새로고침 안내, 그 밖에는 "영상을 못 찾았어요"
-  const needReload = !ok && reply?.status === 'noscript' && isSupportedUrl(tab?.url);
-  $('reloadHint').hidden = !needReload;
-  $('noVideo').hidden = ok || needReload;
-  $('reloadTab').dataset.tab = tab?.id ?? '';
+  $('noVideo').hidden = ok;
 }
-// manifest 의 content_scripts matches 로 지원 사이트인지 본다(예: *://*.wavve.com/*)
-function isSupportedUrl(url) {
-  try {
-    const u = new URL(url);
-    const hosts = chrome.runtime.getManifest().content_scripts.flatMap((c) => c.matches).filter((m) => !/^(file:|https?:\/\/(localhost|127\.0\.0\.1))/.test(m));
-    return hosts.some((m) => {
-      const host = m.replace(/^[^:]+:\/\//, '').replace(/\/.*$/, '');
-      return host.startsWith('*.') ? u.hostname === host.slice(2) || u.hostname.endsWith(host.slice(1)) : u.hostname === host;
-    });
-  } catch {
-    return false;
-  }
-}
-$('reloadTab').addEventListener('click', () => {
-  const id = Number($('reloadTab').dataset.tab);
-  if (id) chrome.tabs.reload(id);
-});
 setInterval(checkVideo, 1500);
 
 // 방 코드와 비밀번호는 영문과 숫자만 입력할 수 있다(한글 등은 입력되자마자 지운다. 붙여넣기, 한글 조합 입력 포함)
