@@ -113,10 +113,11 @@
   let ownAdNotice = false;
   function renderNotices() {
     if (!isTop) return;
-    const nameOf = (id) => state?.participants?.find((p) => p.id === id)?.name ?? '누군가';
+    // 방금 나가서 참가자 목록에 없는 사람은 이름을 알 수 없으니 안내에서 뺀다
+    const names = (ids) => ids.map((id) => state?.participants?.find((p) => p.id === id)?.name).filter(Boolean);
     const adIds = state?.adIds ?? [];
-    const others = active() ? adIds.filter((id) => id !== state.userId).map(nameOf) : [];
-    const bufs = active() ? (state?.waitingIds ?? []).filter((id) => !adIds.includes(id)).map(nameOf) : [];
+    const others = active() ? names(adIds.filter((id) => id !== state.userId)) : [];
+    const bufs = active() ? names((state?.waitingIds ?? []).filter((id) => !adIds.includes(id))) : [];
     if (ownAdNotice && active()) {
       ui.showWaiting(null);
       ui.showAd(others.length ? tr('content.adSelfWith', { names: others.join(', ') }) : tr('content.adSelf'));
