@@ -68,6 +68,14 @@ const CSS = `
   .sys .ev-name { font-weight: 600; }
   .no-events .sys { display: none; }
   .empty { color: var(--ink-soft); text-align: center; padding: 18px 0; font-size: 13px; }
+  /* 보내는 중/못 보낸 내 채팅: 서버가 받아 돌려주기 전에는 흐리게, 못 보냈으면 이유와 함께 */
+  .msg.pending .text { opacity: .55; }
+  .sendstat { font-size: .857em; color: var(--ink-soft); display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; margin-top: 2px; }
+  .msg.me .sendstat { justify-content: flex-end; }
+  .sendstat.fail { color: #e5484d; }
+  .sendstat.fail.restart { color: var(--ink-soft); }
+  .sendstat .link { background: none; padding: 0; color: var(--ink); text-decoration: underline; font-size: 1em; }
+  .sendstat .link:hover { color: var(--accent-ink, var(--ink)); }
 
   .typing { min-height: 18px; padding: 0 14px 2px; font-size: 12px; color: var(--ink-soft); }
   .reacts { display: flex; gap: 0; padding: 2px 8px; flex-wrap: wrap; align-items: center; }
@@ -656,12 +664,67 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     const text = input.value.trim();
     if (!text) return;
     // 연결이 끊긴 상태에서 보내면 글이 사라지지 않게 입력칸에 남겨 둔다
-    if (getState()?.connection !== 'connected') return onNotify(t('chat.notConnected'));
+    if (getState()?.connection !== 'connected') return onNotify(t(getState()?.restarting ? 'chat.notConnectedRestart' : 'chat.notConnected'));
     stopTyping();
-    onSend(text, replyTo ?? undefined);
+    sendWithPending(text, replyTo ?? undefined);
     cancelReply();
     input.value = '';
     updateInputCounter();
+  }
+
+  // ---------- 보내는 중/못 보냄 ----------
+  // 서버가 내 메시지를 받아 돌려주기(echo) 전에는 흐린 "보내는 중" 말풍선으로 보여 준다. 돌려주면 진짜 메시지로 바뀐다.
+  // 연결이 끊겼거나 PENDING_FAIL_MS 안에 안 돌아오면 이유(재배포/연결 문제)와 함께 "전달되지 않았을 수 있어요 · 다시 보내기"로 바꾼다.
+  const PENDING_FAIL_MS = 4000;
+  const pendingSends = []; // { text, replyTo, entry, timer, failed }
+  const normText = (s) => String(s).replace(/\r\n?/g, '\n').replace(/\t/g, ' ').replace(/ +\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim(); // 서버가 보내 주는 모양과 같게
+  function removeEntry(entry) {
+    const i = messages.indexOf(entry);
+    if (i >= 0) messages.splice(i, 1);
+    entry.el.remove();
+    renderEmpty();
+  }
+  function sendWithPending(text, replyToId) {
+    const entry = renderMessage({ userId: getState()?.userId, text, sentAt: Date.now(), replyTo: replyToId });
+    entry.el.classList.add('pending');
+    entry.statusEl = el('div', 'sendstat', t('chat.sending'));
+    entry.el.querySelector('.body').append(entry.statusEl);
+    const p = { text: normText(text), raw: text, replyTo: replyToId, entry, failed: false };
+    p.timer = setTimeout(() => failPending(p), PENDING_FAIL_MS);
+    pendingSends.push(p);
+    onSend(text, replyToId);
+    scrollToBottom(true);
+  }
+  function failPending(p) {
+    if (p.failed || !pendingSends.includes(p)) return;
+    clearTimeout(p.timer);
+    p.failed = true;
+    const st = p.entry.statusEl;
+    st.className = `sendstat fail${getState()?.restarting ? ' restart' : ''}`; // 재배포는 차분하게, 진짜 오류는 빨갛게
+    st.replaceChildren(t(getState()?.restarting ? 'chat.sendFailedRestart' : 'chat.sendFailedError'));
+    const again = el('button', 'link', t('chat.resend'));
+    again.addEventListener('click', () => {
+      if (getState()?.connection !== 'connected') return onNotify(t(getState()?.restarting ? 'chat.notConnectedRestart' : 'chat.notConnected'));
+      dropPending(p);
+      sendWithPending(p.raw, p.replyTo);
+    });
+    const drop = el('button', 'link', t('chat.discard'));
+    drop.addEventListener('click', () => dropPending(p));
+    st.append(again, drop);
+  }
+  function dropPending(p) {
+    clearTimeout(p.timer);
+    const i = pendingSends.indexOf(p);
+    if (i >= 0) pendingSends.splice(i, 1);
+    removeEntry(p.entry);
+  }
+  // 서버가 돌려준 내 메시지: 같은 글의 "보내는 중/못 보냄" 말풍선을 지운다(늦게 도착한 경우도 중복되지 않게)
+  function settlePending(m) {
+    const i = pendingSends.findIndex((p) => p.text === normText(m.text));
+    if (i < 0) return;
+    const p = pendingSends.splice(i, 1)[0];
+    clearTimeout(p.timer);
+    removeEntry(p.entry);
   }
 
   // ---------- 입력 중 표시(받는 쪽) ----------
@@ -845,6 +908,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     list.append(row);
     messages.push(entry);
     trimMessages();
+    return entry;
   }
 
   // 본문: 줄글은 textContent/링크 노드로만 만든다. 길면 접어 두고 "전체보기"로 펼친다.
@@ -1210,6 +1274,8 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
       menu.hidden = true;
       mount.remove();
       stopTyping();
+      for (const p of pendingSends) clearTimeout(p.timer);
+      pendingSends.length = 0;
       for (const t of typingTimers.values()) clearTimeout(t);
       typingTimers.clear();
       list.replaceChildren();
@@ -1240,6 +1306,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
         return;
       }
       const mine = m.userId === getState()?.userId;
+      if (mine) settlePending(m);
       renderMessage(m);
       scrollToBottom(mine);
       // 발신자의 입력 중 표시 해제
@@ -1254,6 +1321,12 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     },
 
     // 프로필이 바뀌면 기존 메시지의 이름/프사/색도 갱신
+    // 연결 상태가 바뀔 때: 끊겼으면 아직 돌아오지 않은 내 메시지를 바로 "전달되지 않았을 수 있어요"로 바꾼다
+    onConnection(st) {
+      if (!built || st?.connection === 'connected') return;
+      for (const p of [...pendingSends]) failPending(p);
+    },
+
     refreshProfiles() {
       if (!built) return;
       for (const m of messages) {
