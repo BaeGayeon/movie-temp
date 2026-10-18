@@ -5,13 +5,14 @@
 import { createLayer } from './ui.js';
 import { REACTION_GROUPS, REACTION_EMOJIS, MAX_CHAT_LENGTH } from '../shared/protocol.js';
 import { renderAvatar } from '../shared/avatar.js';
-import { SHADOW_THEME_CSS, pastelize } from '../shared/theme.js';
+import { SHADOW_THEME_CSS, BLACK_THEME_CSS, pastelize } from '../shared/theme.js';
 import { createEmojiPicker, EMOJI_PICKER_CSS } from '../shared/emoji-picker.js';
 import { t, getLang, onLangChange } from '../shared/i18n.js';
 
 const CSS = `
   :host { all: initial; }
   ${SHADOW_THEME_CSS}
+  ${BLACK_THEME_CSS}
   * { box-sizing: border-box; }
   .root { position: fixed; inset: 0; pointer-events: none; font: 14px/1.45 var(--font); color: var(--ink); }
   button { font: inherit; cursor: pointer; border: 0; color: inherit; }
@@ -177,6 +178,7 @@ const DEFAULT_PREFS = {
   fontScale: 1.1, // 채팅 글자 크기 배율(기본 14px 의 1.1배)
   avatarSize: 34, // 채팅 프사 크기(px)
   style: 'bubble', // 대화 표시 방식: 'bubble' = 말풍선, 'plain' = 줄글(프사 + 이름/내용), 'compact' = 간단(이름/내용)
+  theme: 'charcoal', // 채팅 바탕색: 'charcoal' = 차콜, 'black' = 검정
   hidden: false, // 채팅을 완전히 숨김(팝업에서 다시 켠다)
   v: 3,
 };
@@ -295,7 +297,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
   let unread = 0;
 
   // DOM 참조
-  let wrap, panel, head, list, typingLine, input, counter, replyBar, replyText, bubbleBox, badge, floats, menu, opacity, clockCb, videoCb, eventsCb, modeBtn, pop, picker, styleSeg;
+  let wrap, panel, head, list, typingLine, input, counter, replyBar, replyText, bubbleBox, badge, floats, menu, opacity, clockCb, videoCb, eventsCb, modeBtn, pop, picker, styleSeg, themeSeg;
 
   try {
     chrome.storage.local.get('chatPrefs').then((r) => {
@@ -486,6 +488,8 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     videoCb.checked = prefs.showVideoTime;
     eventsCb.checked = prefs.showEvents;
     list.classList.toggle('no-events', !prefs.showEvents);
+    wrap.dataset.theme = prefs.theme === 'black' ? 'black' : 'charcoal';
+    themeSeg?.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.theme === wrap.dataset.theme));
     list.classList.toggle('plain', prefs.style === 'plain');
     list.classList.toggle('compact', prefs.style === 'compact');
     for (const b of styleSeg.children) b.classList.toggle('on', b.dataset.style === prefs.style);
@@ -1001,6 +1005,17 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
       });
       styleSeg.append(b);
     }
+    themeSeg = el('div', 'seg');
+    for (const k of ['charcoal', 'black']) {
+      const b = L(el('button'), 'textContent', `chat.theme.${k}`);
+      b.dataset.theme = k;
+      b.addEventListener('click', () => {
+        prefs.theme = k;
+        applyPrefs();
+        savePrefs();
+      });
+      themeSeg.append(b);
+    }
     const copyLink = L(el('button', 'act'), 'textContent', 'chat.copyLink');
     copyLink.addEventListener('click', async () => (await copyText(getInviteLink())) && flash(copyLink, t('chat.copied')));
     const copyCode = L(el('button', 'act'), 'textContent', 'chat.copyCode');
@@ -1012,7 +1027,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
       applyPrefs();
       savePrefs();
     });
-    menu.append(opLabel, styleSeg, clockLabel, videoLabel, eventsLabel, copyLink, copyCode, hideBtn);
+    menu.append(opLabel, styleSeg, themeSeg, clockLabel, videoLabel, eventsLabel, copyLink, copyCode, hideBtn);
     settingsBtn.addEventListener('click', () => (menu.hidden = !menu.hidden));
 
     list = el('div', 'list');
