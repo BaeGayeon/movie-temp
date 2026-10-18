@@ -685,13 +685,13 @@
         if (!wasActive && active()) alignNoticeUntil = Date.now() + 10000;
         setAdNotice(inAd); // 광고 안내는 방에 있을 때만(방에 들어오면 켜고, 나가면 끈다)
         // 서버와 연결이 끊긴 동안은 이유와 함께 알린다(그동안 재생/채팅은 전달되지 않는다)
-        if (isTop) ui.showConnection(active() && state.connection !== 'connected' ? tr(state.restarting ? 'content.serverRestarting' : 'content.reconnecting') : null);
+        if (isTop) ui.showConnection(active() && state.connection !== 'connected' ? tr(state.restarting ? 'content.serverRestarting' : 'content.reconnecting') : null, tr('content.reconnected'));
         log('state', state.roomCode ?? '방 없음', state.connection);
         if (!active()) {
           ui.hideClickPrompt();
           ui.hideCountdown();
           ui.showWaiting(null);
-          ui.showConnection(null);
+          ui.showConnection(null, null, true);
           chat?.hide();
         } else if (chat) {
           ensureSuitFont(); // 채팅/안내 글꼴(처음 한 번만 불러온다)

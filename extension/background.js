@@ -174,7 +174,6 @@ function sendToTab(msg, tabId = room.tabId) {
 function toast(text, ms) {
   sendToTab({ cmd: CMD.TOAST, text, ms });
 }
-const LONG_TOAST_MS = 5000; // 재시작/복구 같은 알림은 몇 초 안에 끝나는 일이라 놓치기 쉬워서 길게 보여 준다
 
 // 저장된 내 프로필이 서버에 등록된 것과 다르면 (입장/재접속 직후) 등록한다
 function syncProfile() {
@@ -475,7 +474,6 @@ function handleServer(m) {
       // 방이 사라져 있었거나(복구가 필요했다), 서버가 재시작한다고 알려 왔다면: 먼저 돌아온 쪽(방이 없어 복구)이든 나중에 돌아온 쪽(이미 복구된 방에 참가)이든 똑같이 안내한다
       if (roomWasLost || (lostAt !== null && (serverChanged || isRestarting()))) {
         // 방이 사라졌다가 복구됐다: 언제 끊겼는지 채팅 기록에 남기고, 나머지가 돌아오길 기다렸다 한 번에 알린다
-        toast(t('bg.roomRestored'), LONG_TOAST_MS); // 직접 복구한 쪽이든 이미 복구된 방에 참가한 쪽이든 똑같이 알린다
         pushNotice('down', { at: lostAt ?? Date.now(), secs: lostAt ? Math.max(1, Math.round((Date.now() - lostAt) / 1000)) : null }); // 얼마나 끊겼는지도 남긴다
         waitForOthersBack(m.participants);
       }
