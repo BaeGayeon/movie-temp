@@ -56,7 +56,7 @@ export const MAX_COUNTDOWN_SECONDS = 10;
 
 // 3단계: 프로필/채팅/리액션 제한
 export const MAX_NAME_LENGTH = 16;
-export const MAX_CHAT_LENGTH = 300;
+export const MAX_CHAT_LENGTH = 2000;
 // 리액션 빠른 선택 목록(기본). 감정이 비슷한 것끼리 묶어 두었다(묶음 사이는 화면에서 간격을 둔다).
 //   호감·기쁨 | 응원·축하 | 놀람·의문 | 슬픔 | 화남·무덤덤
 // 서버는 이모지 1개면 무엇이든 허용하고 빈도만 제한한다.
@@ -178,8 +178,9 @@ const validators = {
 
   [C2S.CHAT]: (m) => {
     if (typeof m.text !== 'string') return null;
-    const text = m.text.replace(/[\r\n\t]+/g, ' ').trim();
-    if (text.length < 1 || text.length > MAX_CHAT_LENGTH || /[\p{Cc}\u2028\u2029]/u.test(text)) return null;
+    // 줄바꿈은 살리되(연속 빈 줄은 한 줄로) 탭은 공백으로, 줄 끝 공백은 지운다
+    const text = m.text.replace(/\r\n?/g, '\n').replace(/\t/g, ' ').replace(/ +\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+    if (text.length < 1 || text.length > MAX_CHAT_LENGTH || /[\p{Cc}\u2028\u2029]/u.test(text.replace(/\n/g, ''))) return null;
     // videoTime: 보낸 시점의 영상 재생 위치(초). 선택 사항
     if (m.videoTime !== undefined && !isTime(m.videoTime)) return null;
     return m.videoTime === undefined ? { type: m.type, text } : { type: m.type, text, videoTime: m.videoTime };
@@ -195,7 +196,7 @@ const validators = {
       : null,
 };
 
-export const MAX_MESSAGE_BYTES = 4096; // 일반 메시지 상한
+export const MAX_MESSAGE_BYTES = 8192; // 일반 메시지 상한(채팅 2000자가 전부 이스케이프돼도 4000자 안팎)
 export const MAX_PROFILE_MESSAGE_BYTES = 40 * 1024; // profile_update 만 이미지 프사(20KB, base64 ~27KB) 때문에 크다
 
 export function parseMessage(raw) {

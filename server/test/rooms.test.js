@@ -141,7 +141,7 @@ test('없는 방 참가는 error, 잘못된 메시지는 무시하고 연결 유
   c.send({ type: 'video', action: 'explode', time: 1, sentAt: 1 });
   c.send({ type: 'join_room', roomCode: 'x', userId: 'short' });
   c.send({ type: 'unknown_type' });
-  c.send(JSON.stringify({ type: 'video', action: 'play', time: 1, sentAt: 1, pad: 'x'.repeat(5000) }));
+  c.send(JSON.stringify({ type: 'video', action: 'play', time: 1, sentAt: 1, pad: 'x'.repeat(9000) }));
   c.send({ type: 'ping' });
   await c.next('pong');
   c.close();
@@ -461,14 +461,30 @@ test('채팅: 본인 포함 전체 전달, userId 만 붙고 서버 시각, 길�
   const cb = await b.next('chat');
   assert.deepEqual(ca, cb);
   assert.equal(ca.userId, a.userId);
-  assert.equal(ca.text, '안녕하세요 <b>x</b> 둘째줄'); // 태그는 그대로(클라이언트가 textContent 로 렌더링)
+  assert.equal(ca.text, '안녕하세요 <b>x</b>\n둘째줄'); // 태그는 그대로(클라이언트가 textContent 로 렌더링), 줄바꿈은 유지
   assert.ok(Math.abs(ca.sentAt - Date.now()) < 1000);
   assert.deepEqual(Object.keys(ca).sort(), ['sentAt', 'text', 'type', 'userId']);
 
   a.send({ type: 'chat', text: '   ' });
-  a.send({ type: 'chat', text: 'x'.repeat(301) });
+  a.send({ type: 'chat', text: 'x'.repeat(2001) });
   a.send({ type: 'chat', text: 123 });
+  a.send({ type: 'chat', text: 'a\u0007b' }); // 제어문자
   await b.none('chat');
+  a.close();
+  b.close();
+});
+
+test('채팅: 긴 글(2000자)과 줄바꿈 정리', async () => {
+  const { a, code } = await makeRoom();
+  const { c: b } = await joinRoom(code);
+  const long = '가'.repeat(2000);
+  a.send({ type: 'chat', text: long });
+  assert.equal((await b.next('chat')).text, long);
+  const quoted = '"'.repeat(2000); // JSON 이스케이프로 크기가 두 배가 돼도 통과
+  a.send({ type: 'chat', text: quoted });
+  assert.equal((await b.next('chat')).text, quoted);
+  a.send({ type: 'chat', text: '첫 줄  \r\n\r\n\r\n\r\n셋째\t줄' });
+  assert.equal((await b.next('chat')).text, '첫 줄\n\n셋째 줄');
   a.close();
   b.close();
 });
@@ -599,10 +615,10 @@ test('이미지 프로필 변경은 빈도 제한(증폭 방지), 이모지 프�
   b.close();
 });
 
-test('profile_update 만 큰 메시지 허용, 다른 타입은 4KB 초과 거부', async () => {
+test('profile_update 만 큰 메시지 허용, 다른 타입은 8KB 초과 거부', async () => {
   const { a, code } = await makeRoom();
   const { c: b } = await joinRoom(code);
-  a.send(JSON.stringify({ type: 'chat', text: 'ok', pad: 'x'.repeat(5000) }));
+  a.send(JSON.stringify({ type: 'chat', text: 'ok', pad: 'x'.repeat(9000) }));
   await b.none('chat');
   a.send({ type: 'ping' });
   await a.next('pong'); // 연결은 유지
