@@ -503,7 +503,7 @@ function handleServerError(m) {
     setRoomPw(null);
     lastError = text;
     broadcast();
-  } else if (m.code === ERR.ROOM_FULL || m.code === ERR.TOO_MANY_ATTEMPTS) {
+  } else if (m.code === ERR.ROOM_FULL || m.code === ERR.TOO_MANY_ATTEMPTS || m.code === ERR.TOO_MANY_CONNECTIONS || m.code === ERR.TOO_MANY_ROOMS || m.code === ERR.SERVER_FULL) {
     setRoomPw(null);
     if (room.roomCode) {
       toast(text);
