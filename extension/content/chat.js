@@ -39,6 +39,8 @@ const CSS = `
   .seg { display: flex; gap: 2px; padding: 2px; background: var(--bg); border-radius: 10px; }
   .seg button { flex: 1; background: transparent; color: var(--ink-soft); border-radius: 8px; padding: 4px 0; font-size: 12px; }
   .seg button.on { background: var(--surface-3); color: var(--ink); }
+  .menu .sec { font-size: 11px; font-weight: 700; color: var(--ink-soft); margin-top: 4px; }
+  .menu .sec:first-child { margin-top: 0; }
   .menu .act { background: var(--surface-2); color: var(--ink); font-weight: 500; border-radius: 10px; padding: 6px 12px; text-align: left; }
   .menu .act:hover { background: var(--surface-3); }
 
@@ -66,6 +68,7 @@ const CSS = `
   .list.plain .text, .list.plain .msg.me .text, .list.compact .text, .list.compact .msg.me .text { background: none; padding: 0; border-radius: 0; }
   .sys { align-self: center; text-align: center; color: var(--ink-soft); font-size: .857em; padding: 0 8px; max-width: 100%; } /* 안내 문구: 어느 모드에서나 가운데, 말풍선 없이 글만 */
   .sys .ev-name { font-weight: 600; }
+  .sys .evi { display: inline-block; width: 1em; height: 1em; vertical-align: -.12em; margin-right: .3em; fill: currentColor; }
   .no-events .sys { display: none; }
   .empty { color: var(--ink-soft); text-align: center; padding: 18px 0; font-size: 13px; }
 
@@ -125,8 +128,6 @@ const CSS = `
     100% { background: transparent; box-shadow: 0 0 0 5px transparent; } }
   .list.plain .msg.hl, .list.compact .msg.hl { border-radius: 8px; animation: hlrow 1.4s ease-out; }
   .list.plain .msg.hl .text, .list.compact .msg.hl .text { animation: none; }
-  .form .send { color: var(--on-accent); font-weight: 600; background: var(--accent); border-radius: 14px; padding: 6px 14px; flex: none; }
-  .form .send:hover { background: var(--accent-light); }
 
   .rz { position: absolute; }
   .rz-l { left: 0; top: 0; bottom: 0; width: 6px; cursor: ew-resize; }
@@ -297,7 +298,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
   let unread = 0;
 
   // DOM 참조
-  let wrap, panel, head, list, typingLine, input, counter, replyBar, replyText, bubbleBox, badge, floats, menu, opacity, clockCb, videoCb, eventsCb, modeBtn, pop, picker, styleSeg, themeSeg;
+  let wrap, panel, head, list, typingLine, input, counter, replyBar, replyText, bubbleBox, badge, floats, menu, opacity, clockCb, videoCb, eventsCb, modeSeg, pop, picker, styleSeg, themeSeg;
 
   try {
     chrome.storage.local.get('chatPrefs').then((r) => {
@@ -449,30 +450,6 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
   const isShrink = () => prefs.mode === 'dock'; // 영상(페이지)을 줄이는 배치
   // 창 모드는 버튼 하나로 전환: 떠 있는 창 <-> 오른쪽에 붙이기
   const modeState = () => (prefs.mode === 'dock' || prefs.mode === 'side' ? prefs.mode : 'float');
-  // 모드 아이콘(모두 속이 빈 선 그림): 떠 있는 창 / 오른쪽에 띄우기(영상 위에 겹침, 점선) / 오른쪽에 붙이기(화면 분할)
-  const ICONS = {
-    float: [['rect', { x: 2, y: 3, width: 16, height: 12, rx: 2.5 }], ['rect', { x: 9, y: 8, width: 7, height: 5, rx: 1.5 }]],
-    side: [['rect', { x: 2, y: 3, width: 16, height: 12, rx: 2.5 }], ['rect', { x: 11.5, y: 3, width: 6.5, height: 12, rx: 2.5, 'stroke-dasharray': '2 1.6' }]],
-    dock: [['rect', { x: 2, y: 3, width: 16, height: 12, rx: 2.5 }], ['path', { d: 'M12 3v12' }]],
-  };
-  function modeIcon(kind) {
-    const NS = 'http://www.w3.org/2000/svg';
-    const svg = document.createElementNS(NS, 'svg');
-    for (const [k, v] of Object.entries({ width: 18, height: 18, viewBox: '0 0 20 18', fill: 'none', stroke: 'currentColor', 'stroke-width': 1.7, 'stroke-linecap': 'round' })) svg.setAttribute(k, v);
-    for (const [tag, attrs] of ICONS[kind]) {
-      const n = document.createElementNS(NS, tag);
-      for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
-      svg.append(n);
-    }
-    return svg;
-  }
-  const MODE_UI = {
-    float: ['float', 'chat.mode.float'],
-    side: ['side', 'chat.mode.side'],
-    dock: ['dock', 'chat.mode.dock'],
-  };
-  const NEXT_MODE = { float: 'side', side: 'dock', dock: 'float' };
-
   function applyPrefs() {
     const vw = window.innerWidth;
     const vh = window.innerHeight;
@@ -498,9 +475,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     panel.classList.toggle('dock', isDock());
     panel.classList.toggle('side', prefs.mode === 'side');
     panel.classList.toggle('free', !isDock()); // (리액션 애니메이션 클래스 .float 와 이름이 겹치면 안 된다)
-    const [icon, tip] = MODE_UI[modeState()];
-    modeBtn.replaceChildren(modeIcon(icon));
-    modeBtn.title = t(tip);
+    for (const b of modeSeg.children) b.classList.toggle('on', b.dataset.mode === modeState());
 
     let inset = 0;
     if (isDock()) {
@@ -765,9 +740,22 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     if (m.action === 'join') return { icon: '🎈', name, color, rest: t('chat.ev.join') };
     if (m.action === 'leave') return { icon: '👋', name, color, rest: t('chat.ev.leave') };
     const tm = fmtVideo(m.time);
-    if (m.action === 'play') return { icon: '▶', name, color, rest: t('chat.ev.play', { t: tm }) };
-    if (m.action === 'pause') return { icon: '⏸', name, color, rest: t('chat.ev.pause', { t: tm }) };
-    return { icon: '⏩', name, color, rest: t('chat.ev.seek', { t: tm }) }; // 이동(+재생)은 한 가지 문구로
+    if (m.action === 'play') return { icon: '▶', svg: 'play', name, color, rest: t('chat.ev.play', { t: tm }) };
+    if (m.action === 'pause') return { icon: '⏸', svg: 'pause', name, color, rest: t('chat.ev.pause', { t: tm }) };
+    return { icon: '⏩', svg: 'seek', name, color, rest: t('chat.ev.seek', { t: tm }) }; // 이동(+재생)은 한 가지 문구로
+  }
+  // 재생/일시정지/이동 아이콘: 이모지는 하나만 색이 입혀져 튀므로 셋 다 글자색을 따르는 단색 도형으로 그린다
+  const EV_ICON_PATHS = { play: 'M4 2.5v11l9-5.5z', pause: 'M4 2.5h3v11H4zM9 2.5h3v11H9z', seek: 'M1.5 2.5v11l6-5.5zM8.5 2.5v11l6-5.5z' };
+  function evIcon(kind) {
+    const NS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('viewBox', '0 0 16 16');
+    svg.setAttribute('class', 'evi');
+    svg.setAttribute('aria-hidden', 'true');
+    const path = document.createElementNS(NS, 'path');
+    path.setAttribute('d', EV_ICON_PATHS[kind]);
+    svg.append(path);
+    return svg;
   }
   // 토스트 등 글자만 필요한 곳
   const eventText = (m) => {
@@ -779,7 +767,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     const e = eventParts(m);
     const nm = el('span', 'ev-name', e.name);
     if (e.color) nm.style.color = pastelize(e.color);
-    row.replaceChildren(`${e.icon} `, nm, e.rest);
+    row.replaceChildren(e.svg ? evIcon(e.svg) : `${e.icon} `, nm, e.rest);
   }
 
   function renderEvent(m) {
@@ -947,12 +935,6 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     head = el('div', 'head');
     const settingsBtn = el('button', 'iconbtn', '⚙');
     L(settingsBtn, 'title', 'chat.settings');
-    modeBtn = el('button', 'iconbtn');
-    modeBtn.addEventListener('click', () => {
-      prefs.mode = NEXT_MODE[modeState()];
-      applyPrefs();
-      savePrefs();
-    });
     const collapseBtn = el('button', 'iconbtn', '—');
     L(collapseBtn, 'title', 'chat.collapse');
     collapseBtn.addEventListener('click', () => {
@@ -962,7 +944,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
       applyPrefs();
       savePrefs();
     });
-    head.append(L(el('span', 'title'), 'textContent', 'chat.title'), settingsBtn, modeBtn, collapseBtn);
+    head.append(L(el('span', 'title'), 'textContent', 'chat.title'), settingsBtn, collapseBtn);
 
     // 설정 메뉴: 투명도, 시간 표시, 링크/코드 복사
     menu = el('div', 'menu');
@@ -1023,14 +1005,20 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     copyLink.addEventListener('click', async () => (await copyText(getInviteLink())) && flash(copyLink, t('chat.copied')));
     const copyCode = L(el('button', 'act'), 'textContent', 'chat.copyCode');
     copyCode.addEventListener('click', async () => (await copyText(getState()?.roomCode ?? '')) && flash(copyCode, t('chat.copied')));
-    const hideBtn = L(el('button', 'act'), 'textContent', 'chat.hide');
-    hideBtn.addEventListener('click', () => {
-      prefs.hidden = true;
-      menu.hidden = true;
-      applyPrefs();
-      savePrefs();
-    });
-    menu.append(opLabel, styleSeg, themeSeg, clockLabel, videoLabel, eventsLabel, copyLink, copyCode, hideBtn);
+    modeSeg = el('div', 'seg');
+    for (const k of ['float', 'side', 'dock']) {
+      const b = L(el('button'), 'textContent', `chat.modeShort.${k}`);
+      b.dataset.mode = k;
+      L(b, 'title', `chat.mode.${k}`);
+      b.addEventListener('click', () => {
+        prefs.mode = k;
+        applyPrefs();
+        savePrefs();
+      });
+      modeSeg.append(b);
+    }
+    const sec = (key) => L(el('div', 'sec'), 'textContent', key);
+    menu.append(sec('chat.menu.window'), modeSeg, opLabel, sec('chat.menu.view'), styleSeg, sec('chat.menu.color'), themeSeg, sec('chat.menu.show'), clockLabel, videoLabel, eventsLabel, sec('chat.menu.invite'), copyLink, copyCode);
     settingsBtn.addEventListener('click', () => (menu.hidden = !menu.hidden));
 
     list = el('div', 'list');
@@ -1096,12 +1084,10 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
       if (e.composedPath?.()[0] === input || input.getRootNode().activeElement === input) onInputKey(e);
     };
     input.addEventListener('input', noteTyping);
-    const send = L(el('button', 'send'), 'textContent', 'chat.send');
-    send.addEventListener('click', submit);
     const form = el('div', 'form');
     const compose = el('div', 'compose');
     compose.append(input, counter);
-    form.append(compose, send);
+    form.append(compose);
 
     // 크기 조절 핸들
     const handles = [
