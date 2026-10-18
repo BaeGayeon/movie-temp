@@ -110,6 +110,9 @@ export function createUI() {
   }
 
   let banner = null;
+  let inviteTimer = null;
+  const INVITE_TTL_MS = 30_000;
+  const EXPIRED_TTL_MS = 6000;
   let clickBtn = null;
   let countEl = null;
   let countTimer = null;
@@ -126,25 +129,45 @@ export function createUI() {
       setTimeout(() => el.remove(), ms);
     },
 
-    showInvite(roomCode, onJoin) {
+    // onDismiss: 참가/닫기/자동으로 사라질 때 불린다(주소의 ?wp= 를 지우는 데 쓴다)
+    showInvite(roomCode, onJoin, onDismiss = () => {}) {
       ensure();
       this.hideInvite();
-      banner = document.createElement('div');
+      const el = (banner = document.createElement('div'));
       banner.className = 'banner';
       const label = document.createElement('span');
       label.textContent = `같이 보기 초대가 왔어요 (방 ${roomCode})`;
-      banner.append(
-        label,
-        button('참가', '', () => {
-          this.hideInvite();
-          onJoin();
-        }),
-        button('닫기', 'sub', () => this.hideInvite()),
-      );
+      const close = (join) => {
+        if (banner !== el) return;
+        this.hideInvite();
+        onDismiss();
+        if (join) onJoin();
+      };
+      banner.append(label, button('참가', '', () => close(true)), button('닫기', 'sub', () => close(false)));
       layer.append(banner);
+      inviteTimer = setTimeout(() => close(false), INVITE_TTL_MS); // 한참 누르지 않으면 사라진다
+    },
+
+    // 이미 닫힌 방의 초대: 참가 버튼 없이 안내만 잠깐 보여 준다
+    showExpiredInvite(roomCode, onDismiss = () => {}) {
+      ensure();
+      this.hideInvite();
+      const el = (banner = document.createElement('div'));
+      banner.className = 'banner';
+      const label = document.createElement('span');
+      label.textContent = `만료된 초대예요. 방 ${roomCode}은 이미 닫혔어요`;
+      const close = () => {
+        if (banner !== el) return;
+        this.hideInvite();
+        onDismiss();
+      };
+      banner.append(label, button('닫기', 'sub', close));
+      layer.append(banner);
+      inviteTimer = setTimeout(close, EXPIRED_TTL_MS);
     },
 
     hideInvite() {
+      clearTimeout(inviteTimer);
       banner?.remove();
       banner = null;
     },

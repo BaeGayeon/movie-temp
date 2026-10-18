@@ -811,10 +811,25 @@
     if (code && /^[A-Za-z0-9]{6}$/.test(code) && state?.roomCode !== code.toUpperCase()) {
       // 영상이 있는 페이지에서만 초대 안내를 띄운다(영상은 나중에 뜰 수 있으니 찾을 때까지 기다린다. iframe 안 영상은 프레임이 알려준다)
       const hasVideo = () => !!video || (frameVid && Date.now() - frameVid < 5000);
-      const wait = setInterval(() => {
+      // 배너가 사라지면(참가/닫기/자동) 주소의 ?wp= 를 지워, 새로고침해도 다시 뜨지 않게 한다
+      const clearWp = () => {
+        try {
+          const u = new URL(location.href);
+          if (!u.searchParams.has('wp')) return;
+          u.searchParams.delete('wp');
+          history.replaceState(history.state, '', u.href);
+        } catch {}
+      };
+      const wait = setInterval(async () => {
         if (!hasVideo()) return;
         clearInterval(wait);
-        if (state?.roomCode !== code.toUpperCase()) ui.showInvite(code.toUpperCase(), () => send({ cmd: CMD.JOIN_ROOM, roomCode: code, site: location.hostname }));
+        const roomCode = code.toUpperCase();
+        if (state?.roomCode === roomCode) return;
+        // 방이 아직 있는지 먼저 확인한다. 확인할 수 없으면(null) 일단 초대를 보여 주고, 참가가 실패하면 그때 안내한다
+        const reply = await chrome.runtime.sendMessage({ cmd: CMD.CHECK_ROOM, roomCode }).catch(() => null);
+        if (state?.roomCode === roomCode) return; // 확인하는 사이 이미 들어간 경우
+        if (reply?.exists === false) ui.showExpiredInvite(roomCode, clearWp);
+        else ui.showInvite(roomCode, () => send({ cmd: CMD.JOIN_ROOM, roomCode: code, site: location.hostname }), clearWp);
       }, 700);
     }
   }
