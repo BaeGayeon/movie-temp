@@ -6,10 +6,15 @@ import { initI18n, t, getLang, serverErrorText } from './shared/i18n.js';
 
 initI18n(); // 서비스 워커가 다시 떠도 저장된 언어 설정을 읽는다(그 전에는 브라우저 언어)
 
-const PING_MS = 5_000;
+const PING_MS = 20_000;
 // 연결이 조용히 죽는 경우(공유기/프록시가 연결을 닫지 않고 멈춤)는 브라우저가 한참 뒤에야 알려 준다.
 // 서버는 ping 마다 바로 응답하므로, 이 시간 동안 서버에서 아무 메시지도 없으면 끊긴 것으로 보고 직접 다시 연결한다.
-const DEAD_MS = 15_000;
+const DEAD_MS = 45_000;
+// 서버가 재시작을 알려 주는 경우(server_restarting)는 기다림 없이 바로 알아챈다. 그 밖에(네트워크 끊김, 서버 비정상 종료) 위 시간이 지나면 알아챈다.
+// 그리고 사용자가 무언가를 보냈는데(채팅/정지/재생 등) 서버에서 SILENT_MS 넘게 아무 소식이 없었다면, 기다리지 않고 바로 ping 으로 확인한다.
+// PROBE_MS 안에 응답이 없으면 끊긴 것으로 본다. 평소에는 ping 을 더 보내지 않는다(보낸 게 전달되지 않는 걸 사용자가 가장 먼저 느끼는 순간만 확인).
+const SILENT_MS = 2_000;
+const PROBE_MS = 3_000;
 const CONNECT_TIMEOUT_MS = 10_000; // 연결을 시작했는데 이 시간 안에 열리지 않으면(핸드셰이크가 멈춤) 포기하고 다시 시도한다
 const MAX_BACKOFF_MS = 30_000;
 const MAX_CLOCK_SAMPLES = 5;
@@ -85,6 +90,11 @@ let restoreTries = 0;
 let restoring = false; // 내가 방 복구(create_room)를 요청한 상태
 let serverRestarting = false; // 서버가 곧 재시작한다고 알려 옴
 let joinRetryTimer = null;
+// 복구 뒤에는 돌아오는 사람마다 "입장했어요"를 띄우지 않고, 모두 돌아오면 한 번에 알린다(나간 적이 없는데 입장했다고 뜨면 어색하다)
+const REJOIN_WAIT_MS = 20_000; // 이 시간까지 안 돌아온 사람은 따로 알린다
+let lostIds = new Set(); // 연결이 끊기던 때 방에 있던 다른 사람들
+let roomWasLost = false; // 서버에서 방이 사라져 있었다(복구가 필요했다)
+let backWait = null; // { ids: 아직 안 돌아온 사람들, timer }
 
 const ready = init();
 
@@ -136,6 +146,9 @@ function setRoomPw(pw) {
 
 function resetRoom() {
   room = freshRoom();
+  clearTimeout(backWait?.timer);
+  backWait = null;
+  roomWasLost = false;
   lostAt = null;
   restoreTries = 0;
   restoring = false;
@@ -180,6 +193,29 @@ function pushVideoNotice(fromId, action, time) {
 // 입장/퇴장도 채팅 알림으로 남긴다. 나간 사람은 곧 참가자 목록에서 빠지므로 그때의 닉네임을 같이 저장한다.
 function pushMembershipNotice(user, action) {
   pushEvent({ kind: 'event', userId: user.id, action, name: user.name, sentAt: Date.now() });
+}
+
+// 사람 이름이 없는 안내 줄(allback: 모두 돌아옴, missing: 아직 안 돌아온 사람들)
+function pushNotice(action, extra = {}) {
+  pushEvent({ kind: 'event', action, sentAt: Date.now(), ...extra });
+}
+
+// 복구된 방(또는 이미 복구돼 있는 방)에 다시 들어왔다: 연결이 끊기던 때 같이 있던 사람들 중 아직 안 보이는 사람을 기다린다
+function waitForOthersBack(current) {
+  clearTimeout(backWait?.timer);
+  backWait = null;
+  const here = new Set((current ?? []).map((p) => p.id));
+  const ids = new Set([...lostIds].filter((id) => !here.has(id)));
+  if (!lostIds.size) return;
+  if (!ids.size) return pushNotice('allback');
+  backWait = {
+    ids,
+    timer: setTimeout(() => {
+      const names = [...(backWait?.ids ?? [])].map((id) => room.known[id]?.name ?? t('common.someone'));
+      backWait = null;
+      if (names.length) pushNotice('missing', { names });
+    }, REJOIN_WAIT_MS),
+  };
 }
 
 function pushEvent(entry) {
@@ -272,7 +308,10 @@ function onSocketClosed(sock) {
   clearInterval(pingTimer);
   clearInterval(watchdogTimer);
   connection = 'disconnected';
-  if (room.roomCode && lostAt === null) lostAt = Date.now();
+  if (room.roomCode && lostAt === null) {
+    lostAt = Date.now();
+    lostIds = new Set(room.participants.map((p) => p.id).filter((id) => id !== userId));
+  }
   if (room.roomCode || pending) scheduleReconnect();
   else broadcast();
 }
@@ -304,7 +343,21 @@ function scheduleReconnect() {
 }
 
 function rawSend(msg) {
-  if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
+  if (ws?.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify(msg));
+  if (msg.type !== C2S.PING) probeIfSilent();
+}
+
+let probeTimer = null;
+function probeIfSilent() {
+  if (probeTimer || Date.now() - lastRecvAt < SILENT_MS) return;
+  const sock = ws;
+  const sentAt = Date.now();
+  sock.send(JSON.stringify({ type: C2S.PING, clientTime: sentAt }));
+  probeTimer = setTimeout(() => {
+    probeTimer = null;
+    if (ws === sock && lastRecvAt < sentAt) dropSocket(sock);
+  }, PROBE_MS);
 }
 
 // 무료 호스팅 서버는 한동안 접속이 없으면 잠들어서 깨우는 데 30초~1분쯤 걸린다.
@@ -414,6 +467,8 @@ function handleServer(m) {
       if (entering) pendingRestore = null;
       clockSamples = [];
       if (restoring) toast(t('bg.roomRestored'));
+      if (roomWasLost) waitForOthersBack(m.participants); // 방이 사라졌다가 복구됐다: 나머지가 돌아오길 기다렸다 한 번에 알린다
+      roomWasLost = false;
       lostAt = null;
       restoreTries = 0;
       restoring = false;
@@ -435,13 +490,21 @@ function handleServer(m) {
       break;
     }
 
-    case S2C.PARTICIPANT_JOINED:
+    case S2C.PARTICIPANT_JOINED: {
       if (!room.participants.some((p) => p.id === m.user.id)) room.participants.push(m.user);
       remember(m.user);
       persist();
       broadcast();
-      pushMembershipNotice(m.user, 'join'); // 채팅창에 표시(채팅이 접혀 있으면 토스트)
+      if (backWait?.ids.delete(m.user.id)) {
+        // 복구 뒤에 돌아오는 사람: 개별 입장 알림 대신, 모두 돌아오면 한 번에 알린다
+        if (!backWait.ids.size) {
+          clearTimeout(backWait.timer);
+          backWait = null;
+          pushNotice('allback');
+        }
+      } else pushMembershipNotice(m.user, 'join'); // 채팅창에 표시(채팅이 접혀 있으면 토스트)
       break;
+    }
 
     case S2C.PROFILE_UPDATED: {
       const i = room.participants.findIndex((p) => p.id === m.user.id);
@@ -546,6 +609,7 @@ function handleServer(m) {
 
 // 방이 서버에서 사라졌다: 연결이 끊긴 지 얼마 안 됐으면(서버 재시작) 복구를 시도한다. 시도했으면 true
 function tryRestoreRoom() {
+  roomWasLost = true;
   if (!room.roomCode || !room.restoreToken || lostAt === null || Date.now() - lostAt > RESTORE_WINDOW_MS) return false;
   // 비밀번호가 걸린 방인데 비밀번호를 모르면 복구하면 비밀번호가 사라지므로 하지 않는다
   if (room.hasPassword && !(roomPw && isValidNewPassword(roomPw))) return false;
