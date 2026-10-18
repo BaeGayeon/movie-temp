@@ -70,6 +70,11 @@ const CSS = `
   .sys .ev-name { font-weight: 600; }
   .sys .evi { display: inline-block; width: 1em; height: 1em; vertical-align: -.12em; margin-right: .3em; fill: currentColor; }
   .no-events .sys { display: none; }
+  .listwrap { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .newmsg { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); z-index: 2; max-width: calc(100% - 20px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    padding: 5px 14px; border-radius: 999px; background: var(--accent); color: var(--on-accent); font-size: 12px; font-weight: 600; box-shadow: 0 2px 8px rgba(0,0,0,.4); }
+  .newmsg:hover { background: var(--accent-light); }
+  .newmsg[hidden] { display: none; }
   .empty { color: var(--ink-soft); text-align: center; padding: 18px 0; font-size: 13px; }
 
   .typing { min-height: 18px; padding: 0 14px 2px; font-size: 12px; color: var(--ink-soft); }
@@ -514,11 +519,27 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
   // 맨 아래에 붙어 있는지는 "새 메시지가 붙기 전"의 위치로 기억한다. 메시지를 붙인 뒤에 재면 새 메시지 높이만으로 기준(글자/프사를 키우면 더 커짐)을
   // 넘어 위로 스크롤한 것으로 오해해 자동 스크롤이 멈춘다. 사용자가 직접 위로 올리면(scroll 이벤트) 붙어 있지 않은 것으로 본다.
   let pinned = true;
-  const updatePinned = () => (pinned = list.scrollHeight - list.scrollTop - list.clientHeight < 40);
+  const updatePinned = () => {
+    pinned = list.scrollHeight - list.scrollTop - list.clientHeight < 40;
+    if (pinned) clearNewMsgs();
+  };
   function scrollToBottom(force) {
     if (!force && !pinned) return;
     list.scrollTop = list.scrollHeight;
     pinned = true;
+    clearNewMsgs();
+  }
+  // 위로 스크롤해 지난 대화를 보는 중에 온 새 메시지 수. 맨 아래에 닿으면(스크롤/버튼/내가 보냄) 없앤다
+  let newMsgs = 0;
+  let newMsgBtn;
+  function renderNewMsgs() {
+    newMsgBtn.hidden = newMsgs === 0;
+    newMsgBtn.textContent = t('chat.newMsgs', { n: newMsgs > 99 ? '99+' : newMsgs });
+  }
+  function clearNewMsgs() {
+    if (!newMsgs) return;
+    newMsgs = 0;
+    renderNewMsgs();
   }
 
   // ---------- 이모지 선택기 (채팅 입력 / 리액션) ----------
@@ -1023,6 +1044,12 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
 
     list = el('div', 'list');
     list.addEventListener('scroll', updatePinned);
+    newMsgBtn = el('button', 'newmsg');
+    newMsgBtn.hidden = true;
+    newMsgBtn.addEventListener('click', () => scrollToBottom(true));
+    relabels.push(renderNewMsgs); // 언어가 바뀌면 문구를 다시 만든다
+    const listWrap = el('div', 'listwrap');
+    listWrap.append(list, newMsgBtn);
     typingLine = el('div', 'typing');
 
     // 입력줄: 이모지 선택기 버튼 + 입력 + 전송
@@ -1110,7 +1137,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     L(replyX, 'title', 'chat.replyCancel');
     replyX.addEventListener('click', cancelReply);
     replyBar.append(replyText, replyX);
-    panel.append(head, list, typingLine, reactionRow(), replyBar, form, ...handles);
+    panel.append(head, listWrap, typingLine, reactionRow(), replyBar, form, ...handles);
 
     // 접힌 상태: 말풍선 + 배지, 마우스를 올리면 리액션 버튼
     bubbleBox = el('div', 'dock-bubble');
@@ -1227,6 +1254,10 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
       }
       const mine = m.userId === getState()?.userId;
       renderMessage(m);
+      if (!mine && !pinned) {
+        newMsgs++; // 위를 보는 중이면 자동 스크롤하지 않고 "새 메시지" 표시만
+        renderNewMsgs();
+      }
       scrollToBottom(mine);
       // 발신자의 입력 중 표시 해제
       clearTimeout(typingTimers.get(m.userId));
