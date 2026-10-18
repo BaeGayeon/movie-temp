@@ -7,6 +7,7 @@ import { REACTION_GROUPS, REACTION_EMOJIS, MAX_CHAT_LENGTH } from '../shared/pro
 import { renderAvatar } from '../shared/avatar.js';
 import { SHADOW_THEME_CSS, pastelize } from '../shared/theme.js';
 import { createEmojiPicker, EMOJI_PICKER_CSS } from '../shared/emoji-picker.js';
+import { t, getLang, onLangChange } from '../shared/i18n.js';
 
 const CSS = `
   :host { all: initial; }
@@ -241,7 +242,7 @@ function el(tag, cls, text) {
   return e;
 }
 
-const fmtClock = (ms) => new Date(ms).toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' });
+const fmtClock = (ms) => new Date(ms).toLocaleTimeString(getLang() === 'ko' ? 'ko-KR' : 'en-US', { hour: 'numeric', minute: '2-digit' });
 function fmtVideo(sec) {
   const s = Math.floor(sec);
   const h = Math.floor(s / 3600);
@@ -338,7 +339,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     // 지금 방에 있는 사람 -> 아니면 방에 있었던 사람의 기억된 프로필(나간 뒤에도 지난 메시지의 닉네임/프사 유지)
     const st = getState();
     const p = st?.participants?.find((x) => x.id === userId) ?? st?.known?.[userId];
-    return p ?? { name: '알 수 없음', color: '#aab', avatar: { kind: 'emoji', value: '❔', bg: '#555' } };
+    return p ?? { name: t('chat.unknown'), color: '#aab', avatar: { kind: 'emoji', value: '❔', bg: '#555' } };
   };
 
   // ---------- 페이지 분할(오른쪽에 붙이기) ----------
@@ -460,9 +461,9 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     return svg;
   }
   const MODE_UI = {
-    float: ['float', '떠 있는 창 · 클릭하면 오른쪽에 띄워요(영상은 그대로)'],
-    side: ['side', '오른쪽에 띄움(영상은 그대로) · 클릭하면 영상을 줄여서 붙여요'],
-    dock: ['dock', '오른쪽에 붙임(영상 축소) · 클릭하면 떠 있는 창으로'],
+    float: ['float', 'chat.mode.float'],
+    side: ['side', 'chat.mode.side'],
+    dock: ['dock', 'chat.mode.dock'],
   };
   const NEXT_MODE = { float: 'side', side: 'dock', dock: 'float' };
 
@@ -491,7 +492,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     panel.classList.toggle('free', !isDock()); // (리액션 애니메이션 클래스 .float 와 이름이 겹치면 안 된다)
     const [icon, tip] = MODE_UI[modeState()];
     modeBtn.replaceChildren(modeIcon(icon));
-    modeBtn.title = tip;
+    modeBtn.title = t(tip);
 
     let inset = 0;
     if (isDock()) {
@@ -589,22 +590,22 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
       const grp = el('div', 'grp');
       for (const emoji of group) {
         const b = el('button', '', emoji);
-        b.title = '리액션';
+        b.title = t('chat.react');
         b.addEventListener('click', () => sendReaction(emoji));
         grp.append(b);
       }
       row.append(grp);
     }
     const brk = el('div', 'brk');
-    const rlabel = el('span', 'rlabel', '최근');
+    const rlabel = el('span', 'rlabel', t('chat.recent'));
     const recent = el('div', 'grp recent');
-    recent.title = '최근에 쓴 리액션';
+    recent.title = t('chat.recentTitle');
     const renderRecent = () => {
       brk.hidden = rlabel.hidden = recent.hidden = recentReactions.length === 0;
       recent.replaceChildren(
         ...recentReactions.map((emoji) => {
           const b = el('button', '', emoji);
-          b.title = '최근에 쓴 리액션';
+          b.title = t('chat.recentTitle');
           b.addEventListener('click', () => sendReaction(emoji));
           return b;
         }),
@@ -614,7 +615,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     renderRecent();
     row.append(brk, rlabel, recent);
     const more = el('button', '', '＋');
-    more.title = '모든 이모지 (검색도 돼요)';
+    more.title = t('chat.allEmoji');
     more.addEventListener('click', () => openPicker(more, (emoji) => sendReaction(emoji), false));
     row.append(more);
     return row;
@@ -647,7 +648,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     const text = input.value.trim();
     if (!text) return;
     // 연결이 끊긴 상태에서 보내면 글이 사라지지 않게 입력칸에 남겨 둔다
-    if (getState()?.connection !== 'connected') return onNotify('연결이 끊겨 보내지 못했어요. 다시 연결되면 보내 주세요.');
+    if (getState()?.connection !== 'connected') return onNotify(t('chat.notConnected'));
     stopTyping();
     onSend(text, replyTo ?? undefined);
     cancelReply();
@@ -660,7 +661,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
   function renderTyping() {
     const names = [...typingTimers.keys()].map((id) => profileOf(id).name);
     typingLine.textContent =
-      names.length === 0 ? '' : names.length <= 2 ? `${names.join(', ')}님이 입력 중...` : '여러 명이 입력 중...';
+      names.length === 0 ? '' : names.length <= 2 ? t('chat.typing.some', { names: names.join(', ') }) : t('chat.typing.many');
   }
 
   // ---------- 이동(떠 있는 창) / 크기 조절 ----------
@@ -730,7 +731,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     const meta = m.el.querySelector('.meta');
     meta.textContent = parts.join(' · ');
     meta.hidden = parts.length === 0;
-    m.el.title = `${new Date(m.sentAt).toLocaleTimeString()}${typeof m.videoTime === 'number' ? ` · 재생 ${fmtVideo(m.videoTime)}` : ''}`;
+    m.el.title = `${new Date(m.sentAt).toLocaleTimeString()}${typeof m.videoTime === 'number' ? ` · ${t('chat.playAt', { t: fmtVideo(m.videoTime) })}` : ''}`;
   }
 
   function applyProfile(row, userId) {
@@ -748,14 +749,14 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     const st = getState();
     const known = st?.participants?.find((x) => x.id === m.userId) ?? st?.known?.[m.userId];
     const isMembership = m.action === 'join' || m.action === 'leave';
-    const name = isMembership ? (known?.name ?? m.name ?? '알 수 없음') : profileOf(m.userId).name; // 내 동작도 "내가" 가 아니라 닉네임으로
+    const name = isMembership ? (known?.name ?? m.name ?? t('chat.unknown')) : profileOf(m.userId).name; // 내 동작도 "내가" 가 아니라 닉네임으로
     const color = isMembership ? known?.color : profileOf(m.userId).color;
-    if (m.action === 'join') return { icon: '🎈', name, color, rest: '님이 입장했어요' };
-    if (m.action === 'leave') return { icon: '👋', name, color, rest: '님이 퇴장했어요' };
-    const t = fmtVideo(m.time);
-    if (m.action === 'play') return { icon: '▶', name, color, rest: `님이 재생했어요 · ${t}` };
-    if (m.action === 'pause') return { icon: '⏸', name, color, rest: `님이 일시정지했어요 · ${t}` };
-    return { icon: '⏩', name, color, rest: `님이 ${t} 위치로 이동했어요` }; // 이동(+재생)은 한 가지 문구로
+    if (m.action === 'join') return { icon: '🎈', name, color, rest: t('chat.ev.join') };
+    if (m.action === 'leave') return { icon: '👋', name, color, rest: t('chat.ev.leave') };
+    const tm = fmtVideo(m.time);
+    if (m.action === 'play') return { icon: '▶', name, color, rest: t('chat.ev.play', { t: tm }) };
+    if (m.action === 'pause') return { icon: '⏸', name, color, rest: t('chat.ev.pause', { t: tm }) };
+    return { icon: '⏩', name, color, rest: t('chat.ev.seek', { t: tm }) }; // 이동(+재생)은 한 가지 문구로
   }
   // 토스트 등 글자만 필요한 곳
   const eventText = (m) => {
@@ -811,7 +812,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     nameLine.append(el('span', 'name-text'), el('span', 'meta'));
     if (m.id) {
       const rbtn = el('button', 'rbtn', '↩');
-      rbtn.title = '답장';
+      rbtn.title = t('chat.reply');
       rbtn.addEventListener('click', () => startReply(m.id));
       nameLine.append(rbtn);
     }
@@ -846,7 +847,8 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     const paint = () => {
       body.replaceChildren();
       fillLinked(body, open ? text : `${text.slice(0, cut).trimEnd()}…`);
-      toggle.textContent = open ? '접기' : '전체보기';
+      toggle.dataset.open = open ? '1' : '';
+      toggle.textContent = t(open ? 'chat.fold.collapse' : 'chat.fold.expand');
     };
     toggle.addEventListener('click', () => {
       open = !open;
@@ -862,7 +864,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
   function fillQuote(m) {
     const orig = findById(m.replyTo);
     m.quoteEl.classList.toggle('gone', !orig);
-    m.quoteEl.textContent = orig ? `${profileOf(orig.userId).name}: ${snippet(orig.text)}` : '볼 수 없는 메시지에 대한 답장'; // 화살표는 CSS(::before/::after)
+    m.quoteEl.textContent = orig ? `${profileOf(orig.userId).name}: ${snippet(orig.text)}` : t('chat.replyGone'); // 화살표는 CSS(::before/::after)
   }
   function jumpTo(id) {
     const orig = findById(id);
@@ -885,7 +887,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
   function startReplyLabel() {
     const orig = findById(replyTo);
     if (!orig) return cancelReply();
-    replyText.textContent = `${profileOf(orig.userId).name}에게 답장: ${snippet(orig.text)}`;
+    replyText.textContent = t('chat.replyTo', { name: profileOf(orig.userId).name, text: snippet(orig.text) });
   }
   function cancelReply() {
     replyTo = null;
@@ -901,11 +903,19 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
 
   function renderEmpty() {
     if (messages.length === 0 && !list.querySelector('.empty')) {
-      list.append(el('div', 'empty', '아직 메시지가 없어요. 인사를 건네 보세요!'));
+      list.append(el('div', 'empty', t('chat.empty')));
     }
   }
 
   // ---------- DOM 구성 ----------
+  // 고정 문구: 언어가 바뀌면 다시 채운다(L 로 만든 것만)
+  const relabels = [];
+  const L = (node, prop, key) => {
+    const f = () => (node[prop] = t(key));
+    f();
+    relabels.push(f);
+    return node;
+  };
   function flash(btn, text) {
     const old = btn.textContent;
     btn.textContent = text;
@@ -922,7 +932,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     panel = el('div', 'panel');
     head = el('div', 'head');
     const settingsBtn = el('button', 'iconbtn', '⚙');
-    settingsBtn.title = '설정';
+    L(settingsBtn, 'title', 'chat.settings');
     modeBtn = el('button', 'iconbtn');
     modeBtn.addEventListener('click', () => {
       prefs.mode = NEXT_MODE[modeState()];
@@ -930,7 +940,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
       savePrefs();
     });
     const collapseBtn = el('button', 'iconbtn', '—');
-    collapseBtn.title = '접기';
+    L(collapseBtn, 'title', 'chat.collapse');
     collapseBtn.addEventListener('click', () => {
       prefs.collapsed = true;
       closePicker();
@@ -938,7 +948,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
       applyPrefs();
       savePrefs();
     });
-    head.append(el('span', 'title', '💬 채팅'), settingsBtn, modeBtn, collapseBtn);
+    head.append(L(el('span', 'title'), 'textContent', 'chat.title'), settingsBtn, modeBtn, collapseBtn);
 
     // 설정 메뉴: 투명도, 시간 표시, 링크/코드 복사
     menu = el('div', 'menu');
@@ -954,8 +964,8 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     });
     opacity.addEventListener('change', savePrefs);
     const opLabel = el('label');
-    opLabel.append(el('span', '', '투명도'), opacity);
-    const checkbox = (text, key) => {
+    opLabel.append(L(el('span'), 'textContent', 'chat.opacity'), opacity);
+    const checkbox = (textKey, key) => {
       const label = el('label');
       const cb = el('input');
       cb.type = 'checkbox';
@@ -965,16 +975,16 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
         list.classList.toggle('no-events', !prefs.showEvents);
         savePrefs();
       });
-      label.append(cb, el('span', '', text));
+      label.append(cb, L(el('span'), 'textContent', textKey));
       return [label, cb];
     };
     let clockLabel, videoLabel, eventsLabel;
-    [clockLabel, clockCb] = checkbox('작성 시각 표시', 'showClock');
-    [videoLabel, videoCb] = checkbox('재생 시각 표시 (▶ 영상 위치)', 'showVideoTime');
-    [eventsLabel, eventsCb] = checkbox('재생·이동·입퇴장 알림 표시', 'showEvents');
+    [clockLabel, clockCb] = checkbox('chat.showClock', 'showClock');
+    [videoLabel, videoCb] = checkbox('chat.showVideoTime', 'showVideoTime');
+    [eventsLabel, eventsCb] = checkbox('chat.showEvents', 'showEvents');
     styleSeg = el('div', 'seg');
-    for (const [k, t] of [['bubble', '말풍선'], ['plain', '줄글'], ['compact', '간단']]) {
-      const b = el('button', '', t);
+    for (const k of ['bubble', 'plain', 'compact']) {
+      const b = L(el('button'), 'textContent', `chat.style.${k}`);
       b.dataset.style = k;
       b.addEventListener('click', () => {
         prefs.style = k;
@@ -984,11 +994,11 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
       });
       styleSeg.append(b);
     }
-    const copyLink = el('button', 'act', '🔗 초대 링크 복사');
-    copyLink.addEventListener('click', async () => (await copyText(getInviteLink())) && flash(copyLink, '✔ 복사됨!'));
-    const copyCode = el('button', 'act', '📋 방 코드 복사');
-    copyCode.addEventListener('click', async () => (await copyText(getState()?.roomCode ?? '')) && flash(copyCode, '✔ 복사됨!'));
-    const hideBtn = el('button', 'act', '🙈 채팅 숨기기');
+    const copyLink = L(el('button', 'act'), 'textContent', 'chat.copyLink');
+    copyLink.addEventListener('click', async () => (await copyText(getInviteLink())) && flash(copyLink, t('chat.copied')));
+    const copyCode = L(el('button', 'act'), 'textContent', 'chat.copyCode');
+    copyCode.addEventListener('click', async () => (await copyText(getState()?.roomCode ?? '')) && flash(copyCode, t('chat.copied')));
+    const hideBtn = L(el('button', 'act'), 'textContent', 'chat.hide');
     hideBtn.addEventListener('click', () => {
       prefs.hidden = true;
       menu.hidden = true;
@@ -1005,8 +1015,8 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     // 입력줄: 이모지 선택기 버튼 + 입력 + 전송
     input = el('textarea');
     input.rows = 2;
-    input.placeholder = '메시지 입력';
-    input.title = 'Enter 전송 · Shift+Enter 줄바꿈';
+    L(input, 'placeholder', 'chat.placeholder');
+    L(input, 'title', 'chat.inputTip');
     input.maxLength = MAX_CHAT_LENGTH;
     input.spellcheck = false;
     counter = el('span', 'counter');
@@ -1017,7 +1027,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
       if (n < MAX_CHAT_LENGTH) pasteCut = false;
       counter.hidden = n < MAX_CHAT_LENGTH * 0.8;
       counter.classList.toggle('warn', n >= MAX_CHAT_LENGTH);
-      counter.textContent = pasteCut ? `${MAX_CHAT_LENGTH}자까지만 입력돼요` : `${n}/${MAX_CHAT_LENGTH}`;
+      counter.textContent = pasteCut ? t('chat.limit', { max: MAX_CHAT_LENGTH }) : `${n}/${MAX_CHAT_LENGTH}`;
     };
     updateInputCounter = updateCounter;
     input.addEventListener('input', updateCounter);
@@ -1061,7 +1071,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
       if (e.composedPath?.()[0] === input || input.getRootNode().activeElement === input) onInputKey(e);
     };
     input.addEventListener('input', noteTyping);
-    const send = el('button', 'send', '전송');
+    const send = L(el('button', 'send'), 'textContent', 'chat.send');
     send.addEventListener('click', submit);
     const form = el('div', 'form');
     const compose = el('div', 'compose');
@@ -1086,7 +1096,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     replyBar.hidden = true;
     replyText = el('span', 'rtext');
     const replyX = el('button', null, '✕');
-    replyX.title = '답장 취소 (Esc)';
+    L(replyX, 'title', 'chat.replyCancel');
     replyX.addEventListener('click', cancelReply);
     replyBar.append(replyText, replyX);
     panel.append(head, list, typingLine, reactionRow(), replyBar, form, ...handles);
@@ -1094,7 +1104,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     // 접힌 상태: 말풍선 + 배지, 마우스를 올리면 리액션 버튼
     bubbleBox = el('div', 'dock-bubble');
     const bubble = el('button', 'bubble', '💬');
-    bubble.title = '채팅 열기';
+    L(bubble, 'title', 'chat.open');
     badge = el('span', 'badge');
     bubble.append(badge);
     bubble.addEventListener('click', () => {
@@ -1132,6 +1142,32 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     applyPrefs();
     renderEmpty();
   }
+
+
+  // 언어가 바뀌면 이미 그려진 문구를 다시 채운다
+  onLangChange(() => {
+    if (!built) return;
+    for (const f of relabels) f();
+    applyPrefs();
+    for (const m of messages) {
+      if (m.kind === 'event') fillEvent(m.el, m);
+      else {
+        renderMeta(m);
+        if (m.quoteEl) fillQuote(m);
+      }
+    }
+    for (const b of list.querySelectorAll('.fold')) b.textContent = t(b.dataset.open ? 'chat.fold.collapse' : 'chat.fold.expand');
+    const empty = list.querySelector('.empty');
+    if (empty) empty.textContent = t('chat.empty');
+    renderTyping();
+    if (replyTo) startReplyLabel();
+    updateInputCounter();
+    reactionRows.forEach((f) => f());
+    for (const b of wrap.querySelectorAll('.reacts .grp:not(.recent) button')) b.title = t('chat.react');
+    for (const b of wrap.querySelectorAll('.reacts .rlabel')) b.textContent = t('chat.recent');
+    for (const b of wrap.querySelectorAll('.reacts .grp.recent')) b.title = t('chat.recentTitle');
+    for (const b of wrap.querySelectorAll('.reacts > button')) b.title = t('chat.allEmoji');
+  });
 
   return {
     show() {

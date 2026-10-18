@@ -1,4 +1,5 @@
 import { SHADOW_THEME_CSS } from '../shared/theme.js';
+import { t } from '../shared/i18n.js';
 
 // 토스트, 초대 배너, "클릭하세요" 안내. 모든 텍스트는 textContent 로만 넣는다.
 
@@ -171,13 +172,13 @@ export function createUI() {
       const row = document.createElement('div');
       row.className = 'brow';
       const label = document.createElement('span');
-      label.textContent = `같이 보기 초대가 왔어요 (방 ${roomCode})`;
+      label.textContent = t('ui.invite', { code: roomCode });
       const pwBox = document.createElement('span');
       pwBox.className = 'pw';
       pwBox.hidden = !passwordRequired;
       const input = document.createElement('input');
       input.type = 'password';
-      input.placeholder = '비밀번호';
+      input.placeholder = t('ui.password');
       input.autocomplete = 'off';
       input.addEventListener('input', () => {
         const clean = input.value.replace(/[^A-Za-z0-9]/g, '').slice(0, 32); // 비밀번호는 영문·숫자만
@@ -186,11 +187,11 @@ export function createUI() {
       const eye = button('', 'eye', () => {
         input.type = input.type === 'password' ? 'text' : 'password';
         eye.replaceChildren(eyeIcon(input.type === 'text'));
-        eye.setAttribute('aria-label', input.type === 'text' ? '비밀번호 숨기기' : '비밀번호 보기');
+        eye.setAttribute('aria-label', t(input.type === 'text' ? 'ui.pwHide' : 'ui.pwShow'));
         input.focus();
       });
       eye.type = 'button';
-      eye.setAttribute('aria-label', '비밀번호 보기');
+      eye.setAttribute('aria-label', t('ui.pwShow'));
       eye.replaceChildren(eyeIcon(false));
       pwBox.append(input, eye);
       const msg = document.createElement('div');
@@ -200,20 +201,20 @@ export function createUI() {
         this.hideInvite();
         onDismiss();
       };
-      const joinBtn = button('참가', '', () => {
+      const joinBtn = button(t('ui.join'), '', () => {
         const pw = input.value;
         if (!pwBox.hidden && !pw) {
-          msg.textContent = '비밀번호를 입력해 주세요.';
+          msg.textContent = t('ui.pwEnter');
           input.focus();
           return;
         }
         msg.textContent = '';
         joinBtn.disabled = true;
-        joinBtn.textContent = '참가 중…';
+        joinBtn.textContent = t('ui.joining');
         arm();
         onJoin(pw || undefined);
       });
-      const closeBtn = button('닫기', 'sub', close);
+      const closeBtn = button(t('ui.close'), 'sub', close);
       const arm = () => {
         clearTimeout(inviteTimer);
         inviteTimer = setTimeout(close, INVITE_TTL_MS); // 한참 누르지 않으면 사라진다
@@ -229,7 +230,7 @@ export function createUI() {
           pwBox.hidden = false;
           input.value = '';
           joinBtn.disabled = false;
-          joinBtn.textContent = '참가';
+          joinBtn.textContent = t('ui.join');
           msg.textContent = text;
           input.focus();
           arm();
@@ -278,13 +279,13 @@ export function createUI() {
       const row = document.createElement('div');
       row.className = 'brow';
       const label = document.createElement('span');
-      label.textContent = `만료된 초대예요. 방 ${roomCode}은 이미 닫혔어요`;
+      label.textContent = t('ui.expired', { code: roomCode });
       const close = () => {
         if (banner !== el) return;
         this.hideInvite();
         onDismiss();
       };
-      row.append(label, button('닫기', 'sub', close));
+      row.append(label, button(t('ui.close'), 'sub', close));
       banner.append(row);
       layer.append(banner);
       inviteTimer = setTimeout(close, EXPIRED_TTL_MS);
@@ -303,7 +304,7 @@ export function createUI() {
       ensure();
       this.hideClickPrompt();
       const r = video.getBoundingClientRect();
-      clickBtn = button('▶ 재생하려면 클릭하세요', 'click', () => {
+      clickBtn = button(t('ui.clickToPlay'), 'click', () => {
         this.hideClickPrompt();
         onClick();
       });
@@ -330,7 +331,7 @@ export function createUI() {
         if (remain > 0) {
           el.textContent = String(Math.ceil(remain / 1000));
         } else if (remain > -700) {
-          el.textContent = '재생!';
+          el.textContent = t('ui.go');
           el.className = 'count go';
         } else {
           this.hideCountdown();

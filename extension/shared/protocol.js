@@ -47,11 +47,12 @@ export const S2C = {
 
 export const ERR = {
   ROOM_NOT_FOUND: 'room_not_found',
-  NOT_ALLOWED: 'not_allowed',
+  ROOM_IDLE_CLOSED: 'room_idle_closed', // 오래 활동이 없어 서버가 방을 닫음(접속 중이던 사람에게)
+  NOT_ALLOWED: 'not_allowed', // 카운트다운 요청이면 reason: 'countdown' 을 함께 보낸다
   REPLACED: 'replaced',
   PASSWORD_REQUIRED: 'password_required', // 비밀번호가 있는 방에 비밀번호 없이 들어오려 함
   WRONG_PASSWORD: 'wrong_password',
-  ROOM_FULL: 'room_full',
+  ROOM_FULL: 'room_full', // 오류 메시지에 max(방의 최대 인원)를 함께 보낸다
   TOO_MANY_ATTEMPTS: 'too_many_attempts', // 참가 실패가 잦아 잠시 차단
 };
 

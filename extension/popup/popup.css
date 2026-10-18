@@ -203,3 +203,7 @@ summary > .ic { margin-right: .45em; }
 .iconbtn:hover { color: var(--ink); }
 #pwButtons, #pwForm { margin-bottom: 10px; }
 #pwForm .pwwrap { flex: 1; }
+
+/* ---- 언어 선택 ---- */
+.langrow { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin: 10px 2px 2px; font-size: 12px; color: var(--ink-soft); }
+.langrow select { font-size: 12px; padding: 4px 26px 4px 10px; }

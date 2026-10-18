@@ -4,14 +4,17 @@
   window.__bmtLoaded = true;
 
   const load = (path) => import(chrome.runtime.getURL(path));
-  const [{ CMD }, { ensureSuitFont }, { createDefaultAdapter }, { createNetflixAdapter }, { createUI }, { createChat }] = await Promise.all([
+  const [{ CMD }, { initI18n, t: tr }, { ensureSuitFont }, { createDefaultAdapter }, { createNetflixAdapter }, { createUI }, { createChat }] = await Promise.all([
     load('shared/cmd.js'),
+    load('shared/i18n.js'),
     load('shared/font.js'),
     load('content/adapters/default.js'),
     load('content/adapters/netflix.js'),
     load('content/ui.js'),
     load('content/chat.js'),
   ]);
+
+  await initI18n(); // 저장된 언어 설정(auto/ko/en)을 읽는다. chat.js/ui.js 는 같은 모듈 인스턴스를 쓴다.
 
   const SEEK_THRESHOLD = 0.5; // 초. 이보다 차이가 작으면 시크하지 않는다
   const TOKEN_TTL = 1500; // 원격 동작이 일으킨 이벤트를 무시하는 유효 시간(ms)
@@ -99,7 +102,7 @@
   } catch {}
 
   function setAdNotice(on) {
-    if (isTop) ui.showAd(on && active() ? '광고 시청 중이에요. 끝나면 다 같이 이어서 재생해요.' : null);
+    if (isTop) ui.showAd(on && active() ? tr('content.adSelf') : null);
   }
 
   // 광고: 내 영상은 방과 따로 두고, 방에는 "광고 중이니 기다려 달라"고 알린다(다른 사람 영상도 멈추고, 광고가 끝나면 함께 다시 재생)
@@ -281,7 +284,7 @@
     if (!video || Math.abs(pos() - t) < SEEK_THRESHOLD) return;
     expect('seeked');
     note('seekTo', +t.toFixed(1), 'from pos', +pos().toFixed(1), 'offset', +timeOffset.toFixed(1));
-    if (Date.now() < alignNoticeUntil && Math.abs(pos() - t) >= 3) ui.toast(`방 위치(${clock(t)})로 맞췄어요`);
+    if (Date.now() < alignNoticeUntil && Math.abs(pos() - t) >= 3) ui.toast(tr('content.aligned', { t: clock(t) }));
     alignNoticeUntil = 0;
     if (adapter.contentSeek) pendingSeek = { target: t, at: Date.now() };
     if (adapter.seekPauses) ourSeekUntil = Date.now() + SEEK_TOKEN_TTL;
@@ -477,7 +480,7 @@
     if (!canControl()) {
       // 방장 전용 모드: 보내지 않고 방 상태로 되돌린다
       if (Date.now() - lastBlockedToast > 2000 && isTop) {
-        ui.toast('방장만 조작할 수 있어요');
+        ui.toast(tr('content.hostOnly'));
         lastBlockedToast = Date.now();
       }
       applyRoomVideo();
@@ -724,15 +727,15 @@
         note('recv buffer', { video: state.video, waiting: state.waitingIds?.length, ads: state.adIds?.length });
         applyRoomVideo(); // 대기 중이면 멈추고, 모두 준비되면 예약된 시각에 함께 재개
         if (isTop) {
-          const nameOf = (id) => state.participants.find((p) => p.id === id)?.name ?? '누군가'; // 내 이름도 "나" 대신 닉네임으로
+          const nameOf = (id) => state.participants.find((p) => p.id === id)?.name ?? tr('content.someone'); // 내 이름도 "나" 대신 닉네임으로
           const ads = (state.adIds ?? []).filter((id) => id !== state.userId).map(nameOf);
           const bufs = state.waitingIds.filter((id) => !(state.adIds ?? []).includes(id)).map(nameOf);
           const names = [...ads, ...bufs];
           ui.showWaiting(
-            ads.length ? `${ads.join(', ')} 님이 광고 시청 중이에요. 끝나면 같이 재생해요.` : bufs.length ? `${bufs.join(', ')} 님이 버퍼링 중이에요. 기다리는 중…` : null,
+            ads.length ? tr('content.adOthers', { names: ads.join(', ') }) : bufs.length ? tr('content.bufOthers', { names: bufs.join(', ') }) : null,
           );
           if (!names.length && state.video.playing && state.video.updatedAt > serverNow()) {
-            ui.toast('모두 준비됐어요. 곧 함께 재생해요');
+            ui.toast(tr('content.allReady'));
           }
         }
         break;
@@ -800,7 +803,7 @@
           if (!joining || st.roomCode) return;
           if (st.needPassword?.roomCode === roomCode) {
             joining = false;
-            ui.inviteNeedsPassword(st.needPassword.wrong ? '비밀번호가 맞지 않아요.' : '비밀번호가 필요한 방이에요.');
+            ui.inviteNeedsPassword(tr(st.needPassword.wrong ? 'content.pwWrong' : 'content.pwNeeded'));
           } else if (st.error) {
             joining = false;
             ui.inviteFailed(st.error);

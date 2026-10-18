@@ -2,7 +2,8 @@
   "manifest_version": 3,
   "name": "bae-movie-temp (배무템) [개발용]",
   "version": "0.1.0",
-  "description": "영상 같이보기: 각자 계정으로 재생하고 재생 상태만 동기화합니다.",
+  "default_locale": "ko",
+  "description": "__MSG_appDescription__",
   "permissions": [
     "storage",
     "alarms",

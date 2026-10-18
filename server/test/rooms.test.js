@@ -88,6 +88,15 @@ test('GET /privacy: 개인정보처리방침 페이지', async () => {
   assert.match(await res.text(), /개인정보처리방침/);
 });
 
+test('GET /privacy: ?lang=en 또는 Accept-Language 로 영어 페이지', async () => {
+  const q = await fetch(`http://127.0.0.1:${port}/privacy?lang=en`);
+  assert.match(await q.text(), /Privacy Policy/);
+  const h = await fetch(`http://127.0.0.1:${port}/privacy`, { headers: { 'Accept-Language': 'en-US,en;q=0.9' } });
+  assert.match(await h.text(), /Privacy Policy/);
+  const ko = await fetch(`http://127.0.0.1:${port}/privacy?lang=ko`, { headers: { 'Accept-Language': 'en-US' } });
+  assert.match(await ko.text(), /개인정보처리방침/);
+});
+
 test('GET /health', async () => {
   const res = await fetch(`http://127.0.0.1:${port}/health`);
   assert.equal(res.status, 200);
@@ -782,7 +791,7 @@ test('반응 없는 방은 idleTtlMs 뒤에 닫히고 참가자에게 알림', (
   rm.closeIdleRooms();
   assert.equal(rm.rooms.size, 0, '기준 시간이 지나면 닫힘');
   const err = a.sent.find((m) => m.type === 'error');
-  assert.equal(err?.code, 'room_not_found');
+  assert.equal(err?.code, 'room_idle_closed');
   assert.match(err.message, /활동/);
   assert.equal(a.roomCode, null);
   rm.shutdown();
@@ -858,7 +867,9 @@ test('인원 제한: 가득 차면 거부, 재접속은 자리를 차지하지 �
   const { c: b } = await joinRoom(code);
   const c = await new Client().open();
   c.send({ type: 'join_room', roomCode: code, userId: c.userId });
-  assert.equal((await c.next('error')).code, 'room_full');
+  const full = await c.next('error');
+  assert.equal(full.code, 'room_full');
+  assert.equal(full.max, 2, '번역 문구에 쓸 최대 인원을 함께 보낸다');
   const again = await new Client(b.userId).open();
   again.send({ type: 'join_room', roomCode: code, userId: b.userId });
   await again.next('room_state');
