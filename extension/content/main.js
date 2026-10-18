@@ -4,11 +4,12 @@
   window.__bmtLoaded = true;
 
   const load = (path) => import(chrome.runtime.getURL(path));
-  const [{ CMD }, { ensureSuitFont }, { createDefaultAdapter }, { createNetflixAdapter }, { createUI }, { createChat }] = await Promise.all([
+  const [{ CMD }, { ensureSuitFont }, { createDefaultAdapter }, { createNetflixAdapter }, { createWavveAdapter }, { createUI }, { createChat }] = await Promise.all([
     load('shared/cmd.js'),
     load('shared/font.js'),
     load('content/adapters/default.js'),
     load('content/adapters/netflix.js'),
+    load('content/adapters/wavve.js'),
     load('content/ui.js'),
     load('content/chat.js'),
   ]);
@@ -48,10 +49,14 @@
     console.log('[bmt]', isTop ? 'top' : 'iframe', ...a); // 진단용 로그
   };
   // 호스트별 어댑터: 넷플릭스는 <video> 를 직접 조작하면 오류(M7375)가 나서 전용 어댑터를 쓴다
+  // 웨이브는 재생 조작은 기본 그대로, 광고 판단만 보강한 어댑터를 쓴다
+  const testAdapter = document.documentElement.getAttribute('data-bmt-adapter'); // 테스트 페이지용
   const adapter =
-    /(^|\.)netflix\.com$/.test(location.hostname) || document.documentElement.getAttribute('data-bmt-adapter') === 'netflix' // 두 번째는 테스트 페이지용
+    /(^|\.)netflix\.com$/.test(location.hostname) || testAdapter === 'netflix'
       ? createNetflixAdapter()
-      : createDefaultAdapter();
+      : /(^|\.)wavve\.com$/.test(location.hostname) || testAdapter === 'wavve'
+        ? createWavveAdapter()
+        : createDefaultAdapter();
   const ui = createUI();
   // 채팅/리액션 UI 는 최상위 프레임에만 둔다
   const chat = isTop
@@ -103,12 +108,12 @@
 
   // 광고: 내 영상은 방과 따로 두고, 방에는 "광고 중이니 기다려 달라"고 알린다(다른 사람 영상도 멈추고, 광고가 끝나면 함께 다시 재생)
   let adReported = false;
-  function evalAd() {
+  function evalAd(fresh = false) {
     // 페이지를 새로고침하거나 영상이 바뀌어 보고가 끊겼는데 서버는 아직 나를 기다리고 있다면 풀어 준다
     if (video && active() && !inAd && !adReported && !bufferingReported && state.waitingIds?.includes(state.userId)) {
       send({ cmd: CMD.BUFFERING, isBuffering: false });
     }
-    const next = adDetect && !!video && !!adapter.isAd?.(video);
+    const next = adDetect && !!video && !!adapter.isAd?.(video, fresh);
     if (next === inAd) return;
     inAd = next;
     if (!inAd) adGraceUntil = Date.now() + AD_GRACE_MS;
@@ -447,6 +452,7 @@
   }, 500);
   const suspiciousJump = () => !!video && video.currentTime < 5 && lastRaw - video.currentTime > 30;
   let holdUntil = 0;
+  let pauseHolding = false; // adapter.holdPauseMs 로 정지 알림을 보류 중
   const HOLD_MS = 3000;
 
   function onLocal(action, silent = false, held = false) {
@@ -468,6 +474,25 @@
         onLocal('seek', silent, true);
         onLocal(video.paused ? 'pause' : 'play', silent, true);
       }, 300);
+      return;
+    }
+    // 광고가 시작될 때 플레이어가 메인 영상을 먼저 멈추는 사이트(웨이브 등): 정지 알림을 잠깐 보류하고, 그동안 광고 표시가 뜨면
+    // 광고 시작이었던 것으로 보고 폐기한다(그대로 보내면 광고를 보는 사람마다 "일시정지했어요"가 방에 뜬다).
+    if (!held && action === 'pause' && adapter.holdPauseMs && adDetect && !pauseHolding) {
+      pauseHolding = true;
+      const until = Date.now() + adapter.holdPauseMs;
+      const poll = setInterval(() => {
+        evalAd(true);
+        if (inAd || !video) {
+          clearInterval(poll);
+          pauseHolding = false;
+          return log('광고 시작으로 보여 정지 알림 폐기');
+        }
+        if (Date.now() < until) return;
+        clearInterval(poll);
+        pauseHolding = false;
+        if (video.paused) onLocal('pause', silent, true); // 광고가 아니었고 여전히 정지 상태면 그때 보낸다
+      }, 150);
       return;
     }
     // 소스가 바뀌는 중(메타데이터 전, duration NaN): 광고로 바뀌는 순간의 play(0초) 같은 이벤트가 방 전체를 되감지 않도록 무시
