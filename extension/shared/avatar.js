@@ -1,11 +1,13 @@
 // 프사 표시/생성 공용 모듈 (content, popup 에서 사용)
 import { MAX_AVATAR_IMAGE_BYTES } from './protocol.js';
+import { t } from './i18n.js';
 
 const AVATAR_PX = 64;
+const SOURCE_PX = 512;
 const decoded = new Map(); // dataURL -> Promise<ImageBitmap|null>
 
 // 데이터 URL -> ImageBitmap. 페이지의 CSP(img-src)에 걸리지 않도록 <img>/fetch 를 쓰지 않고 직접 디코딩한다.
-function decode(dataUrl) {
+export function decode(dataUrl) {
   if (!decoded.has(dataUrl)) {
     const m = /^data:(image\/(?:webp|jpeg));base64,([A-Za-z0-9+/]+={0,2})$/.exec(dataUrl);
     let p = Promise.resolve(null);
@@ -54,7 +56,18 @@ export function bitmapToAvatarDataUrl(bmp, crop) {
       if (url.startsWith(`data:${type};`) && dataUrlBytes(url) <= MAX_AVATAR_IMAGE_BYTES) return url;
     }
   }
-  throw new Error('이미지를 20KB 이하로 줄일 수 없어요.');
+  throw Object.assign(new Error(t('avatar.tooBig')), { code: 'AVATAR_TOO_BIG' });
+}
+
+// 위치 다시 맞추기용 원본: 긴 변 512px 이하로 줄인 WebP(안 되면 JPEG). 내 기기(chrome.storage.local)에만 보관하고 서버로는 보내지 않는다.
+export function bitmapToSourceDataUrl(bmp) {
+  const k = Math.min(1, SOURCE_PX / Math.max(bmp.width, bmp.height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(bmp.width * k));
+  canvas.height = Math.max(1, Math.round(bmp.height * k));
+  canvas.getContext('2d').drawImage(bmp, 0, 0, canvas.width, canvas.height);
+  const webp = canvas.toDataURL('image/webp', 0.85);
+  return webp.startsWith('data:image/webp;') ? webp : canvas.toDataURL('image/jpeg', 0.85);
 }
 
 export async function fileToAvatarDataUrl(file) {

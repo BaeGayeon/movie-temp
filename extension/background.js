@@ -2,6 +2,9 @@
 import { SERVER_URL } from './config.js';
 import { C2S, S2C, ERR, MODES, ROOM_CODE_RE, isValidNewPassword, isValidMaxMembers, MAX_PASSWORD_LENGTH } from './shared/protocol.js';
 import { CMD } from './shared/cmd.js';
+import { initI18n, t, getLang, serverErrorText } from './shared/i18n.js';
+
+initI18n(); // 서비스 워커가 다시 떠도 저장된 언어 설정을 읽는다(그 전에는 브라우저 언어)
 
 const PING_MS = 20_000;
 const MAX_BACKOFF_MS = 30_000;
@@ -51,7 +54,6 @@ let profile = null; // { name, avatar, color } — chrome.storage.local 에 저�
 let room = freshRoom();
 let connection = 'disconnected'; // disconnected | connecting | connected
 let lastError = null;
-const WAKING_MSG = '서버를 깨우는 중이에요 (최대 1분)…';
 let roomPw = null; // 방 비밀번호(재접속용). 디스크에 저장하지 않는다(메모리 + 브라우저를 닫으면 사라지는 storage.session)
 let needPassword = null; // { roomCode, wrong } — 참가하려던 방이 비밀번호를 요구함. 팝업이 입력칸을 보여 준다
 let joiningCode = null; // 참가 요청을 보낸 방 코드
@@ -167,7 +169,7 @@ function remember(user) {
 }
 
 function nameOf(id) {
-  return room.participants.find((p) => p.id === id)?.name ?? '누군가';
+  return room.participants.find((p) => p.id === id)?.name ?? t('common.someone');
 }
 
 // 서버가 하는 것과 같은 방식으로 영상 상태를 미러링한다 (늦게 로드되는 content 가 맞출 수 있도록)
@@ -205,7 +207,7 @@ function connect() {
       rawSend(pending);
       pending = null;
     } else if (room.roomCode) {
-      rawSend({ type: C2S.JOIN_ROOM, roomCode: room.roomCode, userId, ...(roomPw ? { password: roomPw } : {}) }); // 이전 방으로 복귀
+      rawSend({ type: C2S.JOIN_ROOM, roomCode: room.roomCode, userId, lang: getLang(), ...(roomPw ? { password: roomPw } : {}) }); // 이전 방으로 복귀
     }
   };
   sock.onmessage = (e) => {
@@ -233,7 +235,7 @@ function scheduleReconnect() {
   if (!room.roomCode && pending && retry >= 2) {
     // 방 만들기/참가 요청이 서버에 닿지 않음
     pending = null;
-    lastError = '서버에 연결할 수 없어요.';
+    lastError = t('bg.cantConnect');
     broadcast();
     return;
   }
@@ -269,7 +271,7 @@ async function wakeServer() {
   const showTimer = setTimeout(() => {
     if (run !== wakeRun) return;
     waking = true;
-    toast(WAKING_MSG);
+    toast(t('bg.waking'));
     broadcast();
   }, WAKE_SHOW_AFTER_MS);
   let ok = false;
@@ -303,7 +305,7 @@ function sendOrQueue(msg) {
       if (ok) connect();
       else {
         pending = null;
-        lastError = '서버에 연결하지 못했어요. 잠시 뒤 다시 시도해 주세요.';
+        lastError = t('bg.connectFailed');
         broadcast();
       }
     });
@@ -406,7 +408,7 @@ function handleServer(m) {
       room.hostId = m.hostId;
       persist();
       broadcast();
-      toast(`${nameOf(m.hostId)}님이 새 방장이에요`); // 나일 때도 닉네임으로
+      toast(t('bg.newHost', { name: nameOf(m.hostId) })); // 나일 때도 닉네임으로
       break;
 
     case S2C.ROOM_OPTIONS:
@@ -417,14 +419,14 @@ function handleServer(m) {
       if (!room.hasPassword) setRoomPw(null);
       persist();
       broadcast();
-      if (m.fromId !== userId) toast('방장이 방 옵션을 바꿨어요');
+      if (m.fromId !== userId) toast(t('bg.roomOptionsChanged'));
       break;
 
     case S2C.MODE_CHANGED:
       room.mode = m.mode;
       persist();
       broadcast();
-      toast(m.mode === 'host_only' ? '방장만 조작할 수 있어요' : '모두 조작할 수 있어요');
+      toast(t(m.mode === 'host_only' ? 'bg.modeHostOnly' : 'bg.modeEveryone'));
       break;
 
     case S2C.VIDEO:
@@ -469,45 +471,46 @@ function handleServer(m) {
 }
 
 function handleServerError(m) {
-  if (m.code === ERR.ROOM_NOT_FOUND) {
+  const text = serverErrorText(m) || t('bg.roomGone'); // 서버가 보낸 코드를 현재 언어로
+  if (m.code === ERR.ROOM_NOT_FOUND || m.code === ERR.ROOM_IDLE_CLOSED) {
     if (room.roomCode) {
-      toast(m.message || '방이 사라졌어요');
+      toast(text);
       const tabId = room.tabId;
       resetRoom();
       sendToTab({ cmd: CMD.STATE, state: publicState() }, tabId);
     }
-    lastError = m.message;
+    lastError = text;
     broadcast();
   } else if (m.code === ERR.NOT_ALLOWED) {
-    toast(m.message);
+    toast(text);
     sendToTab({ cmd: CMD.SYNC, state: publicState() }); // 로컬 조작을 방 상태로 되돌림
   } else if (m.code === ERR.PASSWORD_REQUIRED || m.code === ERR.WRONG_PASSWORD) {
     if (room.roomCode) {
       // 이미 들어가 있던 방에 재접속하는데 자리가 없어짐(오래 끊겨 내보내짐): 방을 나간 상태로 두고 알린다
-      toast('비밀번호가 필요한 방이라 다시 들어갈 수 없어요. 확장 아이콘에서 비밀번호를 입력해 주세요.');
+      toast(t('bg.needPasswordRejoin'));
       needPassword = { roomCode: room.roomCode, wrong: false, at: Date.now() };
-      lastError = m.message;
+      lastError = text;
       leaveRoom(false);
       return;
     }
     // 입력과 오류는 참가를 시작한 곳(초대 배너 또는 팝업)에서 보여 준다. 상태로만 알린다
     needPassword = { roomCode: joiningCode, wrong: m.code === ERR.WRONG_PASSWORD, at: Date.now() };
     setRoomPw(null);
-    lastError = m.message;
+    lastError = text;
     broadcast();
   } else if (m.code === ERR.ROOM_FULL || m.code === ERR.TOO_MANY_ATTEMPTS) {
     setRoomPw(null);
     if (room.roomCode) {
-      toast(m.message);
-      lastError = m.message;
+      toast(text);
+      lastError = text;
       leaveRoom(false);
       return;
     }
-    lastError = m.message;
+    lastError = text;
     broadcast();
   } else if (m.code === ERR.REPLACED) {
     leaveRoom(false);
-    lastError = m.message;
+    lastError = text;
     broadcast();
   }
 }
@@ -562,6 +565,7 @@ function leaveRoom(notifyServer = true) {
 }
 
 function enterRoom(msg, tabId, site = null) {
+  msg.lang = getLang(); // 서버가 기본 닉네임(게스트/Guest)을 이 언어로 정한다
   if (room.roomCode) leaveRoom();
   lastError = null;
   needPassword = null;
@@ -599,7 +603,7 @@ const tabHasVideo = async (tabId) => (await videoStatus(tabId)) === 'ok';
 // 이미 다른 탭에서 방에 있으면 새 방을 만들거나 참가할 수 없다(조용히 기존 방을 떠나지 않는다)
 function busyElsewhere(tabId) {
   if (!room.roomCode || tabId === room.tabId) return false;
-  lastError = `이미 ${room.site || '다른 탭'}에서 같이보기 중이에요. 먼저 그 방에서 나가 주세요.`;
+  lastError = t('bg.busyElsewhere', { site: room.site || t('bg.otherTab') });
   broadcast();
   return true;
 }
@@ -610,7 +614,7 @@ const siteOf = (v) => {
     return null;
   }
 };
-const NO_VIDEO_MSG = '이 페이지에서 영상을 찾지 못했어요. 쿠팡플레이·넷플릭스·웨이브·티빙의 영상 페이지에서 시도해 주세요.';
+const noVideoMsg = () => t('bg.noVideo');
 
 async function onCommand(m, sender) {
   await ready;
@@ -641,7 +645,7 @@ async function onCommand(m, sender) {
     case CMD.CREATE_ROOM:
       if (busyElsewhere(m.tabId ?? fromTab)) return { ok: false };
       if (!(await tabHasVideo(m.tabId ?? fromTab))) {
-        lastError = NO_VIDEO_MSG;
+        lastError = noVideoMsg();
         broadcast();
         return { ok: false };
       }
@@ -649,7 +653,7 @@ async function onCommand(m, sender) {
         const msg = { type: C2S.CREATE_ROOM, userId };
         if (m.password) {
           if (!isValidNewPassword(m.password)) {
-            lastError = '비밀번호는 영문과 숫자 4~32자로 정해 주세요.';
+            lastError = t('bg.badPassword');
             broadcast();
             return { ok: false };
           }
@@ -657,7 +661,7 @@ async function onCommand(m, sender) {
         }
         if (m.maxMembers) {
           if (!isValidMaxMembers(m.maxMembers)) {
-            lastError = '최대 인원은 2~20명으로 정해 주세요.';
+            lastError = t('bg.badMaxMembers');
             broadcast();
             return { ok: false };
           }
@@ -670,14 +674,14 @@ async function onCommand(m, sender) {
     case CMD.JOIN_ROOM: {
       const roomCode = String(m.roomCode ?? '').trim().toUpperCase();
       if (!ROOM_CODE_RE.test(roomCode)) {
-        lastError = '방 코드는 6자리 영문/숫자예요.';
+        lastError = t('bg.badRoomCode');
         broadcast();
         return { ok: false };
       }
       if (roomCode === room.roomCode) return { ok: true };
       if (busyElsewhere(m.tabId ?? fromTab)) return { ok: false };
       if (!(await tabHasVideo(m.tabId ?? fromTab))) {
-        lastError = NO_VIDEO_MSG;
+        lastError = noVideoMsg();
         broadcast();
         return { ok: false };
       }
@@ -715,7 +719,7 @@ async function onCommand(m, sender) {
       const msg = { type: C2S.SET_ROOM_OPTIONS };
       if (m.password !== undefined) {
         if (m.password !== null && !isValidNewPassword(m.password)) {
-          lastError = '비밀번호는 영문과 숫자 4~32자로 정해 주세요.';
+          lastError = t('bg.badPassword');
           broadcast();
           return { ok: false };
         }
@@ -723,7 +727,7 @@ async function onCommand(m, sender) {
       }
       if (m.maxMembers !== undefined) {
         if (m.maxMembers !== null && !isValidMaxMembers(m.maxMembers)) {
-          lastError = '최대 인원은 2~20명으로 정해 주세요.';
+          lastError = t('bg.badMaxMembers');
           broadcast();
           return { ok: false };
         }

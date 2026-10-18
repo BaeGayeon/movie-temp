@@ -47,11 +47,12 @@ export const S2C = {
 
 export const ERR = {
   ROOM_NOT_FOUND: 'room_not_found',
-  NOT_ALLOWED: 'not_allowed',
+  ROOM_IDLE_CLOSED: 'room_idle_closed', // 오래 활동이 없어 서버가 방을 닫음(접속 중이던 사람에게)
+  NOT_ALLOWED: 'not_allowed', // 카운트다운 요청이면 reason: 'countdown' 을 함께 보낸다
   REPLACED: 'replaced',
   PASSWORD_REQUIRED: 'password_required', // 비밀번호가 있는 방에 비밀번호 없이 들어오려 함
   WRONG_PASSWORD: 'wrong_password',
-  ROOM_FULL: 'room_full',
+  ROOM_FULL: 'room_full', // 오류 메시지에 max(방의 최대 인원)를 함께 보낸다
   TOO_MANY_ATTEMPTS: 'too_many_attempts', // 참가 실패가 잦아 잠시 차단
 };
 
@@ -136,6 +137,8 @@ export const isValidNewPassword = (v) =>
 export const isValidMaxMembers = (v) => Number.isInteger(v) && v >= MIN_ROOM_MEMBERS && v <= MAX_ROOM_MEMBERS;
 
 export const ROOM_CODE_RE = /^[A-Z0-9]{6}$/;
+// 방 만들기/참가 때 클라이언트가 보내는 표시 언어(기본 닉네임 "게스트1234"/"Guest1234" 을 고르는 데만 쓴다). 틀린 값은 무시한다
+const LANGS = ['ko', 'en'];
 const USER_ID_RE = /^[A-Za-z0-9_-]{8,64}$/;
 const MAX_TIME = 24 * 60 * 60; // 초
 
@@ -148,6 +151,7 @@ const validators = {
   [C2S.CREATE_ROOM]: (m) => {
     if (typeof m.userId !== 'string' || !USER_ID_RE.test(m.userId)) return null;
     const out = { type: m.type, userId: m.userId };
+    if (LANGS.includes(m.lang)) out.lang = m.lang;
     if (m.password !== undefined) {
       if (!isValidNewPassword(m.password)) return null;
       out.password = m.password;
@@ -165,6 +169,7 @@ const validators = {
     const roomCode = m.roomCode.toUpperCase();
     if (!ROOM_CODE_RE.test(roomCode)) return null;
     const out = { type: m.type, userId: m.userId, roomCode };
+    if (LANGS.includes(m.lang)) out.lang = m.lang;
     if (m.password !== undefined) {
       if (typeof m.password !== 'string' || m.password.length > MAX_PASSWORD_LENGTH) return null;
       out.password = m.password;

@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8">
-  <title>같이보기</title>
+  <title data-i18n="popup.pageTitle">같이보기</title>
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
@@ -11,7 +11,7 @@
       <div class="logo">☁️</div>
       <div>
         <h1><span id="title"></span> <small id="titleKo"></small></h1>
-        <p class="tagline">같이 보면 더 재밌어요 🍿</p>
+        <p class="tagline" data-i18n="popup.tagline">같이 보면 더 재밌어요 🍿</p>
       </div>
     </div>
   </header>
@@ -20,167 +20,176 @@
     <!-- 방이 없을 때 -->
     <section id="lobby" class="card" hidden>
       <details class="opts" id="createOpts">
-        <summary>방 옵션 (선택)</summary>
-        <p class="optnote">둘 다 비워 두면 누구나 들어올 수 있고 인원 제한이 없어요.</p>
-        <label><span class="lbl">🔒 비밀번호</span> <span class="pwwrap"><input id="createPw" type="password" placeholder="영문·숫자 4~32자" autocomplete="new-password"></span></label>
-        <label><span class="lbl">👥 최대 인원</span> <input id="createMax" type="number" min="2" max="20" placeholder="2~20명"></label>
+        <summary data-i18n="popup.createOpts">방 옵션 (선택)</summary>
+        <p class="optnote" data-i18n="popup.createOptsNote">둘 다 비워 두면 누구나 들어올 수 있고 인원 제한이 없어요.</p>
+        <label><span class="lbl" data-i18n="popup.pwLabelIcon">🔒 비밀번호</span> <span class="pwwrap"><input id="createPw" type="password" data-i18n-placeholder="popup.pwPlaceholder" placeholder="영문·숫자 4~32자" autocomplete="new-password"></span></label>
+        <label><span class="lbl" data-i18n="popup.maxLabelIcon">👥 최대 인원</span> <input id="createMax" type="number" min="2" max="20" data-i18n-placeholder="popup.maxPlaceholder" placeholder="2~20명"></label>
       </details>
-      <button id="create" class="btn primary big">🎬 방 만들기</button>
-      <div class="or">또는 코드로 참가</div>
+      <button id="create" class="btn primary big" data-i18n="popup.create">🎬 방 만들기</button>
+      <div class="or" data-i18n="popup.orJoin">또는 코드로 참가</div>
       <div class="join">
-        <input id="code" placeholder="방 코드 6자리" autocomplete="off" spellcheck="false">
-        <button id="join" class="btn">참가</button>
+        <input id="code" data-i18n-placeholder="popup.codePlaceholder" placeholder="방 코드 6자리" autocomplete="off" spellcheck="false">
+        <button id="join" class="btn" data-i18n="popup.join">참가</button>
       </div>
-      <span class="pwwrap full"><input id="joinPw" class="joinpw" type="password" placeholder="비밀번호 (있는 방만)" autocomplete="off"></span>
-      <p class="hint" id="noVideo" hidden>이 페이지에서는 영상을 찾지 못했어요. 쿠팡플레이·넷플릭스·웨이브·티빙의 영상 페이지에서 시도해 주세요.</p>
+      <span class="pwwrap full"><input id="joinPw" class="joinpw" type="password" data-i18n-placeholder="popup.joinPwPlaceholder" placeholder="비밀번호 (있는 방만)" autocomplete="off"></span>
+      <p class="hint" id="noVideo" data-i18n="popup.noVideo" hidden>이 페이지에서는 영상을 찾지 못했어요. 쿠팡플레이·넷플릭스·웨이브·티빙의 영상 페이지에서 시도해 주세요.</p>
       <div id="reloadHint" hidden>
-        <p class="hint">이 탭에서 확장 프로그램이 아직 시작되지 않았어요. 확장을 새로 설치하거나 업데이트한 뒤에는 열려 있던 탭을 한 번 새로고침해야 해요.</p>
-        <button id="reloadTab" class="btn small">🔄 이 탭 새로고침</button>
+        <p class="hint" data-i18n="popup.reloadHint">이 탭에서 확장 프로그램이 아직 시작되지 않았어요. 확장을 새로 설치하거나 업데이트한 뒤에는 열려 있던 탭을 한 번 새로고침해야 해요.</p>
+        <button id="reloadTab" class="btn small" data-i18n="popup.reloadTab">🔄 이 탭 새로고침</button>
       </div>
     </section>
 
     <!-- 다른 탭/창에서 이미 방에 있을 때 -->
     <section id="elsewhere" class="card" hidden>
-      <div class="elsewhere-title">🔒 <span id="elsewhereSite"></span>에서 같이 보는 중</div>
+      <div class="elsewhere-title" id="elsewhereTitle"></div>
       <div class="row nowrap">
-        <button id="goRoom" class="btn primary small">그 탭으로 이동</button>
-        <button id="leaveElsewhere" class="btn small">나가기</button>
+        <button id="goRoom" class="btn primary small" data-i18n="popup.goRoom">그 탭으로 이동</button>
+        <button id="leaveElsewhere" class="btn small" data-i18n="popup.leave">나가기</button>
       </div>
     </section>
 
     <!-- 방에 있을 때: 카드마다 접었다 펼 수 있다(펼침 상태는 기억한다) -->
     <section id="room" hidden>
       <details class="card" data-fold="room" open>
-        <summary>🏠 방 코드 <span class="status" id="conn"></span></summary>
+        <summary><span data-i18n="popup.roomCode">🏠 방 코드</span> <span class="status" id="conn"></span></summary>
         <div class="inner">
           <div class="code" id="roomCode"></div>
           <div class="row nowrap">
-            <button id="copy" class="btn primary">🔗 링크 복사</button>
-            <button id="copyCode" class="btn">📋 코드 복사</button>
+            <button id="copy" class="btn primary" data-i18n="popup.copyLink">🔗 링크 복사</button>
+            <button id="copyCode" class="btn" data-i18n="popup.copyCode">📋 코드 복사</button>
           </div>
           <div class="row nowrap">
-            <button id="chatToggle" class="btn small">💬 채팅 숨기기</button>
-            <button id="leave" class="btn ghost small">나가기 👋</button>
+            <button id="chatToggle" class="btn small"></button>
+            <button id="leave" class="btn ghost small" data-i18n="popup.leaveBye">나가기 👋</button>
           </div>
         </div>
       </details>
 
       <details class="card" data-fold="people" open>
-        <summary>🧑‍🤝‍🧑 같이 보는 사람 <span class="count" id="count"></span></summary>
+        <summary><span data-i18n="popup.people">🧑‍🤝‍🧑 같이 보는 사람</span> <span class="count" id="count"></span></summary>
         <div class="inner"><ul class="people" id="people"></ul></div>
       </details>
 
       <details class="card" id="hostBox" data-fold="host" open>
-        <summary>🎮 조작 권한</summary>
+        <summary data-i18n="popup.control">🎮 조작 권한</summary>
         <div class="inner">
           <div class="seg" id="modeSeg">
-            <button data-mode="everyone">🙌 모두 조작</button>
-            <button data-mode="host_only">👑 방장만</button>
+            <button data-mode="everyone" data-i18n="popup.modeEveryone">🙌 모두 조작</button>
+            <button data-mode="host_only" data-i18n="popup.modeHost">👑 방장만</button>
           </div>
           <div class="row nowrap" id="countdownRow">
-            <select id="seconds" aria-label="카운트다운 초">
-              <option value="3">3초</option>
-              <option value="5">5초</option>
-              <option value="10">10초</option>
+            <select id="seconds" data-i18n-aria-label="popup.secondsLabel" aria-label="카운트다운 초">
+              <option value="3" data-i18n="popup.seconds3">3초</option>
+              <option value="5" data-i18n="popup.seconds5">5초</option>
+              <option value="10" data-i18n="popup.seconds10">10초</option>
             </select>
-            <button id="countdown" class="btn primary">⏱️ 카운트다운 시작</button>
+            <button id="countdown" class="btn primary" data-i18n="popup.countdown">⏱️ 카운트다운 시작</button>
           </div>
         </div>
       </details>
       <!-- 방장만 보인다: 방 안에서 비밀번호/최대 인원을 바꾼다 -->
       <details class="card" id="optBox" data-fold="options" hidden>
-        <summary>🔒 방 옵션</summary>
+        <summary data-i18n="popup.roomOpts">🔒 방 옵션</summary>
         <div class="inner">
           <div class="optline">
-            <span class="lbl">비밀번호</span>
+            <span class="lbl" data-i18n="popup.pwLabel">비밀번호</span>
             <span class="optval" id="pwValue"></span>
             <button id="pwEye" class="iconbtn" type="button" hidden></button>
-            <button id="pwCopy" class="btn small" type="button" hidden>복사</button>
+            <button id="pwCopy" class="btn small" type="button" data-i18n="popup.copy" hidden>복사</button>
           </div>
           <div class="row nowrap" id="pwButtons">
-            <button id="pwEdit" class="btn small" type="button">설정</button>
-            <button id="pwRemove" class="btn small danger" type="button">삭제</button>
+            <button id="pwEdit" class="btn small" type="button"></button>
+            <button id="pwRemove" class="btn small danger" type="button" data-i18n="popup.delete">삭제</button>
           </div>
           <div class="row nowrap" id="pwForm" hidden>
-            <span class="pwwrap"><input id="pwNew" type="password" placeholder="새 비밀번호 (영문·숫자 4~32자)" autocomplete="new-password"></span>
-            <button id="pwSave" class="btn small primary" type="button">저장</button>
-            <button id="pwCancel" class="btn small" type="button">취소</button>
+            <span class="pwwrap"><input id="pwNew" type="password" data-i18n-placeholder="popup.newPwPlaceholder" placeholder="새 비밀번호 (영문·숫자 4~32자)" autocomplete="new-password"></span>
+            <button id="pwSave" class="btn small primary" type="button" data-i18n="popup.save">저장</button>
+            <button id="pwCancel" class="btn small" type="button" data-i18n="popup.cancel">취소</button>
           </div>
           <div class="optline">
-            <span class="lbl">최대 인원</span>
-            <input id="maxEdit" type="number" min="2" max="20" placeholder="제한 없음">
-            <button id="maxSave" class="btn small" type="button">저장</button>
+            <span class="lbl" data-i18n="popup.maxLabel">최대 인원</span>
+            <input id="maxEdit" type="number" min="2" max="20" data-i18n-placeholder="popup.noLimit" placeholder="제한 없음">
+            <button id="maxSave" class="btn small" type="button" data-i18n="popup.save">저장</button>
           </div>
-          <p class="optnote">바꿔도 이미 있는 사람은 나가지 않아요. 새로 들어오는 사람부터 적용돼요.</p>
+          <p class="optnote" data-i18n="popup.optsNote">바꿔도 이미 있는 사람은 나가지 않아요. 새로 들어오는 사람부터 적용돼요.</p>
         </div>
       </details>
       <p class="wait" id="waitInfo" hidden></p>
     </section>
 
     <details class="card" id="profileBox" data-fold="profile">
-      <summary>🎨 내 프로필</summary>
+      <summary data-i18n="popup.profile">🎨 내 프로필</summary>
       <div class="inner">
         <div class="preview"><span class="av" id="pav"></span><span id="pnamePreview"></span></div>
-        <input id="pname" maxlength="16" placeholder="닉네임 (최대 16자)" autocomplete="off">
-        <div class="sub">프사</div>
+        <input id="pname" maxlength="16" data-i18n-placeholder="popup.namePlaceholder" placeholder="닉네임 (최대 16자)" autocomplete="off">
+        <div class="row"><button id="saveProfile" class="btn small" style="flex:0 0 auto" data-i18n="popup.save" disabled>저장</button><span class="sub" id="saveHint"></span></div>
+        <div class="sub" data-i18n="popup.avatar">프사</div>
         <div class="grid" id="emojiGrid"></div>
-        <div class="row nowrap">
-          <button id="moreEmoji" class="btn small">＋ 모든 이모지</button>
-          <button id="upload" class="btn small">📷 사진 올리기</button>
-          <button id="clearPhoto" class="btn small" hidden>지우기</button>
+        <div class="row" style="flex-wrap:wrap">
+          <button id="upload" class="btn small" data-i18n="popup.upload">📷 사진 올리기</button>
+          <button id="swapAvatar" class="btn small" hidden></button>
+          <button id="editPhoto" class="btn small" data-i18n="popup.editPhoto" hidden>위치 조절</button>
+          <button id="clearPhoto" class="btn small" data-i18n="popup.clearPhoto" hidden>지우기</button>
           <input type="file" id="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
         </div>
         <div id="cropBox" class="crop" hidden>
-          <canvas id="cropCanvas" width="320" height="320" aria-label="사진 위치 맞추기"></canvas>
-          <input type="range" id="cropZoom" min="100" max="400" value="100" aria-label="확대/축소">
+          <canvas id="cropCanvas" width="320" height="320" data-i18n-aria-label="popup.cropLabel" aria-label="사진 위치 맞추기"></canvas>
+          <input type="range" id="cropZoom" min="100" max="400" value="100" data-i18n-aria-label="popup.zoomLabel" aria-label="확대/축소">
           <div class="row nowrap">
-            <button id="cropApply" class="btn primary small">적용</button>
-            <button id="cropCancel" class="btn small">취소</button>
+            <button id="cropApply" class="btn primary small" data-i18n="popup.apply">적용</button>
+            <button id="cropCancel" class="btn small" data-i18n="popup.cancel">취소</button>
           </div>
         </div>
         <div id="pickerBox" hidden></div>
         <div class="error" id="perror"></div>
-        <div class="sub">프사 배경색</div>
+        <div class="sub" data-i18n="popup.avatarBg">프사 배경색</div>
         <div class="grid" id="bgGrid"></div>
         <div id="bgPicker" hidden></div>
-        <div class="sub">닉네임 색</div>
+        <div class="sub" data-i18n="popup.nameColor">닉네임 색</div>
         <div class="grid" id="colorGrid"></div>
         <div id="colorPicker" hidden></div>
       </div>
     </details>
 
     <details class="card" id="fontBox" data-fold="font">
-      <summary>🔤 채팅 글꼴·크기</summary>
+      <summary data-i18n="popup.font">🔤 채팅 글꼴·크기</summary>
       <div class="inner">
-        <div class="fontsample" id="fontSample">안녕하세요, 같이 봐요 ABC 123 ♥</div>
+        <div class="fontsample" id="fontSample" data-i18n="popup.fontSample">안녕하세요, 같이 봐요 ABC 123 ♥</div>
         <div class="fontpick">
           <button id="fontCur" class="btn" type="button" aria-haspopup="listbox" aria-expanded="false"></button>
           <div id="fontList" role="listbox" tabindex="-1" hidden></div>
         </div>
         <div class="row nowrap">
-          <button id="fontLoad" class="btn small" hidden>💻 내 컴퓨터 글꼴 허용하고 불러오기</button>
-          <button id="fontReset" class="btn small">기본으로</button>
+          <button id="fontLoad" class="btn small" data-i18n="popup.fontLoad" hidden>💻 내 컴퓨터 글꼴 허용하고 불러오기</button>
+          <button id="fontReset" class="btn small" data-i18n="popup.fontReset">기본으로</button>
         </div>
         <div class="row nowrap" id="fontManual" hidden>
-          <input id="fontName" maxlength="80" placeholder="글꼴 이름 직접 입력" autocomplete="off">
-          <button id="fontApply" class="btn small">적용</button>
+          <input id="fontName" maxlength="80" data-i18n-placeholder="popup.fontNamePlaceholder" placeholder="글꼴 이름 직접 입력" autocomplete="off">
+          <button id="fontApply" class="btn small" data-i18n="popup.apply">적용</button>
         </div>
         <div class="error" id="ferror"></div>
-        <label class="sizerow"><span>글자 크기</span><input type="range" id="fontScale" min="0.8" max="1.6" step="0.05"></label>
-        <label class="sizerow"><span>프사 크기</span><input type="range" id="avatarSize" min="20" max="56" step="2"></label>
-        <button id="sizeReset" class="btn small">크기 기본값</button>
+        <label class="sizerow"><span data-i18n="popup.fontSize">글자 크기</span><input type="range" id="fontScale" min="0.8" max="1.6" step="0.05"></label>
+        <label class="sizerow"><span data-i18n="popup.avatarSize">프사 크기</span><input type="range" id="avatarSize" min="20" max="56" step="2"></label>
+        <button id="sizeReset" class="btn small" data-i18n="popup.sizeReset">크기 기본값</button>
       </div>
     </details>
 
     <details class="card" id="syncBox" data-fold="sync">
-      <summary>⚙️ 동기화 설정</summary>
+      <summary data-i18n="popup.sync">⚙️ 동기화 설정</summary>
       <div class="inner">
-        <label class="check" title="90초보다 짧은 영상은 광고로 보고, 광고 중에는 재생·일시정지·이동을 주고받지 않아요"><input type="checkbox" id="adDetect"> 광고 구간은 동기화에서 제외</label>
-        <button id="copyDiag" class="btn small" title="재생 위치/광고/주고받은 동작의 최근 기록을 복사해요. 문제가 생겼을 때 붙여 넣어 알려 주세요">🛠 진단 정보 복사</button>
+        <label class="check" data-i18n-title="popup.adDetectTip" title="90초보다 짧은 영상은 광고로 보고, 광고 중에는 재생·일시정지·이동을 주고받지 않아요"><input type="checkbox" id="adDetect"> <span data-i18n="popup.adDetect">광고 구간은 동기화에서 제외</span></label>
+        <button id="copyDiag" class="btn small" data-i18n="popup.copyDiag" data-i18n-title="popup.copyDiagTip" title="재생 위치/광고/주고받은 동작의 최근 기록을 복사해요. 문제가 생겼을 때 붙여 넣어 알려 주세요">🛠 진단 정보 복사</button>
       </div>
     </details>
 
     <div class="error" id="error"></div>
+    <label class="langrow"><span data-i18n="popup.lang">🌐 언어</span>
+      <select id="langSel" aria-label="Language">
+        <option value="auto" data-i18n="popup.langAuto">자동 (브라우저 설정)</option>
+        <option value="ko">한국어</option>
+        <option value="en">English</option>
+      </select>
+    </label>
   </main>
   <script type="module" src="popup.js"></script>
 </body>

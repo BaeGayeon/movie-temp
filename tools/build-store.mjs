@@ -2,6 +2,7 @@
 //   node tools/build-store.mjs --server wss://내서버.onrender.com
 // - extension/ 을 dist/store/ 로 복사
 // - config.js 의 SERVER_URL 을 --server 값으로 교체(wss:// 필수)
+// - extension/_locales(설명 현지화)는 그대로 포함된다
 // - 이름의 " [개발용]" 표시를 뺀다(config.js APP_NAME, manifest name)
 // - 개발용 아이콘(icons-dev/)을 원래 아이콘(icons/)으로 되돌리고 icons-dev/ 는 지운다
 // - manifest 에서 개발용 주소(localhost, file://)를 뺀다 -> 지원 사이트만 남는다

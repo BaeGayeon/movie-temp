@@ -1,0 +1,27 @@
+// 공용 문구: 서버 오류(err.<code>[.<reason>]), 공통 표현
+export const MSG = {
+  ko: {
+    'err.room_not_found': '존재하지 않는 방이에요.',
+    'err.room_idle_closed': '오랫동안 아무 활동이 없어서 방이 닫혔어요.',
+    'err.not_allowed': '방장만 조작할 수 있어요.',
+    'err.not_allowed.countdown': '방장만 카운트다운을 시작할 수 있어요.',
+    'err.replaced': '다른 곳에서 접속해서 연결을 종료해요.',
+    'err.password_required': '비밀번호가 필요한 방이에요.',
+    'err.wrong_password': '비밀번호가 맞지 않아요.',
+    'err.room_full': '방이 가득 찼어요 (최대 {max}명).',
+    'err.too_many_attempts': '참가 시도가 너무 많아요. 잠시 뒤에 다시 해 주세요.',
+    'common.someone': '누군가',
+  },
+  en: {
+    'err.room_not_found': "That room doesn't exist.",
+    'err.room_idle_closed': 'The room was closed because nothing happened in it for a long time.',
+    'err.not_allowed': 'Only the host can control playback.',
+    'err.not_allowed.countdown': 'Only the host can start a countdown.',
+    'err.replaced': 'You connected from somewhere else, so this connection was closed.',
+    'err.password_required': 'This room needs a password.',
+    'err.wrong_password': "That password doesn't match.",
+    'err.room_full': 'The room is full (max {max}).',
+    'err.too_many_attempts': 'Too many join attempts. Please try again in a moment.',
+    'common.someone': 'Someone',
+  },
+};

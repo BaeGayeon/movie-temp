@@ -6,7 +6,7 @@
 
 - 이름: bae-movie-temp (배무템)
 - 카테고리: 소셜 및 커뮤니케이션 (또는 엔터테인먼트)
-- 언어: 한국어
+- 언어: 한국어(기본) + 영어 (아래 "English listing" 섹션을 스토어 대시보드의 영어 항목에 붙여 넣는다. 확장 프로그램의 설명은 `_locales/` 로 브라우저 언어에 따라 나뉜다)
 - 개인정보처리방침 URL: `https://<서버주소>/privacy` (서버가 제공한다. 문의 이메일은 `server/public/privacy.html` 맨 아래)
 
 ## 요약 (132자 이내)
@@ -62,3 +62,71 @@
 
 - 아이콘 128×128: `extension/icons/icon128.png` (등록해 둔 아이콘)
 - 스크린샷 1280×800 (또는 640×400) 1~5장: 채팅 3가지 모드, 영상 위 채팅(오른쪽에 띄우기), 팝업, 리액션 — 실제 사이트 화면으로 직접 찍어서 준비한다(저작권이 있는 영상 장면이 크게 나오지 않게 주의).
+
+---
+
+# English listing
+
+Copy for the English entry in the store dashboard.
+
+## Basic info
+
+- Name: bae-movie-temp (배무템)
+- Category: Social & Communication (or Entertainment)
+- Language: English
+- Privacy policy URL: `https://<server address>/privacy?lang=en` (served by the server; the page also follows the browser language when `lang` is omitted)
+
+## Summary (132 characters or fewer)
+
+Watch together, each on your own account. Syncs play, pause and seek, plus chat and emoji reactions.
+
+## Detailed description
+
+```
+An extension that lets everyone play a video with their own account and keeps only the playback state in sync.
+It never exchanges the video itself or any account information. Everyone just plays the same title.
+
+Features
+• Create a room → share the invite link → play together from the same position
+• Play, pause and seek stay in sync for everyone (choose "host only" or "everyone" can control)
+• If someone is buffering or watching an ad, everyone waits and resumes together
+• Chat over the video (bubbles / plain lines / compact, floating window / float on the right / dock on the right)
+• Emoji reactions, join/leave and playback notices, and a countdown to start together
+• Nickname, emoji or photo profile, and text color
+• Korean and English, following your browser language (or pick one in the popup)
+
+Supported sites
+Video pages on Coupang Play, Netflix, Wavve and TVING
+
+How to use
+1. Open a video page and click the extension icon → Create room
+2. Send the invite link to the people you'll watch with
+3. They open the same title and join with the link. That's it
+
+Everyone needs their own subscription to the service, and this extension is an unofficial tool that is not affiliated with any of these services.
+```
+
+## Single purpose
+
+Sync the playback state of videos (streaming services) that each person plays on their own, and let the people watching together chat.
+
+## Permission justifications
+
+| Permission | Reason |
+|---|---|
+| `storage` | Stores your profile (nickname, emoji/photo, color), chat window and popup settings, your language setting, and recent chat for when you rejoin a room, only on your device. |
+| `alarms` | Periodic checks used to keep the room connection alive and reconnect even when the service worker sleeps. |
+| `activeTab` | Checks whether the tab where you opened the popup has a video, and ties that tab to the room. |
+| Site access (`coupangplay.com`, `netflix.com`, `wavve.com`, `tving.com`) | Reads the `<video>` playback state on those sites, applies play, pause and seek, and shows the chat window over the video. |
+| Remote code | Not used. All code is included in the extension. |
+
+## Privacy practices
+
+- Data collected: the nickname, profile photo and chat messages you enter yourself, room code, room password (if the host set one; the server keeps it only as a hash in memory), and video playback state and position. All of it passes through the server only to be delivered to the others in the same room, and the server does not write it to disk (it stays in memory only until the room disappears).
+- Data not collected: login information, payment information, viewing history, video content, location, web history.
+- We do not sell data. We do not use it for anything other than the approved purpose, nor for creditworthiness or lending.
+
+## Images
+
+- Icon 128×128: `extension/icons/icon128.png`
+- Screenshots 1280×800 (or 640×400), 1–5: prepare English-language screenshots of the same screens (chat modes, chat over video, popup, reactions) from the real sites, avoiding large frames of copyrighted video. Use the English UI (set the language to English in the popup).
