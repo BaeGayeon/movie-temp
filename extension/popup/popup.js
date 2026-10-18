@@ -364,7 +364,8 @@ $('adDetect').addEventListener('change', async (e) => {
 // ---------- 프로필 (이름, 이모지 프사 + 배경색, 채팅 색) ----------
 const AVATARS = ['🙂', '😎', '🤓', '🥳', '😺', '🐶', '🐻', '🐼', '🦊', '🐸', '🐧', '🦄'];
 let profile = { name: '', avatar: { kind: 'emoji', value: AVATARS[0], bg: COLOR_PALETTE[5] }, color: COLOR_PALETTE[3] };
-let hasPhotoSource = false; // 위치 다시 맞추기용 원본(photoSource)이 내 기기에 있는지
+let hasPhotoSource = false; // 위치 다시 맞추기용 원본(photoSource)이 내 기기에 저장돼 있는지
+let draftSource; // 저장 전 변경: undefined=그대로, null=삭제, 문자열=새 원본. [저장]을 눌러야 기기에 반영된다
 
 // 기본 색 + 직접 고르기. 직접 고른 색은 기억해 두고, 다른 색으로 바꿨다가 다시 눌러도 그 색이 나온다.
 let customColors = {};
@@ -411,7 +412,7 @@ function swatches(container, pickerBox, key, colors, current, onPick) {
 function renderProfile() {
   renderAvatar($('pav'), profile.avatar, 38);
   $('clearPhoto').hidden = profile.avatar.kind !== 'image';
-  $('editPhoto').hidden = profile.avatar.kind !== 'image' || !hasPhotoSource;
+  $('editPhoto').hidden = profile.avatar.kind !== 'image' || !(draftSource === undefined ? hasPhotoSource : draftSource);
   $('pnamePreview').textContent = profile.name || '닉네임';
   $('pnamePreview').style.color = pastelize(profile.color); // 채팅에서 보이는 대로(닉네임은 글자색)
   $('emojiGrid').replaceChildren(
@@ -448,6 +449,10 @@ $('saveProfile').addEventListener('click', () => {
   }
   profile = { ...profile, name };
   chrome.runtime.sendMessage({ cmd: CMD.SET_PROFILE, profile });
+  if (draftSource) chrome.storage.local.set({ photoSource: draftSource });
+  else if (draftSource === null) chrome.storage.local.remove('photoSource');
+  hasPhotoSource = draftSource === undefined ? hasPhotoSource : !!draftSource;
+  draftSource = undefined;
   setDirty(false);
   $('saveHint').textContent = '저장했어요';
   setTimeout(() => !dirty && ($('saveHint').textContent = ''), 1500);
@@ -759,10 +764,7 @@ $('cropApply').addEventListener('click', () => {
     const url = bitmapToAvatarDataUrl(crop.bmp, { x: -crop.ox / s, y: -crop.oy / s, size: VIEW / s });
     const photoSource = crop.fromSource ? null : bitmapToSourceDataUrl(crop.bmp); // 저장된 원본에서 연 경우는 그대로 둔다
     closeCropper();
-    if (photoSource) {
-      hasPhotoSource = true;
-      chrome.storage.local.set({ photoSource });
-    }
+    if (photoSource) draftSource = photoSource;
     update({ avatar: { kind: 'image', value: url, bg: profile.avatar.bg } });
   } catch (err) {
     $('perror').textContent = err.message?.includes('20KB') ? err.message : '이미지를 불러올 수 없어요. 다른 사진을 골라 주세요.';
@@ -770,10 +772,11 @@ $('cropApply').addEventListener('click', () => {
 });
 $('editPhoto').addEventListener('click', async () => {
   $('perror').textContent = '';
-  const { photoSource } = await chrome.storage.local.get('photoSource');
+  const photoSource = draftSource === undefined ? (await chrome.storage.local.get('photoSource')).photoSource : draftSource;
   const bmp = photoSource && (await decode(photoSource));
   if (!bmp) {
     hasPhotoSource = false;
+    draftSource = null;
     renderProfile();
     return;
   }
@@ -781,8 +784,7 @@ $('editPhoto').addEventListener('click', async () => {
   crop.fromSource = true;
 });
 $('clearPhoto').addEventListener('click', () => {
-  hasPhotoSource = false;
-  chrome.storage.local.remove('photoSource');
+  draftSource = null;
   update({ avatar: { kind: 'emoji', value: AVATARS[0], bg: profile.avatar.bg } });
 });
 
