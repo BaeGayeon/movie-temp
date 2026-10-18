@@ -90,7 +90,7 @@ const CSS = `
   .reacts button:hover { background: var(--surface-2); transform: scale(1.15); }
   ::selection { background: var(--accent); color: var(--on-accent); } /* 사이트 기본 선택색이 안 보이는 경우가 있어 직접 지정 */
   .form { display: flex; gap: 6px; padding: 6px 8px 10px; align-items: flex-end; }
-  .rtoggle { flex: none; width: calc(1.4em + 16px); height: calc(1.4em + 16px); padding: 0; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: transparent; font-size: 17px; line-height: 1; opacity: .55; }
+  .rtoggle { flex: none; width: 34px; height: 34px; padding: 0; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: transparent; font-size: 16px; line-height: 1; opacity: .55; } /* 한 줄일 때의 입력칸 높이(34px)와 같게 */
   .rtoggle:hover { background: var(--surface-2); opacity: 1; }
   .rtoggle.on { opacity: 1; background: var(--surface-2); }
   .reacts[hidden] { display: none; }
