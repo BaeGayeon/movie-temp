@@ -213,6 +213,7 @@ function badge(text, cls) {
 }
 
 // 영상이 있는 탭에서만 방 만들기/참가 가능(영상은 나중에 뜰 수 있으니 열려 있는 동안 계속 확인)
+const injectTried = new Set(); // 이미 직접 넣어 본 탭(실패해도 계속 반복하지 않는다)
 async function checkVideo() {
   if (state?.roomCode) return;
   const tab = await activeTab();
@@ -220,7 +221,18 @@ async function checkVideo() {
   const ok = !!reply?.ok;
   for (const id of ['create', 'join', 'code', 'joinPw', 'createPw', 'createMax']) $(id).disabled = !ok;
   // 지원 사이트인데 확장 스크립트가 없으면 새로고침 안내, 그 밖에는 "영상을 못 찾았어요"
-  const needReload = !ok && reply?.status === 'noscript' && isSupportedUrl(tab?.url);
+  let needReload = !ok && reply?.status === 'noscript' && isSupportedUrl(tab?.url);
+  if (needReload && tab?.id != null && !injectTried.has(tab.id)) {
+    // 새로고침 안내 전에, 이 탭에 content script 를 직접 넣어 본다(성공하면 다음 확인에서 바로 활성화된다)
+    injectTried.add(tab.id);
+    await chrome.runtime.sendMessage({ cmd: CMD.INJECT_CONTENT, tabId: tab.id }).catch(() => null);
+    setTimeout(checkVideo, 800);
+    needReload = false;
+    for (const id of ['create', 'join', 'code', 'joinPw', 'createPw', 'createMax']) $(id).disabled = true;
+    $('reloadHint').hidden = true;
+    $('noVideo').hidden = true;
+    return;
+  }
   $('reloadHint').hidden = !needReload;
   $('noVideo').hidden = ok || needReload;
   $('reloadTab').dataset.tab = tab?.id ?? '';

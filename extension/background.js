@@ -599,6 +599,23 @@ async function videoStatus(tabId) {
     return 'noscript';
   }
 }
+// 확장을 새로 설치/업데이트하기 전에 열려 있던 탭에는 content script 가 없다. 팝업을 연 탭(activeTab 권한)에 지금 넣어 새로고침 없이 쓰게 한다.
+// 각 스크립트는 이미 들어가 있으면 아무것도 하지 않도록 만들어져 있어서(window.__bmtLoaded 등) 여러 번 넣어도 안전하다.
+async function injectContent(tabId) {
+  if (tabId == null) return false;
+  try {
+    const target = { tabId, allFrames: true };
+    await chrome.scripting.executeScript({ target, files: ['content/keyguard.js'] });
+    await chrome.scripting.executeScript({ target, files: ['content/main.js'] });
+    const tab = await chrome.tabs.get(tabId);
+    if (/(^|\.)netflix\.com$/.test(new URL(tab.url).hostname)) {
+      await chrome.scripting.executeScript({ target: { tabId }, files: ['content/netflix-main.js'], world: 'MAIN' });
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
 const tabHasVideo = async (tabId) => (await videoStatus(tabId)) === 'ok';
 // 이미 다른 탭에서 방에 있으면 새 방을 만들거나 참가할 수 없다(조용히 기존 방을 떠나지 않는다)
 function busyElsewhere(tabId) {
@@ -641,6 +658,9 @@ async function onCommand(m, sender) {
         const status = await videoStatus(m.tabId ?? fromTab);
         return { ok: status === 'ok', status };
       }
+
+    case CMD.INJECT_CONTENT:
+      return { ok: await injectContent(m.tabId ?? fromTab) };
 
     case CMD.CREATE_ROOM:
       if (busyElsewhere(m.tabId ?? fromTab)) return { ok: false };

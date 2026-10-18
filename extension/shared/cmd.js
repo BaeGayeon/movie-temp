@@ -7,6 +7,7 @@ export const CMD = {
   DIAG: 'diag', // popup -> content(최상위 프레임): 최근 동작 기록(진단용)을 돌려받는다
   CHECK_ROOM: 'check_room', // content -> background: 초대 링크의 방이 아직 있는지 서버에 물음 -> { exists: true | false | null(모름) }
   HAS_VIDEO: 'has_video', // popup -> background(탭에 영상이 있는지 물음) / background -> content(영상이 있는 프레임만 true 로 응답)
+  INJECT_CONTENT: 'inject_content', // popup -> background: 이 탭에 content script 가 없으면(설치/업데이트 전에 열린 탭) 지금 넣어 준다
   CREATE_ROOM: 'create_room',
   JOIN_ROOM: 'join_room',
   LEAVE_ROOM: 'leave_room',
