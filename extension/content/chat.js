@@ -100,6 +100,7 @@ const CSS = `
   .rbtn:hover { background: var(--accent); color: var(--on-accent); }
   .msg.me .rbtn { right: auto; left: 4px; transform: scaleX(-1); } /* 오른쪽 정렬(내 말풍선)에서는 반대쪽 모서리, 화살표도 반대로 */
   .list.plain .msg.me .rbtn, .list.compact .msg.me .rbtn { right: 4px; left: auto; transform: none; }
+  .list.plain .bwrap, .list.compact .bwrap { align-self: stretch; } /* 말풍선이 없는 모드는 글자 끝이 아니라 줄(칸) 오른쪽 끝에 띄운다 */
   .quote { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; font-size: .857em; color: var(--ink-soft);
     background: transparent; border-left: 2px solid var(--border-3); padding: 0 0 0 6px; cursor: pointer; }
   .quote::before { content: '↩ '; }
