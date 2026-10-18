@@ -55,6 +55,7 @@ export class RoomManager {
     this.resumeDelayMs = resumeDelayMs;
     this.now = now;
     this.maxRooms = maxRooms;
+    this.serverId = randomBytes(6).toString('hex'); // 서버가 켜질 때마다 바뀌는 값. room_state 로 알려 줘서 확장이 "서버가 재시작됐다"를 신호 없이도 알아챈다
     this.restoreKey = restoreKey;
     this.restoreTtlMs = restoreTtlMs;
     this.joinFailLimit = joinFailLimit;
@@ -547,6 +548,7 @@ export class RoomManager {
       hostId: room.hostId,
       mode: room.mode,
       hasPassword: !!room.password, // 비밀번호/해시는 절대 내려보내지 않는다
+      serverId: this.serverId,
       restoreToken: this.issueRestoreToken(room.code), // 방 멤버에게만. 서버가 재시작돼도 이 방을 복구할 수 있는 사람인지 확인하는 데 쓴다
       maxMembers: room.maxMembers,
       participants: [...room.participants.values()].sort((a, b) => a.joinSeq - b.joinSeq).map(pub),
