@@ -74,8 +74,12 @@ function render() {
   $('room').hidden = !here;
   $('elsewhere').hidden = !elsewhere;
   $('elsewhereTitle').textContent = t('popup.elsewhere', { site: state?.site || t('popup.otherTab') });
-  $('error').textContent = state?.error ?? (state?.waking ? t('popup.waking') : '');
-  $('error').classList.toggle('info', !state?.error && !!state?.waking);
+  // 서버 연결을 기다리는 동안(바로 연결되면 안내 없이 지나감): 처음엔 "연결 중", 오래 걸리면(서버가 잠든 경우) "깨우는 중"
+  busy = !!state?.busy && !inRoom;
+  const wait = state?.waking ? t('popup.waking') : busy ? t('popup.connectingServer') : '';
+  $('error').textContent = state?.error ?? wait;
+  $('error').classList.toggle('info', !state?.error && !!wait);
+  applyLobbyDisabled();
   // 비밀번호가 필요한 방에 참가하려다 거절됨: 코드를 채워 두고 비밀번호 칸으로 안내
   if (state?.needPassword && !inRoom && document.activeElement !== $('joinPw') && $('joinPw').dataset.askedFor !== state.needPassword.roomCode) {
     $('joinPw').dataset.askedFor = state.needPassword.roomCode;
@@ -213,13 +217,18 @@ function badge(text, cls) {
 }
 
 // 영상이 있는 탭에서만 방 만들기/참가 가능(영상은 나중에 뜰 수 있으니 열려 있는 동안 계속 확인)
+let hasVideo = null; // 아직 확인 전이면 null
+let busy = false; // 방 만들기/참가 요청이 서버 연결을 기다리는 중: 버튼을 막아 중복으로 누르지 않게 한다
+function applyLobbyDisabled() {
+  for (const id of ['create', 'join', 'code', 'joinPw', 'createPw', 'createMax']) $(id).disabled = hasVideo === false || busy;
+  $('noVideo').hidden = hasVideo !== false;
+}
 async function checkVideo() {
   if (state?.roomCode) return;
   const tab = await activeTab();
   const reply = await chrome.runtime.sendMessage({ cmd: CMD.HAS_VIDEO, tabId: tab?.id }).catch(() => null);
-  const ok = !!reply?.ok;
-  for (const id of ['create', 'join', 'code', 'joinPw', 'createPw', 'createMax']) $(id).disabled = !ok;
-  $('noVideo').hidden = ok;
+  hasVideo = !!reply?.ok;
+  applyLobbyDisabled();
 }
 setInterval(checkVideo, 1500);
 

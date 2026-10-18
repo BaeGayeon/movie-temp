@@ -154,6 +154,12 @@ details.card[open] > summary { border-bottom: 2px solid var(--border); }
 .check input { width: 18px; height: 18px; accent-color: var(--accent); }
 .error { color: var(--danger); font-size: 12px; font-weight: 700; min-height: 0; text-align: center; }
 .error.info { color: var(--ink-soft); }
+/* 맨 위 연결 안내/오류: 작은 글씨 한 줄이 아니라 눈에 띄는 안내 상자로 */
+#error { padding: 10px 12px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--border-3); font-size: 13px; line-height: 1.4; text-align: left; }
+#error.info { color: var(--ink); display: flex; align-items: center; gap: 8px; }
+#error.info::before { content: ''; flex: none; width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--border-3); border-top-color: var(--accent-light); animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { #error.info::before { animation-duration: 3s; } }
 .error:empty { display: none; }
 
 .card > summary .status, .card > summary .count { margin-left: 2px; }
