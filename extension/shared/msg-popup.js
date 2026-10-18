@@ -19,6 +19,8 @@ export const MSG = {
     'popup.join': '참가',
     'popup.joinPwPlaceholder': '비밀번호 (있는 방만)',
     'popup.noVideo': '이 페이지에서는 영상을 찾지 못했어요. 쿠팡플레이·넷플릭스·웨이브·티빙의 영상 페이지에서 시도해 주세요.',
+    'popup.reloadHint': '이 탭에서 확장 프로그램이 아직 시작되지 않았어요. 확장을 새로 설치하거나 업데이트한 뒤에는 열려 있던 탭을 한 번 새로고침해야 해요.',
+    'popup.reloadTab': '🔄 이 탭 새로고침',
 
     // 다른 탭에서 방에 있을 때
     'popup.otherTab': '다른 탭',
@@ -167,6 +169,8 @@ export const MSG = {
     'popup.join': 'Join',
     'popup.joinPwPlaceholder': 'Password (if any)',
     'popup.noVideo': "Couldn't find a video on this page. Try a video page on Coupang Play, Netflix, Wavve or TVING.",
+    'popup.reloadHint': "The extension hasn't started in this tab yet. After installing or updating it, reload tabs that were already open.",
+    'popup.reloadTab': '🔄 Reload this tab',
 
     // In a room from another tab
     'popup.otherTab': 'another tab',

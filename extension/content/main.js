@@ -4,12 +4,13 @@
   window.__bmtLoaded = true;
 
   const load = (path) => import(chrome.runtime.getURL(path));
-  const [{ CMD }, { initI18n, t: tr }, { ensureSuitFont }, { createDefaultAdapter }, { createNetflixAdapter }, { createUI }, { createChat }] = await Promise.all([
+  const [{ CMD }, { initI18n, t: tr }, { ensureSuitFont }, { createDefaultAdapter }, { createNetflixAdapter }, { createWavveAdapter }, { createUI }, { createChat }] = await Promise.all([
     load('shared/cmd.js'),
     load('shared/i18n.js'),
     load('shared/font.js'),
     load('content/adapters/default.js'),
     load('content/adapters/netflix.js'),
+    load('content/adapters/wavve.js'),
     load('content/ui.js'),
     load('content/chat.js'),
   ]);
@@ -52,10 +53,14 @@
     console.log('[bmt]', isTop ? 'top' : 'iframe', ...a); // 진단용 로그
   };
   // 호스트별 어댑터: 넷플릭스는 <video> 를 직접 조작하면 오류(M7375)가 나서 전용 어댑터를 쓴다
+  // 웨이브는 재생 조작은 기본 그대로, 광고 판단만 보강한 어댑터를 쓴다
+  const testAdapter = document.documentElement.getAttribute('data-bmt-adapter'); // 테스트 페이지용
   const adapter =
-    /(^|\.)netflix\.com$/.test(location.hostname) || document.documentElement.getAttribute('data-bmt-adapter') === 'netflix' // 두 번째는 테스트 페이지용
+    /(^|\.)netflix\.com$/.test(location.hostname) || testAdapter === 'netflix'
       ? createNetflixAdapter()
-      : createDefaultAdapter();
+      : /(^|\.)wavve\.com$/.test(location.hostname) || testAdapter === 'wavve'
+        ? createWavveAdapter()
+        : createDefaultAdapter();
   const ui = createUI();
   // 채팅/리액션 UI 는 최상위 프레임에만 둔다
   const chat = isTop
@@ -101,18 +106,39 @@
     });
   } catch {}
 
+  // 광고/버퍼링 안내는 한 곳에서 하나만 보여 준다(내 광고 안내와 다른 사람 광고 안내가 따로 두 개 뜨지 않게).
+  //  - 나만 광고: "광고 시청 중이에요. 끝나면 다 같이 이어서 재생해요."
+  //  - 나와 다른 사람도 광고: "나와 OO, OO 님이 광고 시청 중이에요. 끝나면 같이 재생해요."
+  //  - 다른 사람만 광고: "OO 님이 광고 시청 중이에요. 끝나면 같이 재생해요." / 광고는 없고 버퍼링: "OO 님이 버퍼링 중이에요. 기다리는 중…"
+  let ownAdNotice = false;
+  function renderNotices() {
+    if (!isTop) return;
+    // 방금 나가서 참가자 목록에 없는 사람은 이름을 알 수 없으니 안내에서 뺀다
+    const names = (ids) => ids.map((id) => state?.participants?.find((p) => p.id === id)?.name).filter(Boolean);
+    const adIds = state?.adIds ?? [];
+    const others = active() ? names(adIds.filter((id) => id !== state.userId)) : [];
+    const bufs = active() ? names((state?.waitingIds ?? []).filter((id) => !adIds.includes(id))) : [];
+    if (ownAdNotice && active()) {
+      ui.showWaiting(null);
+      ui.showAd(others.length ? tr('content.adSelfWith', { names: others.join(', ') }) : tr('content.adSelf'));
+      return;
+    }
+    ui.showAd(null);
+    ui.showWaiting(others.length ? tr('content.adOthers', { names: others.join(', ') }) : bufs.length ? tr('content.bufOthers', { names: bufs.join(', ') }) : null);
+  }
   function setAdNotice(on) {
-    if (isTop) ui.showAd(on && active() ? tr('content.adSelf') : null);
+    ownAdNotice = !!on && active();
+    renderNotices();
   }
 
   // 광고: 내 영상은 방과 따로 두고, 방에는 "광고 중이니 기다려 달라"고 알린다(다른 사람 영상도 멈추고, 광고가 끝나면 함께 다시 재생)
   let adReported = false;
-  function evalAd() {
+  function evalAd(fresh = false) {
     // 페이지를 새로고침하거나 영상이 바뀌어 보고가 끊겼는데 서버는 아직 나를 기다리고 있다면 풀어 준다
     if (video && active() && !inAd && !adReported && !bufferingReported && state.waitingIds?.includes(state.userId)) {
       send({ cmd: CMD.BUFFERING, isBuffering: false });
     }
-    const next = adDetect && !!video && !!adapter.isAd?.(video);
+    const next = adDetect && !!video && !!adapter.isAd?.(video, fresh);
     if (next === inAd) return;
     inAd = next;
     if (!inAd) adGraceUntil = Date.now() + AD_GRACE_MS;
@@ -126,7 +152,9 @@
         bufferingReported = false;
         send({ cmd: CMD.BUFFERING, isBuffering: false }); // 버퍼링 보고는 광고 보고로 대체
       }
-      if (active() && state.video.playing && !adReported) {
+      // 방이 재생 중이거나, 다른 사람의 광고/버퍼링 때문에 이미 멈춰 기다리는 중일 때(= 내가 더 늦게 광고를 시작한 경우)에도 알린다.
+      // 알리지 않으면 먼저 시작한 사람의 광고가 끝나는 순간 내 광고가 아직 남았는데도 방이 다시 재생된다.
+      if (active() && (state.video.playing || (state.waitingIds?.length ?? 0) > 0) && !adReported) {
         adReported = true;
         send({ cmd: CMD.BUFFERING, isBuffering: true, reason: 'ad' }); // 위치는 보내지 않는다(광고 위치는 의미 없음)
       }
@@ -451,6 +479,7 @@
   }, 500);
   const suspiciousJump = () => !!video && video.currentTime < 5 && lastRaw - video.currentTime > 30;
   let holdUntil = 0;
+  let pauseHolding = false; // adapter.holdPauseMs 로 정지 알림을 보류 중
   const HOLD_MS = 3000;
 
   function onLocal(action, silent = false, held = false) {
@@ -472,6 +501,25 @@
         onLocal('seek', silent, true);
         onLocal(video.paused ? 'pause' : 'play', silent, true);
       }, 300);
+      return;
+    }
+    // 광고가 시작될 때 플레이어가 메인 영상을 먼저 멈추는 사이트(웨이브 등): 정지 알림을 잠깐 보류하고, 그동안 광고 표시가 뜨면
+    // 광고 시작이었던 것으로 보고 폐기한다(그대로 보내면 광고를 보는 사람마다 "일시정지했어요"가 방에 뜬다).
+    if (!held && action === 'pause' && adapter.holdPauseMs && adDetect && !pauseHolding) {
+      pauseHolding = true;
+      const until = Date.now() + adapter.holdPauseMs;
+      const poll = setInterval(() => {
+        evalAd(true);
+        if (inAd || !video) {
+          clearInterval(poll);
+          pauseHolding = false;
+          return log('광고 시작으로 보여 정지 알림 폐기');
+        }
+        if (Date.now() < until) return;
+        clearInterval(poll);
+        pauseHolding = false;
+        if (video.paused) onLocal('pause', silent, true); // 광고가 아니었고 여전히 정지 상태면 그때 보낸다
+      }, 150);
       return;
     }
     // 소스가 바뀌는 중(메타데이터 전, duration NaN): 광고로 바뀌는 순간의 play(0초) 같은 이벤트가 방 전체를 되감지 않도록 무시
@@ -661,6 +709,23 @@
   setInterval(scan, 3000); // 레이아웃 변화 등 DOM 변경 없이 영상이 나타나는 경우 대비
   scan();
 
+  // 광고 후보(다른 video, iframe, 광고 글자 등)가 보이거나 바뀐 순간만 따로 모아 둔다. 일반 기록(diag)은 400줄이라 광고가 드문 사이트에서
+  // 광고 뒤에 복사해도 그 순간이 밀려났을 수 있어서, 진단 정보 복사 때 맨 위에 붙인다(웨이브처럼 광고를 직접 보기 어려운 사이트용).
+  const adLog = [];
+  let adLogSig = '';
+  setInterval(() => {
+    if (!video) return;
+    const dbg = adapter.debug?.() ?? {};
+    const hot = inAd || dbg.adOnScreen || dbg.otherVideos?.length || dbg.iframes?.length || dbg.texts?.length;
+    const sig = hot ? JSON.stringify({ inAd, ...dbg }) : '';
+    if (sig === adLogSig) return;
+    adLogSig = sig;
+    const t = new Date();
+    const stamp = `${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}:${String(t.getSeconds()).padStart(2, '0')}`;
+    adLog.push(`${stamp} ${sig || '(광고 후보 없음으로 돌아옴)'}`);
+    if (adLog.length > 80) adLog.shift();
+  }, 1000);
+
   // 2초마다 현재 값을 기록(방에 있을 때): 내 위치(pos)와 <video> 값(vct)이 어긋나는지, 방의 기준 위치와 얼마나 다른지 본다
   setInterval(() => {
     if (!video || !active()) return;
@@ -673,7 +738,7 @@
   chrome.runtime.onMessage.addListener((m, _sender, sendResponse) => {
     switch (m.cmd) {
       case CMD.DIAG:
-        if (isTop) sendResponse({ text: `[${location.hostname}] ${navigator.userAgent.split(' ').slice(-2).join(' ')}\n${diag.join('\n')}` });
+        if (isTop) sendResponse({ text: `[${location.hostname}] ${navigator.userAgent.split(' ').slice(-2).join(' ')}\n${adLog.length ? `[광고 후보 변화 기록 ${adLog.length}개]\n${adLog.join('\n')}\n[일반 기록]\n` : ''}${diag.join('\n')}` });
         break;
       case CMD.HAS_VIDEO:
         if (video) sendResponse(true); // 영상이 없는 프레임은 응답하지 않는다(응답한 프레임이 있으면 그걸 쓴다)
@@ -731,9 +796,7 @@
           const ads = (state.adIds ?? []).filter((id) => id !== state.userId).map(nameOf);
           const bufs = state.waitingIds.filter((id) => !(state.adIds ?? []).includes(id)).map(nameOf);
           const names = [...ads, ...bufs];
-          ui.showWaiting(
-            ads.length ? tr('content.adOthers', { names: ads.join(', ') }) : bufs.length ? tr('content.bufOthers', { names: bufs.join(', ') }) : null,
-          );
+          renderNotices();
           if (!names.length && state.video.playing && state.video.updatedAt > serverNow()) {
             ui.toast(tr('content.allReady'));
           }

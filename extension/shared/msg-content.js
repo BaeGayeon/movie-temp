@@ -59,6 +59,7 @@ export const MSG = {
     'ui.go': '재생!',
     // 영상 페이지의 토스트/안내
     'content.adSelf': '광고 시청 중이에요. 끝나면 다 같이 이어서 재생해요.',
+    'content.adSelfWith': '나와 {names} 님이 광고 시청 중이에요. 끝나면 같이 재생해요.',
     'content.aligned': '방 위치({t})로 맞췄어요',
     'content.hostOnly': '방장만 조작할 수 있어요',
     'content.someone': '누군가',
@@ -124,6 +125,7 @@ export const MSG = {
     'ui.clickToPlay': '▶ Click to play',
     'ui.go': 'Play!',
     'content.adSelf': "You're watching an ad. Everyone will resume together when it ends.",
+    'content.adSelfWith': 'You and {names} are watching an ad. We will resume together when it ends.',
     'content.aligned': 'Synced to the room position ({t})',
     'content.hostOnly': 'Only the host can control playback',
     'content.someone': 'Someone',
