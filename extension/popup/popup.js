@@ -506,6 +506,8 @@ function toggleEmojiPicker() {
 // 채팅 글꼴: 내 컴퓨터에 설치된 글꼴 이름만 chatPrefs.fontFamily 에 저장한다(글꼴 파일은 읽지 않는다). 내 화면의 채팅에만 적용된다.
 // 드롭다운은 "기본 글꼴" + 내 컴퓨터에서 불러온 글꼴(localFonts). 불러오기는 아래 autoLoadFonts 가 카드를 열 때 자동으로 한다.
 let localFonts = [];
+let favFonts = []; // 즐겨찾기한 글꼴 이름(내 기기에만 저장)
+let fontTab = 'all'; // 목록 안의 탭: 'all' | 'fav'
 function fontOptions(current) {
   const names = current && !localFonts.includes(current) ? [current, ...localFonts] : localFonts;
   return [['', t('popup.fontDefault')], ...names.map((f) => [f, f])];
@@ -527,22 +529,48 @@ function filterFontList() {
   const q = norm($('fontSearch').value);
   let shown = 0;
   for (const o of $('fontList').querySelectorAll('[role=option]')) {
-    o.hidden = !!q && !norm(o.textContent).includes(q);
-    if (!o.hidden) shown++;
+    const out = (fontTab === 'fav' && o.dataset.font && !favFonts.includes(o.dataset.font)) || (!!q && !norm(o.dataset.label).includes(q));
+    o.hidden = out;
+    if (!out) shown++;
   }
   $('fontList').querySelector('.nomatch')?.remove();
-  if (!shown) {
+  if (!shown || (fontTab === 'fav' && !q && !favFonts.some((f) => fontOptions(committedFont).some(([v]) => v === f)))) {
     const n = document.createElement('div');
     n.className = 'nomatch';
-    n.textContent = t('popup.fontNoMatch');
+    n.textContent = t(fontTab === 'fav' && !q ? 'popup.fontFavEmpty' : 'popup.fontNoMatch');
     $('fontList').append(n);
   }
+  paintFontTabs();
 }
+function paintFontTabs() {
+  const n = favFonts.filter((f) => fontOptions(committedFont).some(([v]) => v === f)).length;
+  for (const b of $('fontTabs').querySelectorAll('[role=tab]')) {
+    const on = b.dataset.tab === fontTab;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-selected', String(on));
+    b.textContent = b.dataset.tab === 'fav' ? t('popup.fontTabFav', { n }) : t('popup.fontTabAll');
+  }
+}
+function toggleFav(name) {
+  favFonts = favFonts.includes(name) ? favFonts.filter((f) => f !== name) : [...favFonts, name];
+  chrome.storage.local.set({ favFonts });
+  const top = $('fontList').scrollTop;
+  renderFontList(committedFont);
+  $('fontList').scrollTop = top;
+}
+$('fontTabs').addEventListener('click', (e) => {
+  const b = e.target.closest('[role=tab]');
+  if (!b) return;
+  fontTab = b.dataset.tab;
+  filterFontList();
+  $('fontSearch').focus();
+});
 const visibleOptions = () => [...$('fontList').querySelectorAll('[role=option]:not([hidden])')];
 function closeFontList(commit) {
   clearInterval(previewBeat);
   $('fontList').hidden = true;
   $('fontSearch').hidden = true;
+  $('fontTabs').hidden = true;
   $('fontSearch').value = '';
   $('fontCur').setAttribute('aria-expanded', 'false');
   chrome.storage.local.set({ chatFontPreview: null }); // 미리보기 해제(확정이면 chatPrefs 가 이미 같은 글꼴)
@@ -565,8 +593,20 @@ function renderFontList(current) {
       const o = document.createElement('div');
       o.setAttribute('role', 'option');
       o.dataset.font = value;
-      o.textContent = label;
-      if (value) o.style.fontFamily = `"${value}", sans-serif`; // 글꼴 이름을 그 글꼴로 보여 준다
+      o.dataset.label = label;
+      const lbl = document.createElement('span');
+      lbl.className = 'lbl';
+      lbl.textContent = label;
+      o.append(lbl);
+      if (value) {
+        o.style.fontFamily = `"${value}", sans-serif`; // 글꼴 이름을 그 글꼴로 보여 준다
+        const star = document.createElement('span');
+        const fav = favFonts.includes(value);
+        star.className = `star${fav ? ' on' : ''}`;
+        star.textContent = fav ? '★' : '☆';
+        star.title = t(fav ? 'popup.fontUnfav' : 'popup.fontFav');
+        o.append(star);
+      }
       o.setAttribute('aria-selected', String(value === (current ?? '')));
       return o;
     }),
@@ -577,6 +617,7 @@ function renderFontList(current) {
 function openFontList() {
   $('fontList').hidden = false;
   $('fontSearch').hidden = false;
+  $('fontTabs').hidden = false;
   $('fontSearch').value = '';
   filterFontList();
   $('fontCur').setAttribute('aria-expanded', 'true');
@@ -591,6 +632,8 @@ $('fontList').addEventListener('mouseover', (e) => {
   if (o && o !== activeOption()) setActive(o, false);
 });
 $('fontList').addEventListener('click', (e) => {
+  const star = e.target.closest('.star');
+  if (star) return toggleFav(star.parentElement.dataset.font); // 별은 즐겨찾기만 바꾸고 글꼴을 고르지는 않는다
   const o = e.target.closest('[role=option]');
   if (!o) return;
   setChatFont(o.dataset.font);
@@ -640,13 +683,18 @@ async function setChatFont(raw) {
   const { chatPrefs } = await chrome.storage.local.get('chatPrefs');
   await chrome.storage.local.set({ chatPrefs: { ...chatPrefs, fontFamily: name } });
 }
-chrome.storage.local.get(['chatPrefs', 'localFonts']).then((r) => {
+chrome.storage.local.get(['chatPrefs', 'localFonts', 'favFonts']).then((r) => {
+  favFonts = Array.isArray(r.favFonts) ? r.favFonts.filter((f) => typeof f === 'string').slice(0, 5000) : [];
   localFonts = Array.isArray(r.localFonts) ? r.localFonts.filter((f) => typeof f === 'string').slice(0, 5000) : [];
   paintFont(cleanFont(r.chatPrefs?.fontFamily));
 });
 chrome.storage.onChanged.addListener((ch, area) => {
   if (area !== 'local') return;
   if (ch.localFonts) localFonts = Array.isArray(ch.localFonts.newValue) ? ch.localFonts.newValue : [];
+  if (ch.favFonts) {
+    favFonts = Array.isArray(ch.favFonts.newValue) ? ch.favFonts.newValue.filter((f) => typeof f === 'string') : [];
+    renderFontList(committedFont);
+  }
   if (ch.localFonts || ch.chatPrefs) chrome.storage.local.get('chatPrefs').then((r) => paintFont(cleanFont(r.chatPrefs?.fontFamily)));
 });
 $('fontApply').addEventListener('click', () => setChatFont($('fontName').value));

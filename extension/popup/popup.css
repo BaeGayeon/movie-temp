@@ -129,9 +129,15 @@ details.card[open] > summary { border-bottom: 2px solid var(--border); }
 #fontSearch::-webkit-search-cancel-button { filter: invert(.8); }
 #fontList .nomatch { padding: 8px 10px; color: var(--ink-soft); font-size: 13px; }
 #fontList { max-height: 190px; overflow-y: auto; border-radius: 12px; background: var(--bg); border: 1px solid var(--border-3); padding: 4px; scrollbar-width: thin; }
-#fontList [role=option] { padding: 6px 10px; border-radius: 8px; cursor: pointer; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#fontList [role=option] { padding: 6px 10px; border-radius: 8px; cursor: pointer; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+#fontList .lbl { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#fontList .star { flex: none; font-family: system-ui, sans-serif; font-size: 15px; line-height: 1; opacity: .4; padding: 0 2px; }
+#fontList .star:hover, #fontList .star.on { opacity: 1; }
+#fontList .star.on { color: #f5c04a; }
+#fontTabs { margin-bottom: 0; }
+#fontTabs button { font-size: 13px; }
 #fontList [role=option].on, #fontList [role=option][aria-selected=true] { background: var(--surface-2); }
-#fontList [role=option][aria-selected=true]::after { content: ' ✓'; }
+#fontList [role=option][aria-selected=true] .lbl::after { content: ' ✓'; }
 .crop { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 8px; border-radius: 14px; background: var(--bg); }
 .crop canvas { width: 160px; height: 160px; border-radius: 12px; cursor: grab; touch-action: none; }
 .crop canvas.drag { cursor: grabbing; }
