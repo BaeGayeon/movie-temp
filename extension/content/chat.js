@@ -756,6 +756,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     // 입장/퇴장: 알고 있는(방에 있거나 있었던) 사람의 현재 닉네임을 우선 쓰고, 모르면 알림이 만들어질 때 저장한 닉네임(m.name)을 쓴다
     const st = getState();
     const known = st?.participants?.find((x) => x.id === m.userId) ?? st?.known?.[m.userId];
+    if (m.action === 'down') return { icon: '🔌', name: '', color: null, rest: t('chat.ev.down', { time: fmtClock(m.at ?? m.sentAt) }) };
     if (m.action === 'allback') return { icon: '🙌', name: '', color: null, rest: t('chat.ev.allback') };
     if (m.action === 'missing') return { icon: '⏳', name: '', color: null, rest: t('chat.ev.missing', { names: (m.names ?? []).join(', ') }) };
     const isMembership = m.action === 'join' || m.action === 'leave';
@@ -1235,7 +1236,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
         // 알림 줄: 안 읽은 수에는 포함하지 않는다. 입퇴장만 채팅이 접혀 있을 때 토스트로 알려 준다.
         renderEvent(m);
         scrollToBottom(false);
-        if ((prefs.collapsed || prefs.hidden) && prefs.showEvents && (m.action === 'join' || m.action === 'leave' || m.action === 'allback' || m.action === 'missing')) onNotify(eventText(m));
+        if ((prefs.collapsed || prefs.hidden) && prefs.showEvents && (m.action === 'join' || m.action === 'leave' || m.action === 'down' || m.action === 'allback' || m.action === 'missing')) onNotify(eventText(m));
         return;
       }
       const mine = m.userId === getState()?.userId;
