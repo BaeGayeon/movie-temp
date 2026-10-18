@@ -1269,3 +1269,28 @@ test('재시작 알림 뒤에는 새 연결을 받지 않는다(재접속이 죽
   await assert.rejects(() => open(), /ECONNREFUSED|ECONNRESET/);
   await srv.close();
 });
+
+test('room_state 에 서버 실행 식별값(serverId)이 있고, 서버마다 다르다', async () => {
+  const a = await new Client().open();
+  a.send({ type: 'create_room', userId: a.userId, secret: 's'.repeat(43) });
+  const id1 = (await a.next('room_state')).serverId;
+  assert.match(id1, /^[0-9a-f]{12}$/);
+  const other = createServer({ port: 0, host: '127.0.0.1', createRoomPerMin: 1000 });
+  const p = await other.listen();
+  try {
+    const ws = new WebSocket(`ws://127.0.0.1:${p}`);
+    const state = await new Promise((resolve, reject) => {
+      ws.on('message', (d) => {
+        const m = JSON.parse(d.toString());
+        if (m.type === 'room_state') resolve(m);
+      });
+      ws.once('open', () => ws.send(JSON.stringify({ type: 'create_room', userId: 'serverid-test-user', secret: 's'.repeat(43) })));
+      ws.once('error', reject);
+    });
+    assert.notEqual(state.serverId, id1, '다른 서버 실행은 다른 값');
+    ws.close();
+  } finally {
+    await other.close();
+  }
+  a.close();
+});

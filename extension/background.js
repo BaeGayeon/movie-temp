@@ -48,6 +48,7 @@ const freshRoom = () => ({
   hostId: null,
   mode: 'everyone',
   hasPassword: false,
+  serverId: null, // 마지막으로 연결한 서버 실행의 식별값(room_state 로 받는다). 다르게 바뀌면 그사이 서버가 재시작된 것이다
   restoreToken: null, // 서버가 재시작돼 방이 사라졌을 때 방을 다시 만들 자격을 보이는 서명 토큰(room_state 로 받는다). content/팝업에는 내보내지 않는다
   maxMembers: null,
   participants: [],
@@ -446,6 +447,7 @@ function handleServer(m) {
 
     case S2C.ROOM_STATE: {
       const entering = !room.roomCode; // 재접속(같은 방 복귀)이 아니라 처음 들어온 것
+      const serverChanged = !!m.serverId && !!room.serverId && m.serverId !== room.serverId; // 그사이 서버가 다시 켜졌다(종료 신호를 못 받았어도 알 수 있다)
       room = {
         ...room,
         roomCode: m.roomCode,
@@ -457,6 +459,7 @@ function handleServer(m) {
         adIds: m.adIds ?? [],
         hasPassword: !!m.hasPassword,
         restoreToken: m.restoreToken ?? room.restoreToken,
+        serverId: m.serverId ?? room.serverId,
         maxMembers: m.maxMembers ?? null,
         serverOffset: m.serverNow - Date.now(),
       };
@@ -471,7 +474,7 @@ function handleServer(m) {
       clockSamples = [];
       if (restoring) toast(t('bg.roomRestored'), LONG_TOAST_MS);
       // 방이 사라져 있었거나(복구가 필요했다), 서버가 재시작한다고 알려 왔다면: 먼저 돌아온 쪽(방이 없어 복구)이든 나중에 돌아온 쪽(이미 복구된 방에 참가)이든 똑같이 안내한다
-      if (roomWasLost || (lostAt !== null && isRestarting())) {
+      if (roomWasLost || (lostAt !== null && (serverChanged || isRestarting()))) {
         // 방이 사라졌다가 복구됐다: 언제 끊겼는지 채팅 기록에 남기고, 나머지가 돌아오길 기다렸다 한 번에 알린다
         pushNotice('down', { at: lostAt ?? Date.now() });
         waitForOthersBack(m.participants);
