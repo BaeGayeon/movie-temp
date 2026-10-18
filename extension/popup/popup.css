@@ -118,7 +118,6 @@ details.card[open] > summary { border-bottom: 2px solid var(--border); }
 #pname { width: 100%; }
 .sub { font-size: 12px; font-weight: 700; color: var(--ink-soft); margin-top: 2px; }
 .fontsample { padding: 8px 10px; border-radius: 12px; background: var(--bg); font-size: 15px; }
-#fontName { flex: 1; min-width: 0; }
 .sizerow { display: flex; align-items: center; gap: 10px; }
 .sizerow span { width: 62px; flex: none; font-size: 13px; }
 .sizerow input { flex: 1; accent-color: var(--accent); }
@@ -248,3 +247,19 @@ summary > .ic { margin-right: .45em; }
 .row.nowrap > select { padding-top: 0; padding-bottom: 0; }
 /* 아래 두께(그림자)만큼 아래 줄과 벌어져 보이도록 세로 간격을 가로 간격(8px)과 같게 맞춘다 */
 .row.nowrap:has(> .btn:not(.small):not(.ghost):not(.danger)) { margin-bottom: 3px; }
+
+/* 로비: 만들기 / 참가 */
+#lobbySeg { margin-bottom: 12px; }
+#lobbySeg button { font-size: 14px; padding: 7px 4px; }
+#lobbyCreate .opts { margin-bottom: 10px; }
+
+/* 프로필: 꾸미기(접힘) */
+.deco { margin-top: 2px; }
+.deco > summary { cursor: pointer; font-size: 13px; font-weight: 700; color: var(--ink-soft); padding: 6px 2px; user-select: none; }
+.deco[open] > summary { color: var(--ink); }
+.deco-inner { display: flex; flex-direction: column; gap: 8px; padding-top: 4px; }
+
+/* 글꼴 카드: 제목 줄 오른쪽에 그 항목만 되돌리는 버튼 */
+.sechead { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.sechead .t { font-size: 13px; font-weight: 800; }
+.sechead.sep { margin-top: 6px; padding-top: 10px; border-top: 1px solid var(--border-3); }

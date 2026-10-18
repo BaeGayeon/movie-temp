@@ -37,19 +37,27 @@
     <div id="tabRoom" class="tabpane" role="tabpanel" aria-labelledby="tabBtnRoom">
     <!-- 방이 없을 때 -->
     <section id="lobby" class="card" hidden>
-      <details class="opts" id="createOpts">
-        <summary data-i18n="popup.createOpts">방 옵션 (선택)</summary>
-        <p class="optnote" data-i18n="popup.createOptsNote">둘 다 비워 두면 누구나 들어올 수 있고 인원 제한이 없어요.</p>
-        <label><span class="lbl" data-i18n="popup.pwLabelIcon">🔒 비밀번호</span> <span class="pwwrap"><input id="createPw" type="password" data-i18n-placeholder="popup.pwPlaceholder" placeholder="영문·숫자 4~32자" autocomplete="new-password"></span></label>
-        <label><span class="lbl" data-i18n="popup.maxLabelIcon">👥 최대 인원</span> <input id="createMax" type="number" min="2" max="20" data-i18n-placeholder="popup.maxPlaceholder" placeholder="2~20명"></label>
-      </details>
-      <button id="create" class="btn primary big" data-i18n="popup.create">🎬 방 만들기</button>
-      <div class="or" data-i18n="popup.orJoin">또는 코드로 참가</div>
-      <div class="join">
-        <input id="code" data-i18n-placeholder="popup.codePlaceholder" placeholder="방 코드 6자리" autocomplete="off" spellcheck="false">
-        <button id="join" class="btn" data-i18n="popup.join">참가</button>
+      <div class="seg" id="lobbySeg" role="tablist">
+        <button type="button" role="tab" data-lobby="create" data-i18n="popup.segCreate">만들기</button>
+        <button type="button" role="tab" data-lobby="join" data-i18n="popup.segJoin">참가</button>
       </div>
-      <span class="pwwrap full"><input id="joinPw" class="joinpw" type="password" data-i18n-placeholder="popup.joinPwPlaceholder" placeholder="비밀번호 (있는 방만)" autocomplete="off"></span>
+      <div id="lobbyCreate">
+        <details class="opts" id="createOpts">
+          <summary data-i18n="popup.createOpts">방 옵션 (선택)</summary>
+          <p class="optnote" data-i18n="popup.createOptsNote">둘 다 비워 두면 누구나 들어올 수 있고 인원 제한이 없어요.</p>
+          <label><span class="lbl" data-i18n="popup.pwLabelIcon">🔒 비밀번호</span> <span class="pwwrap"><input id="createPw" type="password" data-i18n-placeholder="popup.pwPlaceholder" placeholder="영문·숫자 4~32자" autocomplete="new-password"></span></label>
+          <label><span class="lbl" data-i18n="popup.maxLabelIcon">👥 최대 인원</span> <input id="createMax" type="number" min="2" max="20" data-i18n-placeholder="popup.maxPlaceholder" placeholder="2~20명"></label>
+        </details>
+        <button id="create" class="btn primary big" data-i18n="popup.create">🎬 방 만들기</button>
+      </div>
+      <div id="lobbyJoin" hidden>
+        <div class="join">
+          <input id="code" data-i18n-placeholder="popup.codePlaceholder" placeholder="방 코드 6자리" autocomplete="off" spellcheck="false">
+          <button id="join" class="btn" data-i18n="popup.join">참가</button>
+        </div>
+        <!-- 방이 비밀번호를 요구할 때만 보인다 -->
+        <span class="pwwrap full" id="joinPwWrap" hidden><input id="joinPw" class="joinpw" type="password" data-i18n-placeholder="popup.joinPwPlaceholder" placeholder="비밀번호" autocomplete="off"></span>
+      </div>
       <p class="hint" id="noVideo" data-i18n="popup.noVideo" hidden>이 페이지에서는 영상을 찾지 못했어요. 쿠팡플레이·넷플릭스·웨이브·티빙의 영상 페이지에서 시도해 주세요.</p>
     </section>
 
@@ -139,6 +147,9 @@
         <div class="preview"><span class="av" id="pav"></span><span id="pnamePreview"></span></div>
         <div class="sec" data-i18n="popup.secName">닉네임</div>
         <input id="pname" maxlength="16" data-i18n-placeholder="popup.namePlaceholder" placeholder="닉네임 (최대 16자)" autocomplete="off">
+        <details class="deco" id="decoBox">
+          <summary data-i18n="popup.decorate">🎨 꾸미기 (닉네임 색 · 프사)</summary>
+          <div class="deco-inner">
         <div class="sub" data-i18n="popup.nameColor">닉네임 색</div>
         <div class="grid" id="colorGrid"></div>
         <div id="colorPicker" hidden></div>
@@ -164,6 +175,8 @@
         <div class="sub" data-i18n="popup.avatarBg">프사 배경색</div>
         <div class="grid" id="bgGrid"></div>
         <div id="bgPicker" hidden></div>
+          </div>
+        </details>
         <div class="row" style="margin-top:10px"><button id="saveProfile" class="btn small primary" style="flex:0 0 auto" data-i18n="popup.save" disabled>저장</button><span class="sub" id="saveHint"></span></div>
       </div>
     </details>
@@ -171,6 +184,10 @@
     <details class="card" id="fontBox" data-fold="font">
       <summary data-i18n="popup.font">🔤 채팅 글꼴·크기</summary>
       <div class="inner">
+        <div class="sechead">
+          <span class="t" data-i18n="popup.secFont">글꼴</span>
+          <button id="fontReset" class="btn small" data-i18n="popup.fontReset">기본으로</button>
+        </div>
         <div class="fontsample" id="fontSample" data-i18n="popup.fontSample">안녕하세요, 같이 봐요 ABC 123 ♥</div>
         <div class="fontpick">
           <button id="fontCur" class="btn" type="button" aria-haspopup="listbox" aria-expanded="false"></button>
@@ -183,16 +200,14 @@
         </div>
         <div class="row nowrap">
           <button id="fontLoad" class="btn small" data-i18n="popup.fontLoad" hidden>💻 내 컴퓨터 글꼴 허용하고 불러오기</button>
-          <button id="fontReset" class="btn small" data-i18n="popup.fontReset">기본으로</button>
-        </div>
-        <div class="row nowrap" id="fontManual" hidden>
-          <input id="fontName" maxlength="80" data-i18n-placeholder="popup.fontNamePlaceholder" placeholder="글꼴 이름 직접 입력" autocomplete="off">
-          <button id="fontApply" class="btn small" data-i18n="popup.apply">적용</button>
         </div>
         <div class="error" id="ferror"></div>
+        <div class="sechead sep">
+          <span class="t" data-i18n="popup.secSize">크기</span>
+          <button id="sizeReset" class="btn small" data-i18n="popup.sizeReset">크기 기본값</button>
+        </div>
         <label class="sizerow"><span data-i18n="popup.fontSize">글자 크기</span><input type="range" id="fontScale" min="0.8" max="1.6" step="0.05"></label>
         <label class="sizerow"><span data-i18n="popup.avatarSize">프사 크기</span><input type="range" id="avatarSize" min="20" max="56" step="2"></label>
-        <button id="sizeReset" class="btn small" data-i18n="popup.sizeReset">크기 기본값</button>
       </div>
     </details>
 
