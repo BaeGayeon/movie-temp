@@ -3,6 +3,9 @@ export const MSG = {
   ko: {
     'popup.pageTitle': '같이보기',
     'popup.tagline': '같이 보면 더 재밌어요 🍿',
+    'popup.tabRoom': '방',
+    'popup.tabMe': '내 설정',
+    'popup.roomSettings': '⚙️ 방 설정',
     'popup.lang': '🌐 언어',
     'popup.langAuto': '자동 (브라우저 설정)',
 
@@ -103,7 +106,7 @@ export const MSG = {
     'popup.imageLoadFail': '이미지를 불러올 수 없어요. 다른 사진을 골라 주세요.',
 
     // 채팅 글꼴·크기
-    'popup.font': '🔤 채팅 글꼴·크기',
+    'popup.font': '🔤 채팅 모양',
     'popup.fontSample': '안녕하세요, 같이 봐요 ABC 123 ♥',
     'popup.fontDefault': '기본 글꼴 (SUIT)',
     'popup.fontLoad': '💻 내 컴퓨터 글꼴 허용하고 불러오기',
@@ -129,9 +132,6 @@ export const MSG = {
     'popup.sync': '⚙️ 동기화 설정',
     'popup.adDetect': '광고 구간은 동기화에서 제외',
     'popup.adDetectTip': '90초보다 짧은 영상은 광고로 보고, 광고 중에는 재생·일시정지·이동을 주고받지 않아요',
-    'popup.copyDiag': '🛠 진단 정보 복사',
-    'popup.copyDiagTip': '재생 위치/광고/주고받은 동작의 최근 기록을 복사해요. 문제가 생겼을 때 붙여 넣어 알려 주세요',
-    'popup.noDiag': '이 탭에는 기록이 없어요',
 
     // 이모지 선택기
     'picker.searchPlaceholder': '이모지 검색 (예: 웃음, 하트, ㅋㅋ, cry)',
@@ -160,6 +160,9 @@ export const MSG = {
   en: {
     'popup.pageTitle': 'Watch Together',
     'popup.tagline': 'Everything is more fun together 🍿',
+    'popup.tabRoom': 'Room',
+    'popup.tabMe': 'My settings',
+    'popup.roomSettings': '⚙️ Room settings',
     'popup.lang': '🌐 Language',
     'popup.langAuto': 'Auto (browser)',
 
@@ -260,7 +263,7 @@ export const MSG = {
     'popup.imageLoadFail': "Couldn't load that image. Please pick another photo.",
 
     // Chat font & size
-    'popup.font': '🔤 Chat font & size',
+    'popup.font': '🔤 Chat appearance',
     'popup.fontSample': 'Hello, let’s watch together ABC 123 ♥',
     'popup.fontDefault': 'Default font (SUIT)',
     'popup.fontLoad': '💻 Allow & load my computer’s fonts',
@@ -286,9 +289,6 @@ export const MSG = {
     'popup.sync': '⚙️ Sync settings',
     'popup.adDetect': 'Skip ad breaks when syncing',
     'popup.adDetectTip': 'Videos shorter than 90 seconds are treated as ads, and play/pause/seek aren’t shared during ads',
-    'popup.copyDiag': '🛠 Copy diagnostics',
-    'popup.copyDiagTip': 'Copies recent playback position, ad and sync activity. Paste it when reporting a problem.',
-    'popup.noDiag': 'No logs on this tab',
 
     // Emoji picker
     'picker.searchPlaceholder': 'Search emoji (e.g. smile, heart, cry)',

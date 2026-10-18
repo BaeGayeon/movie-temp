@@ -30,6 +30,25 @@ for (const d of document.querySelectorAll('details[data-fold]')) {
   });
 }
 
+// 탭: 방 / 내 설정. 마지막으로 본 탭을 기억한다
+const TABS = { room: $('tabRoom'), me: $('tabMe') };
+function showTab(name) {
+  if (!(name in TABS)) name = 'room';
+  for (const [k, pane] of Object.entries(TABS)) pane.hidden = k !== name;
+  for (const b of document.querySelectorAll('.tabs [data-tab]')) {
+    const on = b.dataset.tab === name;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-selected', String(on));
+  }
+}
+showTab((await chrome.storage.local.get('popupTab')).popupTab);
+$('tabBtnRoom').parentElement.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-tab]');
+  if (!b) return;
+  showTab(b.dataset.tab);
+  chrome.storage.local.set({ popupTab: b.dataset.tab });
+});
+
 // 글자 앞 이모지를 따로 감싸서 글자와 세로 가운데를 맞추고 간격을 둔다(동적으로 바뀌는 문구도 포함)
 const LEAD_EMOJI = /^(\p{Extended_Pictographic}\uFE0F?(?:\u200d\p{Extended_Pictographic}\uFE0F?)*)(\s+)(?=\S)/u;
 function decorate(root) {
@@ -356,19 +375,6 @@ $('copy').addEventListener('click', async () => {
     return;
   }
   setTimeout(() => ($('copy').textContent = t('popup.copyLink')), 1500);
-});
-
-// ---------- 진단 정보: 현재 탭의 최근 동작 기록을 클립보드로 ----------
-$('copyDiag').addEventListener('click', async () => {
-  try {
-    const tab = await activeTab();
-    const reply = await chrome.tabs.sendMessage(tab.id, { cmd: CMD.DIAG });
-    await navigator.clipboard.writeText(reply.text);
-    $('copyDiag').textContent = t('popup.copiedBang');
-  } catch {
-    $('copyDiag').textContent = t('popup.noDiag');
-  }
-  setTimeout(() => ($('copyDiag').textContent = t('popup.copyDiag')), 1800);
 });
 
 // ---------- 동기화 설정: 광고 구간 제외 ----------

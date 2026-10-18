@@ -39,16 +39,7 @@
     if (Math.abs(off - timeOffset) >= 1) log('본편 위치 보정', { offset: +off.toFixed(1), was: +timeOffset.toFixed(1), why, vct: video ? +video.currentTime.toFixed(1) : null });
     timeOffset = off;
   }
-  // 진단용 기록: 최근 동작을 링 버퍼에 남겨 두고, 팝업의 "진단 정보 복사"로 꺼낼 수 있다(재생 위치/광고/주고받은 이벤트가 어긋나는 문제를 볼 때 쓴다).
-  const diag = [];
-  const note = (...a) => {
-    const t = new Date();
-    const stamp = `${String(t.getMinutes()).padStart(2, '0')}:${String(t.getSeconds()).padStart(2, '0')}.${String(t.getMilliseconds()).padStart(3, '0')}`;
-    diag.push(`${stamp} ${a.map((x) => (typeof x === 'string' ? x : JSON.stringify(x))).join(' ')}`);
-    if (diag.length > 400) diag.shift();
-  };
   const log = (...a) => {
-    note(...a);
     console.log('[bmt]', isTop ? 'top' : 'iframe', ...a); // 진단용 로그
   };
   // 호스트별 어댑터: 넷플릭스는 <video> 를 직접 조작하면 오류(M7375)가 나서 전용 어댑터를 쓴다
@@ -283,7 +274,6 @@
   function seekTo(t) {
     if (!video || Math.abs(pos() - t) < SEEK_THRESHOLD) return;
     expect('seeked');
-    note('seekTo', +t.toFixed(1), 'from pos', +pos().toFixed(1), 'offset', +timeOffset.toFixed(1));
     if (Date.now() < alignNoticeUntil && Math.abs(pos() - t) >= 3) ui.toast(tr('content.aligned', { t: clock(t) }));
     alignNoticeUntil = 0;
     if (adapter.contentSeek) pendingSeek = { target: t, at: Date.now() };
@@ -498,7 +488,6 @@
 
   const fromOurSeek = (type) => {
     if (Date.now() >= ourSeekUntil) return false;
-    note('이동 중 영상 이벤트 무시', type);
     return true;
   };
   const onPlay = () => !consume('play') && !fromOurSeek('play') && onLocal('play');
@@ -661,20 +650,9 @@
   setInterval(scan, 3000); // 레이아웃 변화 등 DOM 변경 없이 영상이 나타나는 경우 대비
   scan();
 
-  // 2초마다 현재 값을 기록(방에 있을 때): 내 위치(pos)와 <video> 값(vct)이 어긋나는지, 방의 기준 위치와 얼마나 다른지 본다
-  setInterval(() => {
-    if (!video || !active()) return;
-    const v = state.video;
-    note('snap', { pos: +pos().toFixed(1), vct: +video.currentTime.toFixed(1), off: +timeOffset.toFixed(1), dur: Number.isFinite(video.duration) ? Math.round(video.duration) : null, paused: video.paused, inAd,
-      room: { t: +v.time.toFixed(1), playing: v.playing, exp: +roomTimeNow().toFixed(1) }, wait: state.waitingIds?.length ?? 0, ads: state.adIds?.length ?? 0, ...(adapter.debug?.() ?? {}) });
-  }, 2000);
-
   // ---------- background 메시지 ----------
   chrome.runtime.onMessage.addListener((m, _sender, sendResponse) => {
     switch (m.cmd) {
-      case CMD.DIAG:
-        if (isTop) sendResponse({ text: `[${location.hostname}] ${navigator.userAgent.split(' ').slice(-2).join(' ')}\n${diag.join('\n')}` });
-        break;
       case CMD.HAS_VIDEO:
         if (video) sendResponse(true); // 영상이 없는 프레임은 응답하지 않는다(응답한 프레임이 있으면 그걸 쓴다)
         break;
@@ -702,7 +680,6 @@
       }
       case CMD.SYNC:
         state = m.state;
-        note('recv sync', state.video);
         applyRoomVideo();
         break;
       case CMD.SEED:
@@ -713,7 +690,6 @@
         break;
       case CMD.REMOTE_VIDEO:
         state = m.state;
-        if (m.msg.action !== 'sync') note('recv', m.msg.action, m.msg.time, 'from', m.msg.fromId?.slice(0, 4));
         if (isTop && m.msg.action !== 'sync') ui.hideCountdown();
         applyRemote(m.msg);
         break;
@@ -727,7 +703,6 @@
         break;
       case CMD.BUFFER:
         state = m.state;
-        note('recv buffer', { video: state.video, waiting: state.waitingIds?.length, ads: state.adIds?.length });
         applyRoomVideo(); // 대기 중이면 멈추고, 모두 준비되면 예약된 시각에 함께 재개
         if (isTop) {
           const nameOf = (id) => state.participants.find((p) => p.id === id)?.name ?? tr('content.someone'); // 내 이름도 "나" 대신 닉네임으로

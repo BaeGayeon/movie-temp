@@ -19,6 +19,12 @@
   <main>
     <!-- 연결 안내/오류: 맨 위에 두어 눈에 띄게 한다 -->
     <div class="error" id="error" role="status"></div>
+    <nav class="tabs" role="tablist">
+      <button type="button" role="tab" id="tabBtnRoom" data-tab="room" data-i18n="popup.tabRoom">방</button>
+      <button type="button" role="tab" id="tabBtnMe" data-tab="me" data-i18n="popup.tabMe">내 설정</button>
+    </nav>
+
+    <div id="tabRoom" class="tabpane" role="tabpanel" aria-labelledby="tabBtnRoom">
     <!-- 방이 없을 때 -->
     <section id="lobby" class="card" hidden>
       <details class="opts" id="createOpts">
@@ -56,25 +62,6 @@
             <button id="copy" class="btn primary" data-i18n="popup.copyLink">🔗 링크 복사</button>
             <button id="copyCode" class="btn" data-i18n="popup.copyCode">📋 코드 복사</button>
           </div>
-          <div class="row nowrap">
-            <button id="chatToggle" class="btn small"></button>
-            <button id="leave" class="btn ghost small" data-i18n="popup.leaveBye">나가기 👋</button>
-          </div>
-        </div>
-      </details>
-
-      <details class="card" data-fold="people" open>
-        <summary><span data-i18n="popup.people">🧑‍🤝‍🧑 같이 보는 사람</span> <span class="count" id="count"></span></summary>
-        <div class="inner"><ul class="people" id="people"></ul></div>
-      </details>
-
-      <details class="card" id="hostBox" data-fold="host" open>
-        <summary data-i18n="popup.control">🎮 조작 권한</summary>
-        <div class="inner">
-          <div class="seg" id="modeSeg">
-            <button data-mode="everyone" data-i18n="popup.modeEveryone">🙌 모두 조작</button>
-            <button data-mode="host_only" data-i18n="popup.modeHost">👑 방장만</button>
-          </div>
           <div class="row nowrap" id="countdownRow">
             <select id="seconds" data-i18n-aria-label="popup.secondsLabel" aria-label="카운트다운 초">
               <option value="3" data-i18n="popup.seconds3">3초</option>
@@ -85,35 +72,56 @@
           </div>
         </div>
       </details>
-      <!-- 방장만 보인다: 방 안에서 비밀번호/최대 인원을 바꾼다 -->
-      <details class="card" id="optBox" data-fold="options" hidden>
-        <summary data-i18n="popup.roomOpts">🔒 방 옵션</summary>
+
+      <details class="card" data-fold="people" open>
+        <summary><span data-i18n="popup.people">🧑‍🤝‍🧑 같이 보는 사람</span> <span class="count" id="count"></span></summary>
+        <div class="inner"><ul class="people" id="people"></ul></div>
+      </details>
+
+      <!-- 조작 권한은 모두에게 보이고(방장만 바꿈), 비밀번호/최대 인원은 방장에게만 보인다 -->
+      <details class="card" id="hostBox" data-fold="host" open>
+        <summary data-i18n="popup.roomSettings">⚙️ 방 설정</summary>
         <div class="inner">
-          <div class="optline">
-            <span class="lbl" data-i18n="popup.pwLabel">비밀번호</span>
-            <span class="optval" id="pwValue"></span>
-            <button id="pwEye" class="iconbtn" type="button" hidden></button>
-            <button id="pwCopy" class="btn small" type="button" data-i18n="popup.copy" hidden>복사</button>
+          <div class="sub" data-i18n="popup.control">🎮 조작 권한</div>
+          <div class="seg" id="modeSeg">
+            <button data-mode="everyone" data-i18n="popup.modeEveryone">🙌 모두 조작</button>
+            <button data-mode="host_only" data-i18n="popup.modeHost">👑 방장만</button>
           </div>
-          <div class="row nowrap" id="pwButtons">
-            <button id="pwEdit" class="btn small" type="button"></button>
-            <button id="pwRemove" class="btn small danger" type="button" data-i18n="popup.delete">삭제</button>
+          <div id="optBox" hidden>
+            <div class="sec" data-i18n="popup.roomOpts">🔒 방 옵션</div>
+            <div class="optline">
+              <span class="lbl" data-i18n="popup.pwLabel">비밀번호</span>
+              <span class="optval" id="pwValue"></span>
+              <button id="pwEye" class="iconbtn" type="button" hidden></button>
+              <button id="pwCopy" class="btn small" type="button" data-i18n="popup.copy" hidden>복사</button>
+            </div>
+            <div class="row nowrap" id="pwButtons">
+              <button id="pwEdit" class="btn small" type="button"></button>
+              <button id="pwRemove" class="btn small danger" type="button" data-i18n="popup.delete">삭제</button>
+            </div>
+            <div class="row nowrap" id="pwForm" hidden>
+              <span class="pwwrap"><input id="pwNew" type="password" data-i18n-placeholder="popup.newPwPlaceholder" placeholder="새 비밀번호 (영문·숫자 4~32자)" autocomplete="new-password"></span>
+              <button id="pwSave" class="btn small primary" type="button" data-i18n="popup.save">저장</button>
+              <button id="pwCancel" class="btn small" type="button" data-i18n="popup.cancel">취소</button>
+            </div>
+            <div class="optline">
+              <span class="lbl" data-i18n="popup.maxLabel">최대 인원</span>
+              <input id="maxEdit" type="number" min="2" max="20" data-i18n-placeholder="popup.noLimit" placeholder="제한 없음">
+              <button id="maxSave" class="btn small" type="button" data-i18n="popup.save">저장</button>
+            </div>
+            <p class="optnote" data-i18n="popup.optsNote">바꿔도 이미 있는 사람은 나가지 않아요. 새로 들어오는 사람부터 적용돼요.</p>
           </div>
-          <div class="row nowrap" id="pwForm" hidden>
-            <span class="pwwrap"><input id="pwNew" type="password" data-i18n-placeholder="popup.newPwPlaceholder" placeholder="새 비밀번호 (영문·숫자 4~32자)" autocomplete="new-password"></span>
-            <button id="pwSave" class="btn small primary" type="button" data-i18n="popup.save">저장</button>
-            <button id="pwCancel" class="btn small" type="button" data-i18n="popup.cancel">취소</button>
-          </div>
-          <div class="optline">
-            <span class="lbl" data-i18n="popup.maxLabel">최대 인원</span>
-            <input id="maxEdit" type="number" min="2" max="20" data-i18n-placeholder="popup.noLimit" placeholder="제한 없음">
-            <button id="maxSave" class="btn small" type="button" data-i18n="popup.save">저장</button>
-          </div>
-          <p class="optnote" data-i18n="popup.optsNote">바꿔도 이미 있는 사람은 나가지 않아요. 새로 들어오는 사람부터 적용돼요.</p>
         </div>
       </details>
       <p class="wait" id="waitInfo" hidden></p>
+      <div class="row nowrap roomfoot">
+        <button id="chatToggle" class="btn small"></button>
+        <button id="leave" class="btn ghost small" data-i18n="popup.leaveBye">나가기 👋</button>
+      </div>
     </section>
+    </div>
+
+    <div id="tabMe" class="tabpane" role="tabpanel" aria-labelledby="tabBtnMe" hidden>
 
     <details class="card" id="profileBox" data-fold="profile">
       <summary data-i18n="popup.profile">🎨 내 프로필</summary>
@@ -182,7 +190,6 @@
       <summary data-i18n="popup.sync">⚙️ 동기화 설정</summary>
       <div class="inner">
         <label class="check" data-i18n-title="popup.adDetectTip" title="90초보다 짧은 영상은 광고로 보고, 광고 중에는 재생·일시정지·이동을 주고받지 않아요"><input type="checkbox" id="adDetect"> <span data-i18n="popup.adDetect">광고 구간은 동기화에서 제외</span></label>
-        <button id="copyDiag" class="btn small" data-i18n="popup.copyDiag" data-i18n-title="popup.copyDiagTip" title="재생 위치/광고/주고받은 동작의 최근 기록을 복사해요. 문제가 생겼을 때 붙여 넣어 알려 주세요">🛠 진단 정보 복사</button>
       </div>
     </details>
 
@@ -193,6 +200,7 @@
         <option value="en">English</option>
       </select>
     </label>
+    </div>
   </main>
   <script type="module" src="popup.js"></script>
 </body>

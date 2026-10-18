@@ -224,3 +224,15 @@ summary > .ic { margin-right: .45em; }
 .langrow select { font-size: 12px; padding: 4px 26px 4px 10px; }
 
 .sec { font-size: 13px; font-weight: 800; margin-top: 6px; padding-top: 10px; border-top: 1px solid var(--border-3); }
+
+/* ---- 탭(방 / 내 설정) ---- */
+.tabs { display: flex; padding: 3px; gap: 3px; background: var(--surface-2); border-radius: 999px; }
+.tabs button { flex: 1; font: inherit; font-weight: 700; padding: 7px 4px; border: 0; border-radius: 999px; background: transparent; color: var(--ink-soft); cursor: pointer; }
+.tabs button.on { background: var(--surface); color: var(--accent-ink); box-shadow: 0 2px 6px var(--btn-shadow); }
+.tabs button:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--border-3); }
+.tabpane { display: flex; flex-direction: column; gap: 12px; }
+.roomfoot { justify-content: space-between; }
+.roomfoot .btn { flex: 0 0 auto; }
+#optBox { display: flex; flex-direction: column; gap: 8px; }
+#optBox[hidden] { display: none; }
+#optBox .optline, #optBox #pwButtons, #optBox #pwForm { margin-bottom: 0; }
