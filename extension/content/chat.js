@@ -96,7 +96,14 @@ const CSS = `
   .rbtn:hover { color: var(--ink); background: var(--surface-3); }
   .quote { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; font-size: .857em; color: var(--ink-soft);
     background: transparent; border-left: 2px solid var(--border-3); padding: 0 0 0 6px; cursor: pointer; }
+  .quote::before { content: '↩ '; }
   .quote:hover { color: var(--ink); }
+  .msg.me .quote { text-align: right; border-left: 0; border-right: 2px solid var(--border-3); padding: 0 6px 0 0; } /* 오른쪽 정렬(내 말풍선)에서는 선과 화살표도 오른쪽 기준 */
+  .msg.me .quote::before { content: ''; }
+  .msg.me .quote::after { content: ' ↪'; }
+  .list.plain .msg.me .quote, .list.compact .msg.me .quote { text-align: left; border-right: 0; border-left: 2px solid var(--border-3); padding: 0 0 0 6px; } /* 줄글/간단은 모두 왼쪽 정렬 */
+  .list.plain .msg.me .quote::before, .list.compact .msg.me .quote::before { content: '↩ '; }
+  .list.plain .msg.me .quote::after, .list.compact .msg.me .quote::after { content: ''; }
   .quote.gone { cursor: default; font-style: italic; }
   .replying { display: flex; align-items: center; gap: 6px; margin: 0 8px; padding: 4px 8px; font-size: 12px; color: var(--ink-soft); background: var(--surface-2); border-radius: 10px; }
   .replying[hidden] { display: none; }
@@ -848,7 +855,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
   function fillQuote(m) {
     const orig = findById(m.replyTo);
     m.quoteEl.classList.toggle('gone', !orig);
-    m.quoteEl.textContent = orig ? `↩ ${profileOf(orig.userId).name}: ${snippet(orig.text)}` : '↩ 볼 수 없는 메시지에 대한 답장';
+    m.quoteEl.textContent = orig ? `${profileOf(orig.userId).name}: ${snippet(orig.text)}` : '볼 수 없는 메시지에 대한 답장'; // 화살표는 CSS(::before/::after)
   }
   function jumpTo(id) {
     const orig = findById(id);
