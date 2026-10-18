@@ -33,6 +33,7 @@ export class RoomManager {
     bufferWaitMs = 15_000, // 버퍼링 대기 상한
     adWaitMs = 10 * 60_000, // 광고 대기 상한(광고는 길 수 있다)
     resumeDelayMs = 500, // 모두 준비된 뒤 함께 재개하기까지의 여유
+    maxRooms = 3000, // 서버 전체 방 수 상한(방은 메모리에 있다)
     joinFailLimit = 10, // 연결 주소(IP) 당 이 횟수만큼 참가에 실패(없는 방/틀린 비밀번호)하면 잠시 차단
     joinFailWindowMs = 60_000,
     now = () => Date.now(),
@@ -44,6 +45,7 @@ export class RoomManager {
     this.adWaitMs = adWaitMs;
     this.resumeDelayMs = resumeDelayMs;
     this.now = now;
+    this.maxRooms = maxRooms;
     this.joinFailLimit = joinFailLimit;
     this.joinFailWindowMs = joinFailWindowMs;
     this.joinFails = new Map(); // ip -> { count, resetAt }
@@ -71,6 +73,10 @@ export class RoomManager {
 
   create(conn, userId, { password, maxMembers, lang } = {}) {
     this.leave(conn);
+    if (this.rooms.size >= this.maxRooms) {
+      conn.send({ type: S2C.ERROR, code: ERR.SERVER_FULL, message: '지금 서버가 가득 찼어요. 잠시 뒤에 다시 시도해 주세요.' });
+      return;
+    }
     const room = {
       code: this.#newCode(),
       hostId: null,

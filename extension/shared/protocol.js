@@ -54,6 +54,9 @@ export const ERR = {
   WRONG_PASSWORD: 'wrong_password',
   ROOM_FULL: 'room_full', // 오류 메시지에 max(방의 최대 인원)를 함께 보낸다
   TOO_MANY_ATTEMPTS: 'too_many_attempts', // 참가 실패가 잦아 잠시 차단
+  TOO_MANY_CONNECTIONS: 'too_many_connections', // 같은 주소(IP)에서 동시 연결이 너무 많거나 서버 전체 연결 수가 가득 참(서버가 이 에러를 보내고 연결을 닫는다)
+  TOO_MANY_ROOMS: 'too_many_rooms', // 같은 주소(IP)에서 방을 너무 자주 만듦
+  SERVER_FULL: 'server_full', // 서버 전체 방 수가 가득 참
 };
 
 export const VIDEO_ACTIONS = ['play', 'pause', 'seek'];

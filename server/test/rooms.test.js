@@ -6,7 +6,8 @@ import WebSocket from 'ws';
 import { createServer } from '../src/index.js';
 import { RoomManager } from '../src/rooms.js';
 
-const app = createServer({ port: 0, host: '127.0.0.1', graceMs: 200, emptyTtlMs: 200, bufferWaitMs: 400, resumeDelayMs: 100 });
+// 테스트는 모두 같은 주소(127.0.0.1)에서 오므로 IP 당 제한은 넉넉하게 둔다(제한 자체는 아래 별도 테스트가 확인)
+const app = createServer({ port: 0, host: '127.0.0.1', graceMs: 200, emptyTtlMs: 200, bufferWaitMs: 400, resumeDelayMs: 100, maxConnPerIp: 1000, createRoomPerMin: 1000 });
 let port;
 before(async () => {
   port = await app.listen();
@@ -977,4 +978,101 @@ test('기본 닉네임: 클라이언트 언어(lang)에 따라 게스트/Guest, 
   const st2 = await ko.next('room_state');
   assert.match(st2.participants.find((p) => p.id === ko.userId).name, /^Guest\d{4}$/);
   en.a.close(); bad.close(); ko.close();
+});
+
+
+// ---- 남용 방지: 연결 수 / 방 수 상한 (이슈 #39)
+async function limitedServer(opts) {
+  const srv = createServer({ port: 0, host: '127.0.0.1', ...opts });
+  const p = await srv.listen();
+  const open = () =>
+    new Promise((resolve, reject) => {
+      const ws = new WebSocket(`ws://127.0.0.1:${p}`);
+      const msgs = [];
+      const closed = new Promise((r) => ws.once('close', (code) => r(code)));
+      ws.on('message', (d) => msgs.push(JSON.parse(d.toString())));
+      ws.once('open', () => resolve({ ws, msgs, closed }));
+      ws.once('error', reject);
+    });
+  return { srv, open };
+}
+
+test('IP 당 동시 연결 수 상한: 넘으면 too_many_connections 를 알리고 닫는다, 하나 닫으면 다시 가능', async () => {
+  const { srv, open } = await limitedServer({ maxConnPerIp: 2 });
+  try {
+    const a = await open();
+    const b = await open();
+    const c = await open();
+    assert.equal(await c.closed, 1013);
+    assert.equal(c.msgs[0].type, 'error');
+    assert.equal(c.msgs[0].code, 'too_many_connections');
+    assert.equal(a.ws.readyState, WebSocket.OPEN, '이미 열린 연결은 그대로');
+    a.ws.close();
+    await a.closed;
+    await sleep(50);
+    const d = await open();
+    await sleep(100);
+    assert.equal(d.ws.readyState, WebSocket.OPEN);
+    assert.equal(d.msgs.length, 0);
+    b.ws.close();
+    d.ws.close();
+  } finally {
+    await srv.close();
+  }
+});
+
+test('서버 전체 연결 수 상한', async () => {
+  const { srv, open } = await limitedServer({ maxConnections: 2, maxConnPerIp: 100 });
+  try {
+    const a = await open();
+    const b = await open();
+    const c = await open();
+    assert.equal(await c.closed, 1013);
+    assert.equal(c.msgs[0].code, 'too_many_connections');
+    a.ws.close();
+    b.ws.close();
+  } finally {
+    await srv.close();
+  }
+});
+
+test('IP 당 분당 방 만들기 횟수 상한: 넘으면 too_many_rooms, 방은 만들어지지 않는다', async () => {
+  const { srv, open } = await limitedServer({ createRoomPerMin: 2 });
+  try {
+    const a = await open();
+    for (let i = 0; i < 3; i++) a.ws.send(JSON.stringify({ type: 'create_room', userId: `ratelimit-user-${i}` }));
+    await sleep(200);
+    assert.equal(a.msgs.filter((m) => m.type === 'room_created').length, 2);
+    assert.equal(a.msgs.filter((m) => m.code === 'too_many_rooms').length, 1);
+    assert.equal(srv.rooms.rooms.size, 2);
+    a.ws.close();
+  } finally {
+    await srv.close();
+  }
+});
+
+test('서버 전체 방 수 상한: 넘으면 server_full, 방이 닫히면 다시 만들 수 있다', async () => {
+  const { srv, open } = await limitedServer({ maxRooms: 1, createRoomPerMin: 100 });
+  try {
+    const a = await open();
+    const b = await open();
+    a.ws.send(JSON.stringify({ type: 'create_room', userId: 'fullserver-user-a' }));
+    await sleep(100);
+    assert.equal(a.msgs.some((m) => m.type === 'room_created'), true);
+    b.ws.send(JSON.stringify({ type: 'create_room', userId: 'fullserver-user-b' }));
+    await sleep(100);
+    assert.equal(b.msgs.find((m) => m.type === 'error')?.code, 'server_full');
+    assert.equal(b.msgs.some((m) => m.type === 'room_created'), false);
+    a.ws.send(JSON.stringify({ type: 'leave_room' }));
+    await sleep(100);
+    // 방에서 나가도 비어 있는 방은 잠시 남는다: 전체 방 수는 방이 실제로 삭제될 때 줄어든다
+    for (const code of [...srv.rooms.rooms.keys()]) srv.rooms.rooms.delete(code);
+    b.ws.send(JSON.stringify({ type: 'create_room', userId: 'fullserver-user-b' }));
+    await sleep(100);
+    assert.equal(b.msgs.some((m) => m.type === 'room_created'), true);
+    a.ws.close();
+    b.ws.close();
+  } finally {
+    await srv.close();
+  }
 });
