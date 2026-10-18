@@ -207,3 +207,5 @@ summary > .ic { margin-right: .45em; }
 /* ---- 언어 선택 ---- */
 .langrow { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin: 10px 2px 2px; font-size: 12px; color: var(--ink-soft); }
 .langrow select { font-size: 12px; padding: 4px 26px 4px 10px; }
+
+.sec { font-size: 13px; font-weight: 800; margin-top: 6px; padding-top: 10px; border-top: 1px solid var(--border-3); }
