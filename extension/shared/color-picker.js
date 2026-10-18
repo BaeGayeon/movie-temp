@@ -1,5 +1,6 @@
 // 색 직접 고르기: 채도/밝기 사각형 + 색상 막대 + #rrggbb 입력.
 // 크롬 확장 팝업에서는 네이티브 <input type=color> 창을 열면 팝업이 닫히는 경우가 있어서 직접 만들었다.
+import { t } from './i18n.js';
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 export const isHex = (v) => /^#[0-9a-f]{6}$/i.test(v ?? '');
 
@@ -36,14 +37,14 @@ export function createColorPicker({ value = '#8cc8ff', onChange }) {
   hue.min = '0';
   hue.max = '360';
   hue.className = 'cp-hue';
-  hue.setAttribute('aria-label', '색상');
+  hue.setAttribute('aria-label', t('picker.hue'));
   const row = div('cp-row');
   const preview = div('cp-preview');
   const hex = document.createElement('input');
   hex.className = 'cp-hex';
   hex.maxLength = 7;
   hex.spellcheck = false;
-  hex.setAttribute('aria-label', '색 코드');
+  hex.setAttribute('aria-label', t('picker.hex'));
   row.append(preview, hex);
   root.append(sv, hue, row);
   // 사이트/팝업의 단축키가 입력 중에 끼어들지 않도록

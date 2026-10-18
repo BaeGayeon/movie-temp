@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy Policy - bae-movie-temp (Baemoomtem)</title>
+<style>
+  body { font-family: -apple-system, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; line-height: 1.7; max-width: 720px; margin: 0 auto; padding: 24px 16px 64px; color: #222; }
+  h1 { font-size: 24px; } h2 { font-size: 18px; margin-top: 32px; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; } th, td { border: 1px solid #ccc; padding: 6px 8px; text-align: left; vertical-align: top; }
+  th { background: #f3f3f3; } .muted { color: #666; font-size: 14px; }
+</style>
+</head>
+<body>
+<h1>Privacy Policy</h1>
+<p class="muted">bae-movie-temp (배무템) · Effective date: 2026-10-13 · <a href="/privacy?lang=ko">한국어</a></p>
+
+<p>bae-movie-temp (the "Service") is a Chrome extension and a sync server that lets each person play a video with their own account while keeping only the playback state (play, pause, seek) in sync.
+The Service has no sign-up or login, and it does not collect or transmit the video itself or any of your streaming account information (ID, password, payment details, etc.).</p>
+
+<h2>1. Information sent to the server</h2>
+<p>When you create or join a room, the information below is sent to the sync server and passed on to the other people in the same room.</p>
+<table>
+  <tr><th>Information</th><th>Purpose</th></tr>
+  <tr><td>A randomly generated user ID (created by the extension when it is installed)</td><td>Telling users apart in a room and reconnecting after a dropped connection</td></tr>
+  <tr><td>Nickname, profile emoji or profile photo (an image shrunk to 64×64), text color</td><td>Showing you to the others in the room</td></tr>
+  <tr><td>Room code, room permission setting, maximum number of people (optional)</td><td>Telling rooms apart; managing who can control playback and how many people can join</td></tr>
+  <tr><td>The room password (if the host set one) and the password you type when joining</td><td>Letting only people who know the password in. The server keeps it only as a hash in memory, deletes it along with the room, and never passes it to other participants or writes it to logs. The extension keeps it only briefly in memory (gone when the browser is closed) for reconnecting, and never writes it to disk.</td></tr>
+  <tr><td>Playback state and position (playing/paused, the time you jumped to), whether you are buffering or waiting for an ad</td><td>Playing together from the same position</td></tr>
+  <tr><td>Chat messages, typing indicators, emoji reactions, and the playback position when a message was sent</td><td>Delivering them to the others in the room</td></tr>
+</table>
+<p>The server handles this information in memory only, while the room exists. It does not store anything, including chat content, on disk or in a database. The room disappears some time after everyone has left, or after a long period (about 1 hour) with no activity even if people are still in it.
+Your IP address may remain in the hosting provider's ordinary operating logs (the server environment); the Service does not separately collect or use it. When you open an invite link, a request goes to the server to check whether that room still exists (only the room code is sent; the answer says only whether the room exists and whether it has a password). To prevent brute-forcing of room codes, the server counts requests and failed join attempts (rooms that don't exist, wrong passwords) per IP address, in memory, for 1 minute only.</p>
+
+<h2>2. Information stored on your device</h2>
+<p>The extension stores the information below only in your browser (chrome.storage.local) and does not send it to the server.</p>
+<ul>
+  <li>Your user ID, your profile (nickname, emoji/photo, color), chat window settings (size, position, shape, opacity, text and profile picture size, the name of the font you chose and the list of font names loaded from your computer, etc.), popup settings, and your language setting</li>
+  <li>Information kept for switching profile pictures: the shrunk original photo (longest side 512px or less) so you can adjust its position later, the photo profile picture (64×64) kept while you use an emoji one, and the most recent emoji kept while you use a photo one. Only the profile picture you are currently using (64×64 or an emoji) is sent to the server and the other participants; these stored copies are not sent. Pressing "Remove" on the profile picture also deletes the stored photo copies</li>
+  <li>Recent chat history (only a recent part, valid only for a limited time) so you can pick up where you left off when you leave a room and rejoin the same one</li>
+</ul>
+<p>Uninstalling the extension deletes this information too.</p>
+
+<h2>3. Web pages the extension accesses</h2>
+<p>The extension works only on pages of the supported video sites (Coupang Play, Netflix, Wavve, TVING), and uses only the video element on the page (playback state, playback position, whether an ad is showing) and the page address (to check whether you have left the page the room is tied to).
+It does not read or transmit the video content, your viewing history, or your account information.</p>
+
+<h2>4. Third parties and advertising</h2>
+<p>The Service does not sell or provide the information it collects to third parties, and does not use advertising or analytics tools.
+The information in section 1 is passed on to the other participants in the same room. People who don't know the room code or invite link can't enter the room, so please share the link only with the people you will watch with.</p>
+
+<h2>5. Retention and deletion</h2>
+<p>As described in section 1, room information on the server is deleted when the room disappears. You can delete or change your own information by leaving a room, changing your profile, or uninstalling the extension.</p>
+
+<h2>6. Changes to this policy</h2>
+<p>If this policy changes, we will post the changes and the effective date on this page.</p>
+
+<h2>7. Contact</h2>
+<p>Questions about personal information: <a href="mailto:ebgy918@gmail.com">ebgy918@gmail.com</a></p>
+</body>
+</html>

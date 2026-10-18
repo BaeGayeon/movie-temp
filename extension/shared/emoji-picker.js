@@ -1,6 +1,7 @@
 // 이모지 선택기: 검색 + 그룹 탭 + 최근 사용. content(shadow DOM)와 popup 에서 같이 쓴다.
 // 검색은 한국어/영어 이름과 태그(예: 웃음, 하트, ㅋㅋ, cry)로 한다. 키워드 데이터(약 170KB)는 처음 검색할 때만 불러온다.
 import { EMOJI_GROUPS } from './emoji-data.js';
+import { t } from './i18n.js';
 
 const RECENT_KEY = 'recentEmojis';
 const MAX_RECENT = 24;
@@ -47,7 +48,7 @@ export function createEmojiPicker({ onPick }) {
   root.className = 'ep';
   const search = document.createElement('input');
   search.className = 'ep-search';
-  search.placeholder = '이모지 검색 (예: 웃음, 하트, ㅋㅋ, cry)';
+  search.placeholder = t('picker.searchPlaceholder');
   search.autocomplete = 'off';
   search.spellcheck = false;
   // 사이트의 단축키(스페이스=재생 등)가 검색 입력 중에 동작하지 않도록 키 이벤트를 여기서 끊는다
@@ -63,7 +64,7 @@ export function createEmojiPicker({ onPick }) {
   grid.className = 'ep-grid';
   root.append(search, tabs, title, grid);
 
-  const groups = [{ icon: '🕘', name: '최근 사용', recent: true }, ...EMOJI_GROUPS];
+  const groups = [{ icon: '🕘', name: t('picker.recent'), recent: true }, ...EMOJI_GROUPS.map((g, i) => ({ ...g, name: t(`picker.group.${i}`) }))];
   let current = 1; // 기본은 첫 그룹(표정). 최근 사용이 있으면 열 때 최근 탭으로
   const buttons = groups.map((g, i) => {
     const b = document.createElement('button');
@@ -82,14 +83,14 @@ export function createEmojiPicker({ onPick }) {
   let keywords = null;
   let searchSeq = 0;
 
-  function renderList(list, heading) {
+  function renderList(list, heading, searching = false) {
     title.textContent = heading;
     grid.replaceChildren();
     grid.scrollTop = 0;
     if (!list.length) {
       const empty = document.createElement('div');
       empty.className = 'ep-empty';
-      empty.textContent = heading.startsWith('검색') ? '검색 결과가 없어요' : '아직 사용한 이모지가 없어요';
+      empty.textContent = searching ? t('picker.noResults') : t('picker.noRecent');
       grid.append(empty);
       return;
     }
@@ -131,7 +132,7 @@ export function createEmojiPicker({ onPick }) {
     }
     scored.sort((a, b) => b[0] - a[0]);
     buttons.forEach((b) => b.classList.remove('on'));
-    renderList(scored.slice(0, 240).map((x) => x[1]), `검색 결과 ${scored.length}개`);
+    renderList(scored.slice(0, 240).map((x) => x[1]), t('picker.results', { n: scored.length }), true);
   }
   search.addEventListener('input', runSearch);
 

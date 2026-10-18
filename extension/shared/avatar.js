@@ -1,5 +1,6 @@
 // 프사 표시/생성 공용 모듈 (content, popup 에서 사용)
 import { MAX_AVATAR_IMAGE_BYTES } from './protocol.js';
+import { t } from './i18n.js';
 
 const AVATAR_PX = 64;
 const SOURCE_PX = 512;
@@ -55,7 +56,7 @@ export function bitmapToAvatarDataUrl(bmp, crop) {
       if (url.startsWith(`data:${type};`) && dataUrlBytes(url) <= MAX_AVATAR_IMAGE_BYTES) return url;
     }
   }
-  throw new Error('이미지를 20KB 이하로 줄일 수 없어요.');
+  throw Object.assign(new Error(t('avatar.tooBig')), { code: 'AVATAR_TOO_BIG' });
 }
 
 // 위치 다시 맞추기용 원본: 긴 변 512px 이하로 줄인 WebP(안 되면 JPEG). 내 기기(chrome.storage.local)에만 보관하고 서버로는 보내지 않는다.

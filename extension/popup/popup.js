@@ -6,6 +6,7 @@ import { createEmojiPicker, EMOJI_PICKER_CSS } from '../shared/emoji-picker.js';
 import { ROOT_THEME_CSS, pastelize } from '../shared/theme.js';
 import { createColorPicker, isHex } from '../shared/color-picker.js';
 import { cleanFont } from '../shared/fontname.js';
+import { initI18n, applyI18n, onLangChange, getLangPref, setLangPref, t } from '../shared/i18n.js';
 
 // 디자인 토큰(다크)과 이모지 선택기 스타일 주입
 const themeStyle = document.createElement('style');
@@ -13,6 +14,8 @@ themeStyle.textContent = `${ROOT_THEME_CSS} ${EMOJI_PICKER_CSS}`;
 document.head.append(themeStyle);
 
 const $ = (id) => document.getElementById(id);
+await initI18n();
+applyI18n();
 $('title').textContent = APP_NAME;
 $('titleKo').textContent = `(${APP_NAME_KO})`;
 
@@ -56,9 +59,9 @@ async function activeTab() {
 }
 
 const CONN = {
-  connected: ['🟢 연결됨', ''],
-  connecting: ['🟡 연결 중…', 'warn'],
-  disconnected: ['🔴 끊김 · 재연결 중', 'bad'],
+  connected: ['popup.connConnected', ''],
+  connecting: ['popup.connConnecting', 'warn'],
+  disconnected: ['popup.connDisconnected', 'bad'],
 };
 
 let curTabId = null; // 지금 보고 있는 탭
@@ -70,8 +73,8 @@ function render() {
   $('lobby').hidden = inRoom;
   $('room').hidden = !here;
   $('elsewhere').hidden = !elsewhere;
-  $('elsewhereSite').textContent = state?.site || '다른 탭';
-  $('error').textContent = state?.error ?? (state?.waking ? '서버를 깨우는 중이에요 (최대 1분)…' : '');
+  $('elsewhereTitle').textContent = t('popup.elsewhere', { site: state?.site || t('popup.otherTab') });
+  $('error').textContent = state?.error ?? (state?.waking ? t('popup.waking') : '');
   $('error').classList.toggle('info', !state?.error && !!state?.waking);
   // 비밀번호가 필요한 방에 참가하려다 거절됨: 코드를 채워 두고 비밀번호 칸으로 안내
   if (state?.needPassword && !inRoom && document.activeElement !== $('joinPw') && $('joinPw').dataset.askedFor !== state.needPassword.roomCode) {
@@ -89,10 +92,11 @@ function render() {
       return c;
     }),
   );
-  const [connText, connCls] = CONN[state.connection] ?? CONN.disconnected;
-  $('conn').textContent = connText;
+  const [connKey, connCls] = CONN[state.connection] ?? CONN.disconnected;
+  $('conn').textContent = t(connKey);
   $('conn').className = `status ${connCls}`;
-  $('count').textContent = `${state.hasPassword ? '🔒 ' : ''}${state.participants.length}${state.maxMembers ? `/${state.maxMembers}` : ''}명`;
+  const n = state.participants.length;
+  $('count').textContent = `${state.hasPassword ? '🔒 ' : ''}${n === 1 && !state.maxMembers ? t('popup.countOne') : t('popup.count', { n: state.maxMembers ? `${n}/${state.maxMembers}` : n })}`;
 
   // 참가자: 프사 + 닉네임 + 방장/나 표시
   $('people').replaceChildren(
@@ -105,8 +109,8 @@ function render() {
       name.className = 'pname';
       name.textContent = p.name; // textContent
       li.append(av, name);
-      if (p.id === state.hostId) li.append(badge('👑 방장', ''));
-      if (p.id === state.userId) li.append(badge('나', 'me'));
+      if (p.id === state.hostId) li.append(badge(t('popup.badgeHost'), ''));
+      if (p.id === state.userId) li.append(badge(t('popup.badgeMe'), 'me'));
       return li;
     }),
   );
@@ -120,9 +124,9 @@ function render() {
   $('countdownRow').hidden = !isHost;
   $('optBox').hidden = !isHost;
   if (isHost) renderOptions();
-  const waiting = state.waitingIds.map((id) => state.participants.find((p) => p.id === id)?.name ?? '누군가');
+  const waiting = state.waitingIds.map((id) => state.participants.find((p) => p.id === id)?.name ?? t('popup.someone'));
   $('waitInfo').hidden = waiting.length === 0;
-  $('waitInfo').textContent = `⏳ ${waiting.join(', ')} 님을 기다리는 중이에요`;
+  $('waitInfo').textContent = t('popup.waiting', { names: waiting.join(', ') });
 }
 
 // ---------- 방장용 방 옵션(비밀번호 확인/변경/삭제, 최대 인원) ----------
@@ -141,12 +145,12 @@ function paintPw() {
   const value = $('pwValue');
   const known = has && !!knownPw;
   value.classList.toggle('mono', known);
-  value.textContent = !has ? '설정 안 함' : known ? (pwShown ? knownPw : '•'.repeat(knownPw.length)) : '설정돼 있어요 (이 기기에서는 볼 수 없어요)';
+  value.textContent = !has ? t('popup.pwNone') : known ? (pwShown ? knownPw : '•'.repeat(knownPw.length)) : t('popup.pwUnknown');
   $('pwEye').hidden = !known;
   $('pwCopy').hidden = !known;
   $('pwEye').innerHTML = pwShown ? EYE_OFF : EYE; // 정적 SVG 문자열만 넣는다
-  $('pwEye').setAttribute('aria-label', pwShown ? '비밀번호 숨기기' : '비밀번호 보기');
-  $('pwEdit').textContent = has ? '변경' : '설정';
+  $('pwEye').setAttribute('aria-label', pwShown ? t('popup.pwHide') : t('popup.pwShow'));
+  $('pwEdit').textContent = has ? t('popup.pwChange') : t('popup.pwSet');
   $('pwRemove').hidden = !has;
 }
 
@@ -179,11 +183,11 @@ $('pwCancel').addEventListener('click', () => {
 });
 $('pwSave').addEventListener('click', async () => {
   const pw = $('pwNew').value;
-  if (!isValidNewPassword(pw)) return ($('error').textContent = `비밀번호는 영문과 숫자 ${MIN_PASSWORD_LENGTH}~${MAX_PASSWORD_LENGTH}자로 정해 주세요.`);
+  if (!isValidNewPassword(pw)) return ($('error').textContent = t('popup.pwInvalid', { min: MIN_PASSWORD_LENGTH, max: MAX_PASSWORD_LENGTH }));
   if (await setOptions({ password: pw })) $('pwCancel').click();
 });
 $('pwRemove').addEventListener('click', async () => {
-  if (confirm('비밀번호를 없앨까요? 누구나 방 코드만 알면 들어올 수 있게 돼요.')) await setOptions({ password: null });
+  if (confirm(t('popup.pwRemoveAsk'))) await setOptions({ password: null });
 });
 $('pwEye').addEventListener('click', () => {
   pwShown = !pwShown;
@@ -192,12 +196,12 @@ $('pwEye').addEventListener('click', () => {
 $('pwCopy').addEventListener('click', async () => {
   if (!knownPw) return;
   await navigator.clipboard.writeText(knownPw).catch(() => {});
-  $('pwCopy').textContent = '복사됨';
-  setTimeout(() => ($('pwCopy').textContent = '복사'), 1200);
+  $('pwCopy').textContent = t('popup.copied');
+  setTimeout(() => ($('pwCopy').textContent = t('popup.copy')), 1200);
 });
 $('maxSave').addEventListener('click', async () => {
   const n = $('maxEdit').value ? Number($('maxEdit').value) : null;
-  if (n !== null && !isValidMaxMembers(n)) return ($('error').textContent = `최대 인원은 ${MIN_ROOM_MEMBERS}~${MAX_ROOM_MEMBERS}명으로 정해 주세요.`);
+  if (n !== null && !isValidMaxMembers(n)) return ($('error').textContent = t('popup.maxInvalid', { min: MIN_ROOM_MEMBERS, max: MAX_ROOM_MEMBERS }));
   await setOptions({ maxMembers: n });
 });
 
@@ -242,8 +246,9 @@ for (const wrap of document.querySelectorAll('.pwwrap')) {
   const sync = () => {
     const shown = input.type === 'text';
     btn.innerHTML = shown ? EYE_OFF : EYE; // 정적 SVG 문자열만 넣는다
-    btn.setAttribute('aria-label', shown ? '비밀번호 숨기기' : '비밀번호 보기');
+    btn.setAttribute('aria-label', shown ? t('popup.pwHide') : t('popup.pwShow'));
   };
+  btn.syncLabel = sync;
   btn.addEventListener('click', () => {
     input.type = input.type === 'password' ? 'text' : 'password';
     sync();
@@ -261,8 +266,8 @@ $('create').addEventListener('click', async () => {
   const tab = await activeTab();
   const password = $('createPw').value;
   const maxMembers = $('createMax').value ? Number($('createMax').value) : undefined;
-  if (password && !isValidNewPassword(password)) return ($('error').textContent = `비밀번호는 영문과 숫자 ${MIN_PASSWORD_LENGTH}~${MAX_PASSWORD_LENGTH}자로 정해 주세요.`);
-  if (maxMembers !== undefined && !isValidMaxMembers(maxMembers)) return ($('error').textContent = `최대 인원은 ${MIN_ROOM_MEMBERS}~${MAX_ROOM_MEMBERS}명으로 정해 주세요.`);
+  if (password && !isValidNewPassword(password)) return ($('error').textContent = t('popup.pwInvalid', { min: MIN_PASSWORD_LENGTH, max: MAX_PASSWORD_LENGTH }));
+  if (maxMembers !== undefined && !isValidMaxMembers(maxMembers)) return ($('error').textContent = t('popup.maxInvalid', { min: MIN_ROOM_MEMBERS, max: MAX_ROOM_MEMBERS }));
   chrome.runtime.sendMessage({ cmd: CMD.CREATE_ROOM, tabId: tab?.id, site: tab?.url, password: password || undefined, maxMembers });
   $('createPw').value = ''; // 비밀번호를 입력칸에 남기지 않는다
   $('createPw').parentElement.hidePassword();
@@ -279,7 +284,11 @@ $('countdown').addEventListener('click', () =>
   chrome.runtime.sendMessage({ cmd: CMD.COUNTDOWN_START, seconds: Number($('seconds').value) }),
 );
 // 채팅 숨기기/보이기: 채팅 설정(chatPrefs.hidden)을 바꾸면 방 화면의 채팅이 따라간다
-const paintChatToggle = (hidden) => ($('chatToggle').textContent = hidden ? '💬 채팅 보이기' : '💬 채팅 숨기기');
+let chatHidden = false;
+const paintChatToggle = (hidden) => {
+  chatHidden = hidden;
+  $('chatToggle').textContent = hidden ? t('popup.chatShow') : t('popup.chatHide');
+};
 chrome.storage.local.get('chatPrefs').then((r) => paintChatToggle(!!r.chatPrefs?.hidden));
 $('chatToggle').addEventListener('click', async () => {
   const { chatPrefs } = await chrome.storage.local.get('chatPrefs');
@@ -291,13 +300,13 @@ function confirmLeave(row) {
   const keep = [...row.children];
   const q = document.createElement('span');
   q.className = 'confirm-q';
-  q.textContent = '정말 나갈까요?';
+  q.textContent = t('popup.leaveAsk');
   const yes = document.createElement('button');
   yes.className = 'btn danger small';
-  yes.textContent = '나가기';
+  yes.textContent = t('popup.leave');
   const no = document.createElement('button');
   no.className = 'btn small';
-  no.textContent = '취소';
+  no.textContent = t('popup.cancel');
   const restore = () => row.replaceChildren(...keep);
   yes.addEventListener('click', () => {
     restore();
@@ -322,8 +331,8 @@ $('modeSeg').addEventListener('click', (e) => {
 
 $('copyCode').addEventListener('click', async () => {
   await navigator.clipboard.writeText(state.roomCode);
-  $('copyCode').textContent = '✅ 복사됨!';
-  setTimeout(() => ($('copyCode').textContent = '📋 코드 복사'), 1500);
+  $('copyCode').textContent = t('popup.copiedBang');
+  setTimeout(() => ($('copyCode').textContent = t('popup.copyCode')), 1500);
 });
 
 $('copy').addEventListener('click', async () => {
@@ -332,26 +341,25 @@ $('copy').addEventListener('click', async () => {
     const url = new URL(tab.url);
     url.searchParams.set('wp', state.roomCode);
     await navigator.clipboard.writeText(url.toString());
-    $('copy').textContent = '✅ 복사됨!';
+    $('copy').textContent = t('popup.copiedBang');
   } catch {
-    $('error').textContent = '이 탭의 주소로는 초대 링크를 만들 수 없어요.';
+    $('error').textContent = t('popup.noInviteLink');
     return;
   }
-  setTimeout(() => ($('copy').textContent = '🔗 링크 복사'), 1500);
+  setTimeout(() => ($('copy').textContent = t('popup.copyLink')), 1500);
 });
 
 // ---------- 진단 정보: 현재 탭의 최근 동작 기록을 클립보드로 ----------
 $('copyDiag').addEventListener('click', async () => {
-  const label = $('copyDiag').textContent;
   try {
     const tab = await activeTab();
     const reply = await chrome.tabs.sendMessage(tab.id, { cmd: CMD.DIAG });
     await navigator.clipboard.writeText(reply.text);
-    $('copyDiag').textContent = '✅ 복사됨!';
+    $('copyDiag').textContent = t('popup.copiedBang');
   } catch {
-    $('copyDiag').textContent = '이 탭에는 기록이 없어요';
+    $('copyDiag').textContent = t('popup.noDiag');
   }
-  setTimeout(() => ($('copyDiag').textContent = label), 1800);
+  setTimeout(() => ($('copyDiag').textContent = t('popup.copyDiag')), 1800);
 });
 
 // ---------- 동기화 설정: 광고 구간 제외 ----------
@@ -394,7 +402,7 @@ function swatches(container, pickerBox, key, colors, current, onPick) {
   const more = document.createElement('button');
   more.className = `sw rainbow${last ? ' has' : ''}${isCustom ? ' sel' : ''}`;
   if (last) more.style.setProperty('--custom', last);
-  more.title = '직접 고르기';
+  more.title = t('popup.pickColor');
   more.addEventListener('click', () => {
     if (!pickerBox.hidden && isCustom) {
       pickerBox.hidden = true; // 선택된 상태에서 다시 누르면 닫기
@@ -417,9 +425,9 @@ function renderProfile() {
   const isImage = profile.avatar.kind === 'image';
   $('clearPhoto').hidden = !isImage && !alt.image;
   $('swapAvatar').hidden = isImage ? !alt.emoji : !alt.image;
-  $('swapAvatar').textContent = isImage ? `${alt.emoji} 이모지로` : '🖼 사진으로';
+  $('swapAvatar').textContent = isImage ? t('popup.swapToEmoji', { emoji: alt.emoji }) : t('popup.swapToPhoto');
   $('editPhoto').hidden = profile.avatar.kind !== 'image' || !(draftSource === undefined ? hasPhotoSource : draftSource);
-  $('pnamePreview').textContent = profile.name || '닉네임';
+  $('pnamePreview').textContent = profile.name || t('popup.namePreview');
   $('pnamePreview').style.color = pastelize(profile.color); // 채팅에서 보이는 대로(닉네임은 글자색)
   $('emojiGrid').replaceChildren(
     ...AVATARS.map((e) => {
@@ -440,7 +448,7 @@ let dirty = false;
 function setDirty(v) {
   dirty = v;
   $('saveProfile').disabled = !v;
-  $('saveHint').textContent = v ? '저장해야 반영돼요' : '';
+  $('saveHint').textContent = v ? t('popup.saveNeeded') : '';
 }
 function pickEmoji(e) {
   if (profile.avatar.kind === 'image') alt.image = profile.avatar.value; // 쓰던 사진은 보관
@@ -456,7 +464,7 @@ $('saveProfile').addEventListener('click', () => {
   // 닉네임을 비워 둬도 색/프사는 저장되도록, 비었으면 지금 쓰는 이름을 쓴다
   const name = profile.name.trim() || state?.participants?.find((p) => p.id === state.userId)?.name || '';
   if (name.length < 1 || name.length > MAX_NAME_LENGTH) {
-    $('saveHint').textContent = '닉네임을 입력해 주세요';
+    $('saveHint').textContent = t('popup.nameNeeded');
     return;
   }
   profile = { ...profile, name };
@@ -467,7 +475,7 @@ $('saveProfile').addEventListener('click', () => {
   hasPhotoSource = draftSource === undefined ? hasPhotoSource : !!draftSource;
   draftSource = undefined;
   setDirty(false);
-  $('saveHint').textContent = '저장했어요';
+  $('saveHint').textContent = t('popup.saved');
   setTimeout(() => !dirty && ($('saveHint').textContent = ''), 1500);
 });
 
@@ -478,8 +486,8 @@ let picker = null;
 function moreEmojiButton() {
   const b = document.createElement('button');
   b.textContent = '＋';
-  b.title = '모든 이모지';
-  b.setAttribute('aria-label', '모든 이모지');
+  b.title = t('popup.allEmoji');
+  b.setAttribute('aria-label', t('popup.allEmoji'));
   b.addEventListener('click', toggleEmojiPicker);
   return b;
 }
@@ -500,7 +508,7 @@ function toggleEmojiPicker() {
 let localFonts = [];
 function fontOptions(current) {
   const names = current && !localFonts.includes(current) ? [current, ...localFonts] : localFonts;
-  return [['', '기본 글꼴 (SUIT)'], ...names.map((f) => [f, f])];
+  return [['', t('popup.fontDefault')], ...names.map((f) => [f, f])];
 }
 // 목록을 훑는 동안(마우스 올리기, ↑↓) 샘플 글과 채팅에 미리 적용하고(저장 안 함), 클릭/Enter 로 확정, 닫기/Esc 로 취소한다.
 let committedFont = '';
@@ -543,7 +551,7 @@ function renderFontList(current) {
       return o;
     }),
   );
-  $('fontCur').textContent = current || '기본 글꼴 (SUIT)';
+  $('fontCur').textContent = current || t('popup.fontDefault');
 }
 function openFontList() {
   $('fontList').hidden = false;
@@ -630,8 +638,8 @@ async function loadLocalFonts() {
     $('fontManual').hidden = false; // 목록을 못 불러올 때만 이름 직접 입력을 보여 준다
     $('ferror').textContent =
       err?.name === 'NotAllowedError' || err?.name === 'SecurityError'
-        ? '글꼴 목록을 볼 수 있는 권한이 필요해요. 허용하지 않으면 아래에 글꼴 이름을 직접 입력해 주세요.'
-        : `글꼴 목록을 불러오지 못했어요(${err?.name ?? '오류'}). 아래에 글꼴 이름을 직접 입력해 주세요.`;
+        ? t('popup.fontNeedPermission')
+        : t('popup.fontLoadFail', { err: err?.name ?? t('popup.fontErrorFallback') });
   }
 }
 async function autoLoadFonts() {
@@ -642,7 +650,7 @@ async function autoLoadFonts() {
   } catch {}
   if (state === 'denied') {
     $('fontManual').hidden = false;
-    $('ferror').textContent = '글꼴 접근이 차단돼 있어요. 크롬 설정에서 허용하거나, 아래에 글꼴 이름을 직접 입력해 주세요.';
+    $('ferror').textContent = t('popup.fontBlocked');
     return;
   }
   if (state === 'granted' || navigator.userActivation?.isActive) await loadLocalFonts();
@@ -684,7 +692,7 @@ $('file').addEventListener('change', async (e) => {
   try {
     openCropper(await createImageBitmap(file));
   } catch {
-    $('perror').textContent = '이미지를 불러올 수 없어요. 다른 사진을 골라 주세요.';
+    $('perror').textContent = t('popup.imageLoadFail');
   }
 });
 
@@ -790,7 +798,7 @@ $('cropApply').addEventListener('click', () => {
     alt.image = null;
     update({ avatar: { kind: 'image', value: url, bg: profile.avatar.bg } });
   } catch (err) {
-    $('perror').textContent = err.message?.includes('20KB') ? err.message : '이미지를 불러올 수 없어요. 다른 사진을 골라 주세요.';
+    $('perror').textContent = err.code === 'AVATAR_TOO_BIG' ? err.message : t('popup.imageLoadFail');
   }
 });
 $('editPhoto').addEventListener('click', async () => {
@@ -848,6 +856,29 @@ chrome.runtime.onMessage.addListener((m) => {
   if (m.cmd === CMD.STATE) {
     state = m.state;
     render();
+  }
+});
+
+// ---------- 언어 선택 ----------
+$('langSel').value = getLangPref();
+$('langSel').addEventListener('change', (e) => setLangPref(e.target.value));
+// 언어가 바뀌면(이 팝업에서 고르거나 다른 곳에서 바뀌면) 열려 있는 채로 다시 그린다
+onLangChange(() => {
+  applyI18n();
+  $('langSel').value = getLangPref();
+  render();
+  renderProfile();
+  paintPw();
+  paintChatToggle(chatHidden);
+  if (dirty) $('saveHint').textContent = t('popup.saveNeeded');
+  renderFontList(committedFont);
+  for (const b of document.querySelectorAll('.pweye')) b.syncLabel?.();
+  if (picker) {
+    // 이모지 선택기는 만들 때 문구가 정해지므로 새 언어로 다시 만든다
+    const wasOpen = !$('pickerBox').hidden;
+    picker = null;
+    $('pickerBox').replaceChildren();
+    if (wasOpen) toggleEmojiPicker();
   }
 });
 

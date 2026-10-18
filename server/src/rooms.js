@@ -60,7 +60,7 @@ export class RoomManager {
       if (room.participants.size === 0 || now - room.lastActivityAt < this.idleTtlMs) continue;
       for (const p of room.participants.values()) {
         clearTimeout(p.graceTimer);
-        p.conn?.send({ type: S2C.ERROR, code: ERR.ROOM_NOT_FOUND, message: '오랫동안 아무 활동이 없어서 방이 닫혔어요.' });
+        p.conn?.send({ type: S2C.ERROR, code: ERR.ROOM_IDLE_CLOSED, message: '오랫동안 아무 활동이 없어서 방이 닫혔어요.' });
         if (p.conn) p.conn.roomCode = null;
       }
       clearTimeout(room.emptyTimer);
@@ -69,7 +69,7 @@ export class RoomManager {
     }
   }
 
-  create(conn, userId, { password, maxMembers } = {}) {
+  create(conn, userId, { password, maxMembers, lang } = {}) {
     this.leave(conn);
     const room = {
       code: this.#newCode(),
@@ -90,7 +90,7 @@ export class RoomManager {
       maxMembers: maxMembers ?? null,
     };
     this.rooms.set(room.code, room);
-    this.#attach(room, conn, userId);
+    this.#attach(room, conn, userId, lang);
     conn.send({ type: S2C.ROOM_CREATED, roomCode: room.code, hostId: room.hostId });
     conn.send(this.#stateMsg(room));
   }
@@ -112,8 +112,8 @@ export class RoomManager {
     e.count++;
   }
 
-  join(conn, roomCode, userId, password) {
-    const reject = (code, message) => conn.send({ type: S2C.ERROR, code, message });
+  join(conn, roomCode, userId, password, lang) {
+    const reject = (code, message, extra) => conn.send({ type: S2C.ERROR, code, message, ...extra });
     if (this.#joinBlocked(conn.ip)) {
       reject(ERR.TOO_MANY_ATTEMPTS, '참가 시도가 너무 많아요. 잠시 뒤에 다시 해 주세요.');
       return;
@@ -138,12 +138,12 @@ export class RoomManager {
         }
       }
       if (room.maxMembers && room.participants.size >= room.maxMembers) {
-        reject(ERR.ROOM_FULL, `방이 가득 찼어요 (최대 ${room.maxMembers}명).`);
+        reject(ERR.ROOM_FULL, `방이 가득 찼어요 (최대 ${room.maxMembers}명).`, { max: room.maxMembers });
         return;
       }
     }
     if (conn.roomCode && (conn.roomCode !== roomCode || conn.userId !== userId)) this.leave(conn);
-    const { isNew, participant } = this.#attach(room, conn, userId);
+    const { isNew, participant } = this.#attach(room, conn, userId, lang);
     if (isNew) {
       this.#broadcast(room, { type: S2C.PARTICIPANT_JOINED, user: pub(participant) }, userId);
     }
@@ -203,7 +203,7 @@ export class RoomManager {
     if (!found) return;
     const { room, p } = found;
     if (p.id !== room.hostId) {
-      conn.send({ type: S2C.ERROR, code: ERR.NOT_ALLOWED, message: '방장만 카운트다운을 시작할 수 있어요.' });
+      conn.send({ type: S2C.ERROR, code: ERR.NOT_ALLOWED, reason: 'countdown', message: '방장만 카운트다운을 시작할 수 있어요.' });
       return;
     }
     const now = this.now();
@@ -428,7 +428,7 @@ export class RoomManager {
     }
   }
 
-  #attach(room, conn, userId) {
+  #attach(room, conn, userId, lang) {
     let p = room.participants.get(userId);
     const isNew = !p;
     if (p) {
@@ -446,7 +446,7 @@ export class RoomManager {
       if (!room.profiles.has(userId)) {
         const color = DEFAULT_COLORS[(seq - 1) % DEFAULT_COLORS.length];
         room.profiles.set(userId, {
-          name: `게스트${randomInt(1000, 10000)}`,
+          name: `${lang === 'en' ? 'Guest' : '게스트'}${randomInt(1000, 10000)}`,
           avatar: { kind: 'emoji', value: DEFAULT_AVATAR_EMOJI, bg: color },
           color,
         });
