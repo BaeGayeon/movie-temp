@@ -654,7 +654,10 @@ async function autoLoadFonts() {
     return;
   }
   if (state === 'granted' || navigator.userActivation?.isActive) await loadLocalFonts();
-  else $('fontLoad').hidden = false;
+  else {
+    $('fontLoad').hidden = false;
+    $('ferror').textContent = t('popup.fontLoadHint'); // 허용 창이 뜨면 팝업이 닫힐 수 있다는 안내
+  }
 }
 $('fontLoad').addEventListener('click', loadLocalFonts);
 $('fontBox').addEventListener('toggle', () => {
