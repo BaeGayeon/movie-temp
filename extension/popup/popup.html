@@ -121,8 +121,12 @@
       <summary data-i18n="popup.profile">🎨 내 프로필</summary>
       <div class="inner">
         <div class="preview"><span class="av" id="pav"></span><span id="pnamePreview"></span></div>
+        <div class="sec" data-i18n="popup.secName">닉네임</div>
         <input id="pname" maxlength="16" data-i18n-placeholder="popup.namePlaceholder" placeholder="닉네임 (최대 16자)" autocomplete="off">
-        <div class="sub" data-i18n="popup.avatar">프사</div>
+        <div class="sub" data-i18n="popup.nameColor">닉네임 색</div>
+        <div class="grid" id="colorGrid"></div>
+        <div id="colorPicker" hidden></div>
+        <div class="sec" data-i18n="popup.avatar">프사</div>
         <div class="grid" id="emojiGrid"></div>
         <div class="row" style="flex-wrap:wrap">
           <button id="upload" class="btn small" data-i18n="popup.upload">📷 사진 올리기</button>
@@ -144,9 +148,6 @@
         <div class="sub" data-i18n="popup.avatarBg">프사 배경색</div>
         <div class="grid" id="bgGrid"></div>
         <div id="bgPicker" hidden></div>
-        <div class="sub" data-i18n="popup.nameColor">닉네임 색</div>
-        <div class="grid" id="colorGrid"></div>
-        <div id="colorPicker" hidden></div>
         <div class="row" style="margin-top:10px"><button id="saveProfile" class="btn small primary" style="flex:0 0 auto" data-i18n="popup.save" disabled>저장</button><span class="sub" id="saveHint"></span></div>
       </div>
     </details>
