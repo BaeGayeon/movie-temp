@@ -92,11 +92,14 @@ const CSS = `
   .fold { background: none; padding: 0; margin-left: 6px; color: var(--ink-soft); text-decoration: underline; font-size: .9em; }
   .fold:hover { color: var(--ink); }
   .text a { color: inherit; text-decoration: underline; }
-  .rbtn { background: transparent; color: var(--ink-soft); font-size: 12px; padding: 0 4px; border-radius: 6px; opacity: 0; transition: opacity .1s; }
-  .msg:hover .rbtn, .rbtn:focus-visible { opacity: 1; }
-  .rbtn:hover { color: var(--ink); background: var(--surface-3); }
-  .msg.me .rbtn { transform: scaleX(-1); } /* 오른쪽 정렬(내 말풍선)에서는 화살표도 반대로 */
-  .list.plain .msg.me .rbtn, .list.compact .msg.me .rbtn { transform: none; }
+  /* 답장 버튼: 레이아웃에서 빼서(absolute) 말풍선 모서리에 띄운다. 창이 좁아도 줄바꿈/여백이 생기지 않는다. 마우스를 올렸을 때만 보인다 */
+  .bwrap { position: relative; max-width: 100%; min-width: 0; }
+  .rbtn { position: absolute; top: -11px; right: 4px; z-index: 1; width: 22px; height: 22px; padding: 0; display: flex; align-items: center; justify-content: center;
+    border-radius: 50%; background: var(--surface-3); color: var(--ink); font-size: 12px; line-height: 1; box-shadow: 0 1px 4px rgba(0,0,0,.35); opacity: 0; pointer-events: none; transition: opacity .1s; }
+  .msg:hover .rbtn, .rbtn:focus-visible { opacity: 1; pointer-events: auto; }
+  .rbtn:hover { background: var(--accent); color: var(--on-accent); }
+  .msg.me .rbtn { right: auto; left: 4px; transform: scaleX(-1); } /* 오른쪽 정렬(내 말풍선)에서는 반대쪽 모서리, 화살표도 반대로 */
+  .list.plain .msg.me .rbtn, .list.compact .msg.me .rbtn { right: 4px; left: auto; transform: none; }
   .quote { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; font-size: .857em; color: var(--ink-soft);
     background: transparent; border-left: 2px solid var(--border-3); padding: 0 0 0 6px; cursor: pointer; }
   .quote::before { content: '↩ '; }
@@ -810,12 +813,6 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     const body = el('div', 'body');
     const nameLine = el('div', 'name');
     nameLine.append(el('span', 'name-text'), el('span', 'meta'));
-    if (m.id) {
-      const rbtn = el('button', 'rbtn', '↩');
-      rbtn.title = t('chat.reply');
-      rbtn.addEventListener('click', () => startReply(m.id));
-      nameLine.append(rbtn);
-    }
     const entry = { ...m, el: row };
     body.append(nameLine);
     if (m.replyTo) {
@@ -824,7 +821,16 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
       body.append(entry.quoteEl);
       fillQuote(entry);
     }
-    body.append(messageText(m.text));
+    const bwrap = el('div', 'bwrap');
+    bwrap.append(messageText(m.text));
+    if (m.id) {
+      const rbtn = el('button', 'rbtn', '↩');
+      rbtn.title = t('chat.reply');
+      rbtn.setAttribute('aria-label', t('chat.reply'));
+      rbtn.addEventListener('click', () => startReply(m.id));
+      bwrap.append(rbtn);
+    }
+    body.append(bwrap);
     row.append(el('span', 'av'), body);
     applyProfile(row, m.userId);
     renderMeta(entry);
