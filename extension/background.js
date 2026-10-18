@@ -634,7 +634,7 @@ async function onCommand(m, sender) {
         const msg = { type: C2S.CREATE_ROOM, userId };
         if (m.password) {
           if (!isValidNewPassword(m.password)) {
-            lastError = '비밀번호는 4~32자로 정해 주세요.';
+            lastError = '비밀번호는 영문과 숫자 4~32자로 정해 주세요.';
             broadcast();
             return { ok: false };
           }

@@ -122,13 +122,15 @@ export function validateProfile(p) {
 }
 export const MODES = ['host_only', 'everyone'];
 
-// 방 옵션: 비밀번호(선택, 4~32자)와 최대 인원(선택, 2~20명)
+// 방 옵션: 비밀번호(선택, 영문·숫자 4~32자)와 최대 인원(선택, 2~20명)
 export const MIN_PASSWORD_LENGTH = 4;
 export const MAX_PASSWORD_LENGTH = 32;
 export const MIN_ROOM_MEMBERS = 2;
 export const MAX_ROOM_MEMBERS = 20;
+// 비밀번호는 영문과 숫자만(방 코드와 같은 글자 종류). 팝업 입력칸도 같은 규칙으로 막는다.
+export const PASSWORD_CHARS_RE = /^[A-Za-z0-9]+$/;
 export const isValidNewPassword = (v) =>
-  typeof v === 'string' && v.length >= MIN_PASSWORD_LENGTH && v.length <= MAX_PASSWORD_LENGTH && !/[\p{C}\u2028\u2029]/u.test(v);
+  typeof v === 'string' && v.length >= MIN_PASSWORD_LENGTH && v.length <= MAX_PASSWORD_LENGTH && PASSWORD_CHARS_RE.test(v);
 export const isValidMaxMembers = (v) => Number.isInteger(v) && v >= MIN_ROOM_MEMBERS && v <= MAX_ROOM_MEMBERS;
 
 export const ROOM_CODE_RE = /^[A-Z0-9]{6}$/;

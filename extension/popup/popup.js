@@ -141,6 +141,18 @@ async function checkVideo() {
 }
 setInterval(checkVideo, 1500);
 
+// 방 코드와 비밀번호는 영문과 숫자만 입력할 수 있다(한글 등은 입력되자마자 지운다. 붙여넣기, 한글 조합 입력 포함)
+// 길이 제한도 여기서 한다(maxlength 는 걸러내기 전에 자르므로 "ABC-DEF" 를 붙여넣으면 마지막 글자가 빠진다)
+for (const [id, max] of [['code', 6], ['createPw', MAX_PASSWORD_LENGTH], ['joinPw', MAX_PASSWORD_LENGTH]]) {
+  const el = $(id);
+  const keepAlnum = () => {
+    const clean = el.value.replace(/[^A-Za-z0-9]/g, '').slice(0, max);
+    if (clean !== el.value) el.value = clean;
+  };
+  el.addEventListener('input', keepAlnum);
+  el.addEventListener('compositionend', keepAlnum);
+}
+
 // 비밀번호 칸의 보기/숨기기(눈) 버튼
 const EYE = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>';
 const EYE_OFF = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.9 10.9 0 0 1 12 19C5 19 1 12 1 12a19.8 19.8 0 0 1 5.06-5.94M9.9 4.24A10.9 10.9 0 0 1 12 5c7 0 11 7 11 7a19.9 19.9 0 0 1-3.16 4.19M14.12 14.12A3 3 0 1 1 9.88 9.88"/><path d="M1 1l22 22"/></svg>';
@@ -171,7 +183,7 @@ $('create').addEventListener('click', async () => {
   const tab = await activeTab();
   const password = $('createPw').value;
   const maxMembers = $('createMax').value ? Number($('createMax').value) : undefined;
-  if (password && !isValidNewPassword(password)) return ($('error').textContent = `비밀번호는 ${MIN_PASSWORD_LENGTH}~${MAX_PASSWORD_LENGTH}자로 정해 주세요.`);
+  if (password && !isValidNewPassword(password)) return ($('error').textContent = `비밀번호는 영문과 숫자 ${MIN_PASSWORD_LENGTH}~${MAX_PASSWORD_LENGTH}자로 정해 주세요.`);
   if (maxMembers !== undefined && !isValidMaxMembers(maxMembers)) return ($('error').textContent = `최대 인원은 ${MIN_ROOM_MEMBERS}~${MAX_ROOM_MEMBERS}명으로 정해 주세요.`);
   chrome.runtime.sendMessage({ cmd: CMD.CREATE_ROOM, tabId: tab?.id, site: tab?.url, password: password || undefined, maxMembers });
   $('createPw').value = ''; // 비밀번호를 입력칸에 남기지 않는다

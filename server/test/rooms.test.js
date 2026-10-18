@@ -866,7 +866,7 @@ test('인원 제한: 가득 차면 거부, 재접속은 자리를 차지하지 �
 
 test('잘못된 방 옵션은 무시된다', async () => {
   const c = await new Client().open();
-  for (const bad of [{ password: 'abc' }, { password: 'x'.repeat(33) }, { maxMembers: 1 }, { maxMembers: 99 }, { maxMembers: '5' }]) {
+  for (const bad of [{ password: 'abc' }, { password: 'x'.repeat(33) }, { password: '비밀번호1234' }, { password: 'pass word1' }, { password: 'pass!word1' }, { maxMembers: 1 }, { maxMembers: 99 }, { maxMembers: '5' }]) {
     c.send({ type: 'create_room', userId: c.userId, ...bad });
   }
   await c.none('room_created');
