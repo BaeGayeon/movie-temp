@@ -183,6 +183,7 @@ summary > .ic { margin-right: .45em; }
 .opts > summary { cursor: pointer; color: var(--ink-soft); font-weight: 700; padding: 4px 2px; user-select: none; }
 .optnote { margin: 4px 2px 0; color: var(--ink-soft); font-size: 12px; line-height: 1.4; }
 .opts label { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-weight: 700; }
+.opts .lbl { flex: none; width: 92px; display: flex; align-items: center; } /* 두 줄의 입력칸 시작 위치를 맞춘다 */
 .opts input { flex: 1; min-width: 0; }
 /* 비밀번호 칸 + 보기/숨기기(눈) 버튼 */
 .pwwrap { position: relative; display: flex; flex: 1; min-width: 0; }

@@ -100,9 +100,11 @@ test('GET /rooms/<코드>: 방 존재 여부만 돌려준다', async () => {
   const yes = await fetch(url(code));
   assert.equal(yes.status, 200);
   assert.equal(yes.headers.get('access-control-allow-origin'), '*');
-  assert.deepEqual(await yes.json(), { exists: true });
-  assert.deepEqual(await (await fetch(url(code.toLowerCase()))).json(), { exists: true });
-  assert.deepEqual(await (await fetch(url('ZZZZZZ'))).json(), { exists: false });
+  assert.deepEqual(await yes.json(), { exists: true, hasPassword: false });
+  assert.deepEqual(await (await fetch(url(code.toLowerCase()))).json(), { exists: true, hasPassword: false });
+  assert.deepEqual(await (await fetch(url('ZZZZZZ'))).json(), { exists: false, hasPassword: false });
+  const locked = await makeRoomWith({ password: 'secret1' });
+  assert.deepEqual(await (await fetch(url(locked.code))).json(), { exists: true, hasPassword: true });
   assert.equal((await fetch(url('abc'))).status, 404); // 형식이 다르면 없는 주소
 });
 

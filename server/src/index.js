@@ -47,7 +47,8 @@ export function createServer({ port = Number(process.env.PORT) || 8080, host = '
         res.end(JSON.stringify({ error: 'rate_limited' }));
       } else {
         res.writeHead(200, { ...cors, 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ exists: rooms.rooms.has(check[1].toUpperCase()) }));
+        const room = rooms.rooms.get(check[1].toUpperCase());
+        res.end(JSON.stringify({ exists: !!room, hasPassword: !!room?.password })); // 방 정보는 이것만 내보낸다(비밀번호 유무는 초대 배너에서 입력칸을 미리 보여 주는 데 쓴다)
       }
       return;
     }
