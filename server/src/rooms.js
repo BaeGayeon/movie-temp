@@ -71,16 +71,21 @@ export class RoomManager {
     }
   }
 
-  create(conn, userId, { password, maxMembers, lang } = {}) {
+  // roomCode/mode 가 있으면 서버 재시작으로 사라진 방을 같은 코드로 복구하는 것이다(만든 사람이 방장이 된다)
+  create(conn, userId, { password, maxMembers, lang, roomCode, mode } = {}) {
     this.leave(conn);
+    if (roomCode && this.rooms.has(roomCode)) {
+      conn.send({ type: S2C.ERROR, code: ERR.ROOM_EXISTS, message: '이미 복구된 방이에요. 참가해 주세요.' });
+      return;
+    }
     if (this.rooms.size >= this.maxRooms) {
       conn.send({ type: S2C.ERROR, code: ERR.SERVER_FULL, message: '지금 서버가 가득 찼어요. 잠시 뒤에 다시 시도해 주세요.' });
       return;
     }
     const room = {
-      code: this.#newCode(),
+      code: roomCode ?? this.#newCode(),
       hostId: null,
-      mode: 'everyone',
+      mode: mode ?? 'everyone',
       video: { playing: false, time: 0, updatedAt: this.now() },
       participants: new Map(),
       profiles: new Map(), // userId -> { name, avatar, color } (재입장 시 유지)

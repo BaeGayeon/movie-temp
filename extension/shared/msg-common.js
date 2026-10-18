@@ -13,6 +13,7 @@ export const MSG = {
     'err.too_many_connections': '접속이 너무 많아요. 잠시 뒤에 다시 시도해 주세요.',
     'err.too_many_rooms': '방을 너무 자주 만들고 있어요. 잠시 뒤에 다시 해 주세요.',
     'err.server_full': '지금 서버가 가득 찼어요. 잠시 뒤에 다시 시도해 주세요.',
+    'err.room_exists': '이미 복구된 방이에요. 참가해 주세요.',
     'common.someone': '누군가',
   },
   en: {
@@ -28,6 +29,7 @@ export const MSG = {
     'err.too_many_connections': 'Too many connections right now. Please try again in a moment.',
     'err.too_many_rooms': "You're creating rooms too often. Please try again in a moment.",
     'err.server_full': 'The server is full right now. Please try again in a moment.',
+    'err.room_exists': 'That room has already been restored. Please join it.',
     'common.someone': 'Someone',
   },
 };

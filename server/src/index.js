@@ -137,7 +137,7 @@ export function createServer({
             conn.send({ type: S2C.ERROR, code: ERR.TOO_MANY_ROOMS, message: '방을 너무 자주 만들고 있어요. 잠시 뒤에 다시 해 주세요.' });
             break;
           }
-          rooms.create(conn, msg.userId, { password: msg.password, maxMembers: msg.maxMembers, lang: msg.lang });
+          rooms.create(conn, msg.userId, { password: msg.password, maxMembers: msg.maxMembers, lang: msg.lang, roomCode: msg.roomCode, mode: msg.mode });
           break;
         case C2S.JOIN_ROOM:
           rooms.join(conn, msg.roomCode, msg.userId, msg.password, msg.lang);
@@ -208,6 +208,14 @@ export function createServer({
     rooms,
     listen: () =>
       new Promise((resolve) => server.listen(port, host, () => resolve(server.address().port))),
+    // 배포 등으로 곧 꺼질 때: 연결된 모두에게 알리고 닫는다(1012 = service restart). 확장이 바로 다시 연결해 방을 복구한다
+    announceRestart: () => {
+      for (const ws of wss.clients) {
+        if (ws.readyState !== ws.OPEN) continue;
+        ws.send(JSON.stringify({ type: S2C.SERVER_RESTARTING }));
+        ws.close(1012, 'service restart');
+      }
+    },
     close: () =>
       new Promise((resolve) => {
         clearInterval(heartbeat);
@@ -221,4 +229,17 @@ export function createServer({
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const app = createServer();
   app.listen().then((p) => console.log(`server listening on :${p}`));
+  // Render 는 배포할 때 새 서버를 먼저 띄우고 옛 서버에 SIGTERM 을 보낸다(기본 30초 뒤 강제 종료).
+  // 옛 서버는 모두에게 재시작을 알리고 닫아서, 확장이 바로 새 서버로 다시 연결해 방을 복구하게 한다.
+  let stopping = false;
+  const stop = (sig) => {
+    if (stopping) return;
+    stopping = true;
+    console.log(`${sig}: 재시작을 알리고 종료합니다`);
+    app.announceRestart();
+    setTimeout(() => app.close().then(() => process.exit(0)), 1000);
+    setTimeout(() => process.exit(0), 10_000).unref(); // 닫히지 않아도 10초 안에는 끝낸다
+  };
+  process.on('SIGTERM', () => stop('SIGTERM'));
+  process.on('SIGINT', () => stop('SIGINT'));
 }

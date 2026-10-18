@@ -1076,3 +1076,52 @@ test('서버 전체 방 수 상한: 넘으면 server_full, 방이 닫히면 다�
     await srv.close();
   }
 });
+
+// ---- 서버 재시작 대비: 방 복구와 재시작 알림
+test('방 복구: create_room 에 roomCode/mode/옵션을 주면 같은 코드로 다시 만든다, 이미 있으면 room_exists', async () => {
+  const a = await new Client().open();
+  a.send({ type: 'create_room', userId: a.userId, roomCode: 'rst234', mode: 'host_only', maxMembers: 3, password: 'secret1' });
+  const created = await a.next('room_created');
+  assert.equal(created.roomCode, 'RST234', '소문자로 보내도 대문자로 만든다');
+  const state = await a.next('room_state');
+  assert.equal(state.mode, 'host_only');
+  assert.equal(state.maxMembers, 3);
+  assert.equal(state.hasPassword, true);
+  assert.equal(state.hostId, a.userId);
+
+  // 같은 코드로 또 복구하려 하면(다른 사람이 먼저 복구한 경우) 에러, 방은 그대로
+  const b = await new Client().open();
+  b.send({ type: 'create_room', userId: b.userId, roomCode: 'RST234' });
+  assert.equal((await b.next('error')).code, 'room_exists');
+  await b.none('room_created');
+  // 비밀번호는 복구된 방에서도 지켜진다
+  b.send({ type: 'join_room', roomCode: 'RST234', userId: b.userId });
+  assert.equal((await b.next('error')).code, 'password_required');
+  b.send({ type: 'join_room', roomCode: 'RST234', userId: b.userId, password: 'secret1' });
+  assert.equal((await b.next('room_state')).roomCode, 'RST234');
+  a.close();
+  b.close();
+});
+
+test('방 복구: 잘못된 코드/모드는 무시된다', async () => {
+  const a = await new Client().open();
+  a.send({ type: 'create_room', userId: a.userId, roomCode: 'xx' });
+  a.send({ type: 'create_room', userId: a.userId, mode: 'nope' });
+  await a.none('room_created', 250);
+  a.close();
+});
+
+test('재시작 알림: announceRestart 는 모두에게 server_restarting 을 보내고 1012 로 닫는다', async () => {
+  const { srv, open } = await limitedServer({});
+  try {
+    const a = await open();
+    const b = await open();
+    srv.announceRestart();
+    assert.equal(await a.closed, 1012);
+    assert.equal(await b.closed, 1012);
+    assert.equal(a.msgs[0].type, 'server_restarting');
+    assert.equal(b.msgs[0].type, 'server_restarting');
+  } finally {
+    await srv.close();
+  }
+});

@@ -66,6 +66,18 @@ let retry = 0;
 let pending = null; // 연결이 열리면 보낼 메시지(방 만들기/참가)
 let clockSamples = []; // { offset, rtt } — RTT 가 가장 작은 표본을 채택
 
+// ---- 서버 재시작(배포 등)으로 방이 사라졌을 때 같은 코드로 복구하기
+// 서버는 방을 메모리에만 둬서 재시작되면 방이 없다. 연결이 끊긴 지 얼마 안 됐으면 방장이 같은 코드/옵션으로 방을 다시 만들고,
+// 나머지는 그 방에 다시 참가한다(방장이 한동안 안 오면 먼저 온 사람이 대신 만든다).
+const RESTORE_WINDOW_MS = 2 * 60_000; // 연결이 끊긴 뒤 이 시간 안에만 복구한다(오래 지났으면 방이 정말 끝난 것으로 본다)
+const RESTORE_RETRY_MS = 2000; // 방장이 아닌 사람이 방이 다시 생겼는지 확인하는 간격
+const RESTORE_WAIT_TRIES = 8; // 이만큼(약 16초) 기다려도 방이 없으면 내가 대신 만든다
+let lostAt = null; // 방에 있다가 연결이 끊긴 시각(재접속 중)
+let restoreTries = 0;
+let restoring = false; // 내가 방 복구(create_room)를 요청한 상태
+let serverRestarting = false; // 서버가 곧 재시작한다고 알려 옴
+let joinRetryTimer = null;
+
 const ready = init();
 
 async function init() {
@@ -111,6 +123,11 @@ function setRoomPw(pw) {
 
 function resetRoom() {
   room = freshRoom();
+  lostAt = null;
+  restoreTries = 0;
+  restoring = false;
+  serverRestarting = false;
+  clearTimeout(joinRetryTimer);
   persist();
 }
 
@@ -189,6 +206,8 @@ function setConnection(c) {
   broadcast();
 }
 
+const rejoinMsg = () => ({ type: C2S.JOIN_ROOM, roomCode: room.roomCode, userId, lang: getLang(), ...(roomPw ? { password: roomPw } : {}) });
+
 function connect() {
   if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) return;
   clearTimeout(reconnectTimer);
@@ -207,7 +226,7 @@ function connect() {
       rawSend(pending);
       pending = null;
     } else if (room.roomCode) {
-      rawSend({ type: C2S.JOIN_ROOM, roomCode: room.roomCode, userId, lang: getLang(), ...(roomPw ? { password: roomPw } : {}) }); // 이전 방으로 복귀
+      rawSend(rejoinMsg()); // 이전 방으로 복귀
     }
   };
   sock.onmessage = (e) => {
@@ -225,6 +244,7 @@ function connect() {
     ws = null;
     clearInterval(pingTimer);
     connection = 'disconnected';
+    if (room.roomCode && lostAt === null) lostAt = Date.now();
     if (room.roomCode || pending) scheduleReconnect();
     else broadcast();
   };
@@ -239,7 +259,8 @@ function scheduleReconnect() {
     broadcast();
     return;
   }
-  const delay = Math.min(MAX_BACKOFF_MS, 1000 * 2 ** retry) * (0.8 + Math.random() * 0.4);
+  // 서버가 재시작한다고 알려 준 경우: 새 서버는 이미 떠 있을 테니 바로(모두가 한꺼번에 몰리지 않게 흩어서) 다시 연결한다
+  const delay = serverRestarting && retry === 0 ? 300 + Math.random() * 1200 : Math.min(MAX_BACKOFF_MS, 1000 * 2 ** retry) * (0.8 + Math.random() * 0.4);
   retry++;
   broadcast();
   clearTimeout(reconnectTimer);
@@ -322,6 +343,11 @@ function sendOrQueue(msg) {
 
 function handleServer(m) {
   switch (m.type) {
+    case S2C.SERVER_RESTARTING:
+      serverRestarting = true;
+      if (room.roomCode) toast(t('bg.serverRestarting'));
+      break;
+
     case S2C.ROOM_CREATED:
       justCreated = true;
       break;
@@ -350,6 +376,12 @@ function handleServer(m) {
       const restored = entering && pendingRestore?.roomCode === m.roomCode;
       if (entering) pendingRestore = null;
       clockSamples = [];
+      if (restoring) toast(t('bg.roomRestored'));
+      lostAt = null;
+      restoreTries = 0;
+      restoring = false;
+      serverRestarting = false;
+      clearTimeout(joinRetryTimer);
       syncProfile();
       lastError = null;
       needPassword = null;
@@ -475,8 +507,38 @@ function handleServer(m) {
   }
 }
 
+// 방이 서버에서 사라졌다: 연결이 끊긴 지 얼마 안 됐으면(서버 재시작) 복구를 시도한다. 시도했으면 true
+function tryRestoreRoom() {
+  if (!room.roomCode || lostAt === null || Date.now() - lostAt > RESTORE_WINDOW_MS) return false;
+  // 비밀번호가 걸린 방인데 비밀번호를 모르면 복구하면 비밀번호가 사라지므로 하지 않는다
+  if (room.hasPassword && !(roomPw && isValidNewPassword(roomPw))) return false;
+  if (room.hostId === userId || restoreTries >= RESTORE_WAIT_TRIES) {
+    restoring = true;
+    rawSend({
+      type: C2S.CREATE_ROOM,
+      userId,
+      lang: getLang(),
+      roomCode: room.roomCode,
+      mode: room.mode,
+      ...(room.maxMembers ? { maxMembers: room.maxMembers } : {}),
+      ...(room.hasPassword ? { password: roomPw } : {}),
+    });
+  } else {
+    restoreTries++;
+    clearTimeout(joinRetryTimer);
+    joinRetryTimer = setTimeout(() => rawSend(rejoinMsg()), RESTORE_RETRY_MS);
+  }
+  return true;
+}
+
 function handleServerError(m) {
   const text = serverErrorText(m) || t('bg.roomGone'); // 서버가 보낸 코드를 현재 언어로
+  if (m.code === ERR.ROOM_NOT_FOUND && tryRestoreRoom()) return;
+  if (m.code === ERR.ROOM_EXISTS && room.roomCode) {
+    restoring = false; // 다른 사람이 먼저 복구했다: 그 방에 참가한다
+    rawSend(rejoinMsg());
+    return;
+  }
   if (m.code === ERR.ROOM_NOT_FOUND || m.code === ERR.ROOM_IDLE_CLOSED) {
     if (room.roomCode) {
       toast(text);
