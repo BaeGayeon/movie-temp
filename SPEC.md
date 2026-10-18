@@ -94,8 +94,8 @@ watchparty/                (이 저장소 루트)
 
 ```
 // 1단계
-{ type: "create_room", userId }
-{ type: "join_room", roomCode, userId }
+{ type: "create_room", userId, secret }
+{ type: "join_room", roomCode, userId, secret }
 { type: "leave_room" }
 { type: "video", action: "play" | "pause" | "seek", time, sentAt }
 { type: "set_permission", mode: "host_only" | "everyone" }
@@ -115,7 +115,10 @@ watchparty/                (이 저장소 루트)
 // 4단계
 { type: "create_room", userId, password?, maxMembers? }   // 비밀번호(영문·숫자 4~32자), 최대 인원(2~20)
 { type: "set_room_options", password?: string | null, maxMembers?: number | null }   // 방장만. null 은 해제. 서버가 room_options 로 모두에게 알림(비밀번호 내용은 없음)
-{ type: "join_room", roomCode, userId, password? }   // 비밀번호 포함. error code: password_required / wrong_password / room_full / too_many_attempts
+{ type: "join_room", roomCode, userId, secret, password? }   // 비밀번호 포함. error code: password_required / wrong_password / room_full / too_many_attempts / identity_mismatch
+// 배포 전 보안 보강: userId 는 방 안에 공개되므로 secret(확장이 기기에 만든 비공개 값, 32~64자)이 본인 확인 수단이다. 서버는 해시만 보관하고,
+//   이미 등록된 userId 로 다른 secret 이 오면 identity_mismatch(방 복구 create_room 에도 secret 이 필요). 방당 최대 50명(최대 인원을 정하지 않아도). 방 만들기/연결 수 상한은 4단계 범위 조정의 서버 남용 방지 참고.
+//   WebSocket/CORS 는 chrome-extension:// Origin 만 허용(EXTENSION_ID 환경변수로 특정 확장만), X-Forwarded-For 는 TRUST_PROXY=1 일 때만 신뢰
 // avatar.kind: "image"는 value에 base64 데이터 URL
 ```
 
@@ -196,7 +199,7 @@ watchparty/                (이 저장소 루트)
 4단계 범위 조정:
 - 방 비밀번호/인원 제한, 방 코드 무작위 대입 방지(참가 시도 횟수 제한): 구현함(이슈 #8). 방 생성 때 옵션을 정하고, IP 당 분당 10회 참가 실패(없는 방/틀린 비밀번호) 시 1분 차단. 이미 방에 있던 사람의 재접속은 비밀번호/인원 검사 없음
 - 서버 남용 방지(이슈 #39): IP 당 동시 연결 20개(`too_many_connections`: 알리고 닫음), 서버 전체 동시 연결 10,000개, IP 당 분당 방 만들기 10회(`too_many_rooms`), 서버 전체 방 3,000개(`server_full`). 방 존재 확인은 IP 당 분당 60회. 환경변수 `MAX_CONN_PER_IP`/`MAX_CONNECTIONS`/`MAX_ROOMS` 로 바꿀 수 있다. 확장은 안내만 띄우고 다시 시도하지 않는다
-- 서버 재시작(배포) 대비: 서버는 SIGTERM 을 받으면 연결된 모두에게 `server_restarting` 을 보내고 1012 로 닫는다. 확장은 바로(300~1500ms 안에) 다시 연결하고, 방이 사라져 있으면(`room_not_found`) 연결이 끊긴 지 2분 안일 때 방장이 같은 코드/모드/최대 인원/비밀번호로 `create_room`(roomCode 포함)을 보내 방을 복구한다. 방장이 아닌 사람은 2초마다 참가를 다시 시도하고 약 16초 뒤에도 방이 없으면 대신 복구한다(`room_exists` 가 오면 참가). 비밀번호를 모르는 방은 복구하지 않는다. 채팅 기록은 각자의 확장에 있어 유지된다
+- 서버 재시작(배포) 대비: 서버는 SIGTERM 을 받으면 연결된 모두에게 `server_restarting` 을 보내고 1012 로 닫는다. 확장은 바로(300~1500ms 안에) 다시 연결하고, 방이 사라져 있으면(`room_not_found`) 연결이 끊긴 지 2분 안일 때 방장이 같은 코드/모드/최대 인원/비밀번호로 `create_room`(roomCode 와 복구 토큰 `restoreToken` 포함)을 보내 방을 복구한다. 복구 토큰은 서버가 `RESTORE_KEY` 로 서명해 방 멤버에게 `room_state` 로 주는 값(24시간 유효)이라, 방 코드만 아는 사람은 복구로 방장이 될 수 없다(`restore_denied`). 방장이 아닌 사람은 2초마다 참가를 다시 시도하고 약 16초 뒤에도 방이 없으면 대신 복구한다(`room_exists` 가 오면 참가). 비밀번호를 모르는 방은 복구하지 않는다. 채팅 기록은 각자의 확장에 있어 유지된다
 - 티빙/웨이브 전용 어댑터: **보류** (테스트 불가). 쿠팡플레이는 기본 어댑터로 동작하므로 문제가 생길 때 전용 어댑터 추가
 - 배포 준비(`render.yaml`, `SERVER_URL` 교체 방법, `matches` 최소화, 개인정보처리방침, 스토어 문구): **마지막에 진행** → 5단계에서 진행(65~69 참고)
 

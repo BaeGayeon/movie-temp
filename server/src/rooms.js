@@ -1,4 +1,4 @@
-import { randomBytes, randomInt, scryptSync, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 import { S2C, ERR, VIDEO_ACTION_SYNC, DEFAULT_COLORS, DEFAULT_AVATAR_EMOJI } from './protocol.js';
 
 const AD_ROLLBACK_MS = 6000; // 광고 보고 직전 이 시간 안의 본인 이벤트는 광고 전환 중 생긴 것으로 보고 되돌린다
@@ -14,14 +14,21 @@ function keepSnapshot(room, userId, at) {
 // 헷갈리는 문자(0/O, 1/I)를 뺀 영숫자
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
-// 방 비밀번호는 해시(scrypt + 무작위 salt)로만 메모리에 보관한다(평문 보관/로그 금지).
+const RESTORE_TOKEN_TTL_MS = 24 * 60 * 60_000; // 복구 토큰이 유효한 시간(마지막으로 방 상태를 받은 뒤)
+const ROOM_HARD_MAX = 50; // 방장이 인원 제한을 두지 않아도 한 방에 들어올 수 있는 최대 인원
+const MAX_IDENTITIES = 100; // 방이 기억하는 userId(본인 확인 값/프로필) 수가 이만큼 넘으면 방에 없는 사람의 것부터 정리
+
+// 방 비밀번호는 HMAC-SHA256(방마다 무작위 키)으로만 메모리에 보관한다(평문 보관/로그 금지).
+// 해시는 서버 메모리 밖으로 나가지 않고 온라인 대입은 참가 실패 횟수 제한으로 막으므로, 이벤트 루프를 오래 붙잡는 느린 해시(scrypt)는 쓰지 않는다.
 function hashPassword(password) {
   const salt = randomBytes(16);
-  return { salt, hash: scryptSync(password, salt, 32) };
+  return { salt, hash: createHmac('sha256', salt).update(password).digest() };
 }
 function checkPassword(stored, password) {
-  return typeof password === 'string' && timingSafeEqual(stored.hash, scryptSync(password, stored.salt, 32));
+  return typeof password === 'string' && timingSafeEqual(stored.hash, createHmac('sha256', stored.salt).update(password).digest());
 }
+// 본인 확인용 secret 은 해시만 보관한다
+const digestSecret = (secret) => createHash('sha256').update(secret).digest();
 
 // conn: { send(obj), close?(), userId, roomCode } — WebSocket 과 분리해 테스트하기 쉽게 한다.
 export class RoomManager {
@@ -33,6 +40,8 @@ export class RoomManager {
     bufferWaitMs = 15_000, // 버퍼링 대기 상한
     adWaitMs = 10 * 60_000, // 광고 대기 상한(광고는 길 수 있다)
     resumeDelayMs = 500, // 모두 준비된 뒤 함께 재개하기까지의 여유
+    restoreKey = randomBytes(32), // 복구 토큰 서명 키. 재시작 뒤에도 토큰을 확인하려면 환경변수(RESTORE_KEY)로 고정해야 한다
+    restoreTtlMs = RESTORE_TOKEN_TTL_MS,
     maxRooms = 3000, // 서버 전체 방 수 상한(방은 메모리에 있다)
     joinFailLimit = 10, // 연결 주소(IP) 당 이 횟수만큼 참가에 실패(없는 방/틀린 비밀번호)하면 잠시 차단
     joinFailWindowMs = 60_000,
@@ -46,6 +55,8 @@ export class RoomManager {
     this.resumeDelayMs = resumeDelayMs;
     this.now = now;
     this.maxRooms = maxRooms;
+    this.restoreKey = restoreKey;
+    this.restoreTtlMs = restoreTtlMs;
     this.joinFailLimit = joinFailLimit;
     this.joinFailWindowMs = joinFailWindowMs;
     this.joinFails = new Map(); // ip -> { count, resetAt }
@@ -71,8 +82,27 @@ export class RoomManager {
     }
   }
 
+  // 방 복구 토큰: 방 멤버만 받는다(room_state). 서버가 방을 기억하지 못해도(재시작) 서명으로 "이 방의 멤버였다"를 확인한다
+  issueRestoreToken(code) {
+    const t = Math.floor(this.now() / 1000);
+    return `${t}.${createHmac('sha256', this.restoreKey).update(`${code}.${t}`).digest('hex').slice(0, 32)}`;
+  }
+
+  #validRestoreToken(code, token) {
+    const [t, sig] = String(token).split('.');
+    const issued = Number(t) * 1000;
+    const now = this.now();
+    if (!(issued <= now + 60_000 && now - issued <= this.restoreTtlMs)) return false;
+    const want = createHmac('sha256', this.restoreKey).update(`${code}.${t}`).digest('hex').slice(0, 32);
+    return typeof sig === 'string' && sig.length === want.length && timingSafeEqual(Buffer.from(sig), Buffer.from(want));
+  }
+
   // roomCode/mode 가 있으면 서버 재시작으로 사라진 방을 같은 코드로 복구하는 것이다(만든 사람이 방장이 된다)
-  create(conn, userId, { password, maxMembers, lang, roomCode, mode } = {}) {
+  create(conn, userId, { password, maxMembers, lang, roomCode, mode, secret, restoreToken } = {}) {
+    if (roomCode && !this.#validRestoreToken(roomCode, restoreToken)) {
+      conn.send({ type: S2C.ERROR, code: ERR.RESTORE_DENIED, message: '방을 복구할 수 없어요.' });
+      return;
+    }
     this.leave(conn);
     if (roomCode && this.rooms.has(roomCode)) {
       conn.send({ type: S2C.ERROR, code: ERR.ROOM_EXISTS, message: '이미 복구된 방이에요. 참가해 주세요.' });
@@ -89,6 +119,7 @@ export class RoomManager {
       video: { playing: false, time: 0, updatedAt: this.now() },
       participants: new Map(),
       profiles: new Map(), // userId -> { name, avatar, color } (재입장 시 유지)
+      secrets: new Map(), // userId -> 본인 확인 값의 해시. userId 는 방 안에 공개되므로 같은 userId 로 다시 들어올 때 이 값이 맞아야 한다
       seq: 0,
       emptyTimer: null,
       lastActivityAt: this.now(),
@@ -101,7 +132,7 @@ export class RoomManager {
       maxMembers: maxMembers ?? null,
     };
     this.rooms.set(room.code, room);
-    this.#attach(room, conn, userId, lang);
+    this.#attach(room, conn, userId, lang, secret);
     conn.send({ type: S2C.ROOM_CREATED, roomCode: room.code, hostId: room.hostId });
     conn.send(this.#stateMsg(room));
   }
@@ -123,7 +154,7 @@ export class RoomManager {
     e.count++;
   }
 
-  join(conn, roomCode, userId, password, lang) {
+  join(conn, roomCode, userId, password, lang, secret) {
     const reject = (code, message, extra) => conn.send({ type: S2C.ERROR, code, message, ...extra });
     if (this.#joinBlocked(conn.ip)) {
       reject(ERR.TOO_MANY_ATTEMPTS, '참가 시도가 너무 많아요. 잠시 뒤에 다시 해 주세요.');
@@ -133,6 +164,13 @@ export class RoomManager {
     if (!room) {
       this.#joinFailed(conn.ip);
       reject(ERR.ROOM_NOT_FOUND, '존재하지 않는 방이에요.');
+      return;
+    }
+    // 방이 이미 아는 userId 는 등록할 때의 secret 이 같아야 한다(방 안에 공개된 userId 로 방장/다른 참가자를 가로채는 것을 막는다)
+    const known = room.secrets.get(userId);
+    if (known && !(typeof secret === 'string' && timingSafeEqual(known, digestSecret(secret)))) {
+      this.#joinFailed(conn.ip);
+      reject(ERR.IDENTITY_MISMATCH, '이 사용자 ID 는 다른 기기에서 쓰고 있어요.');
       return;
     }
     // 이미 방에 있는 사람의 재접속은 비밀번호/인원 검사를 하지 않는다
@@ -148,13 +186,14 @@ export class RoomManager {
           return;
         }
       }
-      if (room.maxMembers && room.participants.size >= room.maxMembers) {
-        reject(ERR.ROOM_FULL, `방이 가득 찼어요 (최대 ${room.maxMembers}명).`, { max: room.maxMembers });
+      const max = Math.min(room.maxMembers ?? ROOM_HARD_MAX, ROOM_HARD_MAX);
+      if (room.participants.size >= max) {
+        reject(ERR.ROOM_FULL, `방이 가득 찼어요 (최대 ${max}명).`, { max });
         return;
       }
     }
     if (conn.roomCode && (conn.roomCode !== roomCode || conn.userId !== userId)) this.leave(conn);
-    const { isNew, participant } = this.#attach(room, conn, userId, lang);
+    const { isNew, participant } = this.#attach(room, conn, userId, lang, secret);
     if (isNew) {
       this.#broadcast(room, { type: S2C.PARTICIPANT_JOINED, user: pub(participant) }, userId);
     }
@@ -439,7 +478,7 @@ export class RoomManager {
     }
   }
 
-  #attach(room, conn, userId, lang) {
+  #attach(room, conn, userId, lang, secret) {
     let p = room.participants.get(userId);
     const isNew = !p;
     if (p) {
@@ -454,6 +493,11 @@ export class RoomManager {
       p.conn = conn;
     } else {
       const seq = ++room.seq;
+      if (room.secrets.size >= MAX_IDENTITIES) {
+        // 들락거리며 기록만 늘리는 것을 막기 위해, 지금 방에 없는 사람의 기록부터 정리한다
+        for (const id of room.secrets.keys()) if (!room.participants.has(id)) room.secrets.delete(id);
+        for (const id of room.profiles.keys()) if (!room.participants.has(id)) room.profiles.delete(id);
+      }
       if (!room.profiles.has(userId)) {
         const color = DEFAULT_COLORS[(seq - 1) % DEFAULT_COLORS.length];
         room.profiles.set(userId, {
@@ -465,6 +509,7 @@ export class RoomManager {
       p = { id: userId, ...room.profiles.get(userId), joinSeq: seq, conn, graceTimer: null, limits: {} };
       room.participants.set(userId, p);
     }
+    if (!room.secrets.has(userId) && typeof secret === 'string') room.secrets.set(userId, digestSecret(secret));
     conn.userId = userId;
     conn.roomCode = room.code;
     room.lastActivityAt = this.now();
@@ -502,6 +547,7 @@ export class RoomManager {
       hostId: room.hostId,
       mode: room.mode,
       hasPassword: !!room.password, // 비밀번호/해시는 절대 내려보내지 않는다
+      restoreToken: this.issueRestoreToken(room.code), // 방 멤버에게만. 서버가 재시작돼도 이 방을 복구할 수 있는 사람인지 확인하는 데 쓴다
       maxMembers: room.maxMembers,
       participants: [...room.participants.values()].sort((a, b) => a.joinSeq - b.joinSeq).map(pub),
       video: { ...room.video },

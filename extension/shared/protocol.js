@@ -55,9 +55,11 @@ export const ERR = {
   WRONG_PASSWORD: 'wrong_password',
   ROOM_FULL: 'room_full', // 오류 메시지에 max(방의 최대 인원)를 함께 보낸다
   TOO_MANY_ATTEMPTS: 'too_many_attempts', // 참가 실패가 잦아 잠시 차단
+  IDENTITY_MISMATCH: 'identity_mismatch', // 이미 방에 등록된 userId 인데 비공개 secret 이 맞지 않음(다른 사람의 userId 로 들어오려 함)
   TOO_MANY_CONNECTIONS: 'too_many_connections', // 같은 주소(IP)에서 동시 연결이 너무 많거나 서버 전체 연결 수가 가득 참(서버가 이 에러를 보내고 연결을 닫는다)
   TOO_MANY_ROOMS: 'too_many_rooms', // 같은 주소(IP)에서 방을 너무 자주 만듦
   SERVER_FULL: 'server_full', // 서버 전체 방 수가 가득 참
+  RESTORE_DENIED: 'restore_denied', // 방 복구(create_room 에 roomCode)에 쓴 복구 토큰이 없거나 틀리거나 오래됨(방 멤버가 아니거나 너무 오래 전에 나감)
   ROOM_EXISTS: 'room_exists', // 방 복구(create_room 에 roomCode)를 요청했는데 그 코드의 방이 이미 있음(다른 사람이 먼저 복구함 -> 참가하면 된다)
 };
 
@@ -145,6 +147,10 @@ export const ROOM_CODE_RE = /^[A-Z0-9]{6}$/;
 // 방 만들기/참가 때 클라이언트가 보내는 표시 언어(기본 닉네임 "게스트1234"/"Guest1234" 을 고르는 데만 쓴다). 틀린 값은 무시한다
 const LANGS = ['ko', 'en'];
 const USER_ID_RE = /^[A-Za-z0-9_-]{8,64}$/;
+// secret: 확장이 기기에 만들어 두는 비공개 값. userId 는 방 안의 모두에게 공개되므로(participants[].id, hostId) 본인 확인은 이 값으로 한다.
+// 서버는 해시만 방 메모리에 두고 다른 참가자에게 전달하지 않는다.
+const SECRET_RE = /^[A-Za-z0-9_-]{32,64}$/;
+const RESTORE_TOKEN_RE = /^\d{1,12}\.[0-9a-f]{32}$/; // <발급 시각(초)>.<서명>
 const MAX_TIME = 24 * 60 * 60; // 초
 
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
@@ -155,13 +161,17 @@ const isTime = (v) => isNum(v) && v >= 0 && v <= MAX_TIME;
 const validators = {
   [C2S.CREATE_ROOM]: (m) => {
     if (typeof m.userId !== 'string' || !USER_ID_RE.test(m.userId)) return null;
-    const out = { type: m.type, userId: m.userId };
+    if (typeof m.secret !== 'string' || !SECRET_RE.test(m.secret)) return null;
+    const out = { type: m.type, userId: m.userId, secret: m.secret };
     if (LANGS.includes(m.lang)) out.lang = m.lang;
-    // 방 복구: 서버가 재시작돼 방이 사라졌을 때 확장이 같은 코드/옵션으로 다시 만든다
+    // 방 복구: 서버가 재시작돼 방이 사라졌을 때 확장이 같은 코드/옵션으로 다시 만든다.
+    // 방 코드만 알면 아무나 방장이 되는 것을 막으려고, 방 멤버가 room_state 로 받아 둔 복구 토큰(서버가 서명)을 함께 보내야 한다
     if (m.roomCode !== undefined) {
       const code = typeof m.roomCode === 'string' ? m.roomCode.toUpperCase() : '';
       if (!ROOM_CODE_RE.test(code)) return null;
+      if (typeof m.restoreToken !== 'string' || !RESTORE_TOKEN_RE.test(m.restoreToken)) return null;
       out.roomCode = code;
+      out.restoreToken = m.restoreToken;
     }
     if (m.mode !== undefined) {
       if (!MODES.includes(m.mode)) return null;
@@ -180,10 +190,11 @@ const validators = {
 
   [C2S.JOIN_ROOM]: (m) => {
     if (typeof m.userId !== 'string' || !USER_ID_RE.test(m.userId)) return null;
+    if (typeof m.secret !== 'string' || !SECRET_RE.test(m.secret)) return null;
     if (typeof m.roomCode !== 'string') return null;
     const roomCode = m.roomCode.toUpperCase();
     if (!ROOM_CODE_RE.test(roomCode)) return null;
-    const out = { type: m.type, userId: m.userId, roomCode };
+    const out = { type: m.type, userId: m.userId, secret: m.secret, roomCode };
     if (LANGS.includes(m.lang)) out.lang = m.lang;
     if (m.password !== undefined) {
       if (typeof m.password !== 'string' || m.password.length > MAX_PASSWORD_LENGTH) return null;

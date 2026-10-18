@@ -39,6 +39,7 @@ const freshRoom = () => ({
   hostId: null,
   mode: 'everyone',
   hasPassword: false,
+  restoreToken: null, // 서버가 재시작돼 방이 사라졌을 때 방을 다시 만들 자격을 보이는 서명 토큰(room_state 로 받는다). content/팝업에는 내보내지 않는다
   maxMembers: null,
   participants: [],
   video: { playing: false, time: 0, updatedAt: 0 },
@@ -50,6 +51,7 @@ const freshRoom = () => ({
 });
 
 let userId = null;
+let secret = null; // 본인 확인용 비공개 값. userId 는 방 안의 모두에게 공개되므로, 같은 userId 로 다시 들어올 때 이 값을 서버에 보여 준다. 서버로만 보내고 다른 곳에는 내보내지 않는다
 let profile = null; // { name, avatar, color } — chrome.storage.local 에 저장된 내 프로필
 let room = freshRoom();
 let connection = 'disconnected'; // disconnected | connecting | connected
@@ -81,13 +83,18 @@ let joinRetryTimer = null;
 const ready = init();
 
 async function init() {
-  const saved = await chrome.storage.local.get(['userId', 'room', 'profile']);
+  const saved = await chrome.storage.local.get(['userId', 'secret', 'room', 'profile']);
   userId = saved.userId;
+  secret = saved.secret;
   profile = saved.profile ?? null;
   roomPw = (await chrome.storage.session?.get('roomPw').catch(() => ({})))?.roomPw ?? null;
   if (!userId) {
     userId = crypto.randomUUID();
     await chrome.storage.local.set({ userId });
+  }
+  if (!secret) {
+    secret = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); // 43자
+    await chrome.storage.local.set({ secret });
   }
   if (saved.room?.roomCode) {
     room = { ...freshRoom(), ...saved.room };
@@ -104,7 +111,7 @@ async function init() {
 // ---------- 상태 ----------
 
 function publicState() {
-  const { chat, ...rest } = room;
+  const { chat, restoreToken, ...rest } = room;
   const askPw = needPassword && Date.now() - needPassword.at < 2 * 60_000 ? { roomCode: needPassword.roomCode, wrong: needPassword.wrong } : null; // 오래된 요청은 버린다
   return { ...rest, userId, connection, error: lastError, waking, busy: pending !== null, needPassword: askPw }; // busy: 방 만들기/참가 요청을 서버 연결 전에 쥐고 있는 중
 }
@@ -206,7 +213,7 @@ function setConnection(c) {
   broadcast();
 }
 
-const rejoinMsg = () => ({ type: C2S.JOIN_ROOM, roomCode: room.roomCode, userId, lang: getLang(), ...(roomPw ? { password: roomPw } : {}) });
+const rejoinMsg = () => ({ type: C2S.JOIN_ROOM, roomCode: room.roomCode, userId, secret, lang: getLang(), ...(roomPw ? { password: roomPw } : {}) });
 
 function connect() {
   if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) return;
@@ -364,6 +371,7 @@ function handleServer(m) {
         waitingIds: m.waitingIds ?? [],
         adIds: m.adIds ?? [],
         hasPassword: !!m.hasPassword,
+        restoreToken: m.restoreToken ?? room.restoreToken,
         maxMembers: m.maxMembers ?? null,
         serverOffset: m.serverNow - Date.now(),
       };
@@ -509,7 +517,7 @@ function handleServer(m) {
 
 // 방이 서버에서 사라졌다: 연결이 끊긴 지 얼마 안 됐으면(서버 재시작) 복구를 시도한다. 시도했으면 true
 function tryRestoreRoom() {
-  if (!room.roomCode || lostAt === null || Date.now() - lostAt > RESTORE_WINDOW_MS) return false;
+  if (!room.roomCode || !room.restoreToken || lostAt === null || Date.now() - lostAt > RESTORE_WINDOW_MS) return false;
   // 비밀번호가 걸린 방인데 비밀번호를 모르면 복구하면 비밀번호가 사라지므로 하지 않는다
   if (room.hasPassword && !(roomPw && isValidNewPassword(roomPw))) return false;
   if (room.hostId === userId || restoreTries >= RESTORE_WAIT_TRIES) {
@@ -517,8 +525,10 @@ function tryRestoreRoom() {
     rawSend({
       type: C2S.CREATE_ROOM,
       userId,
+      secret,
       lang: getLang(),
       roomCode: room.roomCode,
+      restoreToken: room.restoreToken,
       mode: room.mode,
       ...(room.maxMembers ? { maxMembers: room.maxMembers } : {}),
       ...(room.hasPassword ? { password: roomPw } : {}),
@@ -539,7 +549,7 @@ function handleServerError(m) {
     rawSend(rejoinMsg());
     return;
   }
-  if (m.code === ERR.ROOM_NOT_FOUND || m.code === ERR.ROOM_IDLE_CLOSED) {
+  if (m.code === ERR.ROOM_NOT_FOUND || m.code === ERR.ROOM_IDLE_CLOSED || m.code === ERR.RESTORE_DENIED) {
     if (room.roomCode) {
       toast(text);
       const tabId = room.tabId;
@@ -565,7 +575,7 @@ function handleServerError(m) {
     setRoomPw(null);
     lastError = text;
     broadcast();
-  } else if (m.code === ERR.ROOM_FULL || m.code === ERR.TOO_MANY_ATTEMPTS || m.code === ERR.TOO_MANY_CONNECTIONS || m.code === ERR.TOO_MANY_ROOMS || m.code === ERR.SERVER_FULL) {
+  } else if (m.code === ERR.ROOM_FULL || m.code === ERR.TOO_MANY_ATTEMPTS || m.code === ERR.TOO_MANY_CONNECTIONS || m.code === ERR.TOO_MANY_ROOMS || m.code === ERR.SERVER_FULL || m.code === ERR.IDENTITY_MISMATCH) {
     setRoomPw(null);
     if (room.roomCode) {
       toast(text);
@@ -711,7 +721,7 @@ async function onCommand(m, sender) {
         return { ok: false };
       }
       {
-        const msg = { type: C2S.CREATE_ROOM, userId };
+        const msg = { type: C2S.CREATE_ROOM, userId, secret };
         if (m.password) {
           if (!isValidNewPassword(m.password)) {
             lastError = t('bg.badPassword');
@@ -752,7 +762,7 @@ async function onCommand(m, sender) {
       }
       {
         const password = typeof m.password === 'string' && m.password ? m.password.slice(0, MAX_PASSWORD_LENGTH) : undefined;
-        enterRoom({ type: C2S.JOIN_ROOM, roomCode, userId, ...(password ? { password } : {}) }, m.tabId ?? fromTab, siteOf(m.site));
+        enterRoom({ type: C2S.JOIN_ROOM, roomCode, userId, secret, ...(password ? { password } : {}) }, m.tabId ?? fromTab, siteOf(m.site));
       }
       return { ok: true };
     }
