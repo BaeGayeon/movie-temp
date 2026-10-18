@@ -113,8 +113,8 @@ watchparty/                (이 저장소 루트)
 { type: "reaction", emoji }
 
 // 4단계
-{ type: "set_room_options", password?, maxParticipants? }
-{ type: "join_room", roomCode, userId, password? }   // 비밀번호 포함
+{ type: "create_room", userId, password?, maxMembers? }   // 비밀번호(4~32자), 최대 인원(2~20). set_room_options 는 쓰지 않음
+{ type: "join_room", roomCode, userId, password? }   // 비밀번호 포함. error code: password_required / wrong_password / room_full / too_many_attempts
 // avatar.kind: "image"는 value에 base64 데이터 URL
 ```
 
@@ -193,7 +193,7 @@ watchparty/                (이 저장소 루트)
 ## 9. 추가 요구사항 (진행 중 사용자가 추가/조정)
 
 4단계 범위 조정:
-- 방 비밀번호/인원 제한, 방 코드 무작위 대입 방지(참가 시도 횟수 제한): **보류** (필요할 때 진행)
+- 방 비밀번호/인원 제한, 방 코드 무작위 대입 방지(참가 시도 횟수 제한): 구현함(이슈 #8). 방 생성 때 옵션을 정하고, IP 당 분당 10회 참가 실패(없는 방/틀린 비밀번호) 시 1분 차단. 이미 방에 있던 사람의 재접속은 비밀번호/인원 검사 없음
 - 티빙/웨이브 전용 어댑터: **보류** (테스트 불가). 쿠팡플레이는 기본 어댑터로 동작하므로 문제가 생길 때 전용 어댑터 추가
 - 배포 준비(`render.yaml`, `SERVER_URL` 교체 방법, `matches` 최소화, 개인정보처리방침, 스토어 문구): **마지막에 진행** → 5단계에서 진행(65~69 참고)
 

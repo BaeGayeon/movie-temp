@@ -772,3 +772,96 @@ test('채팅/재생 같은 활동이 있으면 idle 시간이 다시 시작됨',
   assert.equal(rm.rooms.size, 0, '활동이 멈추면 닫힘');
   rm.shutdown();
 });
+
+// ---------- 방 비밀번호 / 인원 제한 / 참가 시도 제한 ----------
+
+async function makeRoomWith(opts) {
+  const a = await new Client().open();
+  a.send({ type: 'create_room', userId: a.userId, ...opts });
+  const created = await a.next('room_created');
+  const state = await a.next('room_state');
+  return { a, code: created.roomCode, state };
+}
+
+test('비밀번호 방: 비밀번호 없이/틀리게 참가하면 거부, 맞으면 입장', async () => {
+  const { a, code, state } = await makeRoomWith({ password: 'secret1' });
+  assert.equal(state.hasPassword, true);
+  assert.equal(JSON.stringify(state).includes('secret1'), false, '비밀번호는 내려보내지 않음');
+  const c = await new Client().open();
+  c.send({ type: 'join_room', roomCode: code, userId: c.userId });
+  assert.equal((await c.next('error')).code, 'password_required');
+  c.send({ type: 'join_room', roomCode: code, userId: c.userId, password: 'nope' });
+  assert.equal((await c.next('error')).code, 'wrong_password');
+  await a.none('participant_joined');
+  c.send({ type: 'join_room', roomCode: code, userId: c.userId, password: 'secret1' });
+  assert.equal((await c.next('room_state')).hasPassword, true);
+  assert.equal((await a.next('participant_joined')).user.id, c.userId);
+});
+
+test('비밀번호 방: 이미 방에 있는 사람의 재접속은 비밀번호 없이 가능', async () => {
+  const { a, code } = await makeRoomWith({ password: 'secret1' });
+  const again = await new Client(a.userId).open();
+  again.send({ type: 'join_room', roomCode: code, userId: a.userId });
+  assert.equal((await again.next('room_state')).roomCode, code);
+});
+
+test('비밀번호 없는 방은 hasPassword=false, password 를 보내도 무시되지 않고 입장', async () => {
+  const { code, state } = await makeRoomWith({});
+  assert.equal(state.hasPassword, false);
+  assert.equal(state.maxMembers, null);
+  const c = await new Client().open();
+  c.send({ type: 'join_room', roomCode: code, userId: c.userId, password: 'whatever' });
+  await c.next('room_state');
+});
+
+test('인원 제한: 가득 차면 거부, 재접속은 자리를 차지하지 않음', async () => {
+  const { a, code, state } = await makeRoomWith({ maxMembers: 2 });
+  assert.equal(state.maxMembers, 2);
+  const { c: b } = await joinRoom(code);
+  const c = await new Client().open();
+  c.send({ type: 'join_room', roomCode: code, userId: c.userId });
+  assert.equal((await c.next('error')).code, 'room_full');
+  const again = await new Client(b.userId).open();
+  again.send({ type: 'join_room', roomCode: code, userId: b.userId });
+  await again.next('room_state');
+  b.close();
+  a.close();
+});
+
+test('잘못된 방 옵션은 무시된다', async () => {
+  const c = await new Client().open();
+  for (const bad of [{ password: 'abc' }, { password: 'x'.repeat(33) }, { maxMembers: 1 }, { maxMembers: 99 }, { maxMembers: '5' }]) {
+    c.send({ type: 'create_room', userId: c.userId, ...bad });
+  }
+  await c.none('room_created');
+  c.close();
+});
+
+test('참가 실패가 잦으면 IP 별로 잠시 차단', () => {
+  let t = 0;
+  const rm = new RoomManager({ joinFailLimit: 3, joinFailWindowMs: 60_000, idleSweepMs: 3_600_000, now: () => t });
+  const host = fakeConn();
+  rm.create(host, 'user-aaaa-testtest', { password: 'secret1' });
+  const code = [...rm.rooms.keys()][0];
+  const guess = () => {
+    const g = fakeConn();
+    g.ip = '1.2.3.4';
+    return g;
+  };
+  const codes = [];
+  for (let i = 0; i < 5; i++) {
+    const g = guess();
+    rm.join(g, i % 2 ? 'ZZZZZZ' : code, `user-guess${i}-testtest`, i % 2 ? undefined : 'wrong');
+    codes.push(g.sent.find((m) => m.type === 'error').code);
+  }
+  assert.deepEqual(codes, ['wrong_password', 'room_not_found', 'wrong_password', 'too_many_attempts', 'too_many_attempts']);
+  const other = fakeConn();
+  other.ip = '5.6.7.8';
+  rm.join(other, code, 'user-other-testtest', 'secret1');
+  assert.ok(other.sent.some((m) => m.type === 'room_state'), '다른 IP 는 영향 없음');
+  t = 61_000;
+  const later = guess();
+  rm.join(later, code, 'user-later-testtest', 'secret1');
+  assert.ok(later.sent.some((m) => m.type === 'room_state'), '시간이 지나면 풀림');
+  rm.shutdown();
+});

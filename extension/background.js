@@ -1,6 +1,6 @@
 // 서비스 워커: 서버 WebSocket 연결과 방 상태를 보관하고 탭(content)/popup 으로 중계한다.
 import { SERVER_URL } from './config.js';
-import { C2S, S2C, ERR, MODES, ROOM_CODE_RE } from './shared/protocol.js';
+import { C2S, S2C, ERR, MODES, ROOM_CODE_RE, isValidNewPassword, isValidMaxMembers, MAX_PASSWORD_LENGTH } from './shared/protocol.js';
 import { CMD } from './shared/cmd.js';
 
 const PING_MS = 20_000;
@@ -26,6 +26,8 @@ const freshRoom = () => ({
   roomPage: null, // 그 탭이 방에서 보여준 페이지(origin+path). 이 페이지를 벗어나면 방에서 나간다
   hostId: null,
   mode: 'everyone',
+  hasPassword: false,
+  maxMembers: null,
   participants: [],
   video: { playing: false, time: 0, updatedAt: 0 },
   waitingIds: [], // 버퍼링/광고 중이라 모두가 기다리는 참가자
@@ -41,6 +43,9 @@ let room = freshRoom();
 let connection = 'disconnected'; // disconnected | connecting | connected
 let lastError = null;
 const WAKING_MSG = '서버를 깨우는 중이에요 (최대 1분)…';
+let roomPw = null; // 방 비밀번호(재접속용). 디스크에 저장하지 않는다(메모리 + 브라우저를 닫으면 사라지는 storage.session)
+let needPassword = null; // { roomCode, wrong } — 참가하려던 방이 비밀번호를 요구함. 팝업이 입력칸을 보여 준다
+let joiningCode = null; // 참가 요청을 보낸 방 코드
 let justCreated = false; // 내가 방금 방을 만들었음(첫 room_state 에서 서버 상태 대신 내 영상 상태로 방을 시작)
 
 let ws = null;
@@ -56,6 +61,7 @@ async function init() {
   const saved = await chrome.storage.local.get(['userId', 'room', 'profile']);
   userId = saved.userId;
   profile = saved.profile ?? null;
+  roomPw = (await chrome.storage.session?.get('roomPw').catch(() => ({})))?.roomPw ?? null;
   if (!userId) {
     userId = crypto.randomUUID();
     await chrome.storage.local.set({ userId });
@@ -76,11 +82,20 @@ async function init() {
 
 function publicState() {
   const { chat, ...rest } = room;
-  return { ...rest, userId, connection, error: lastError, waking };
+  const askPw = needPassword && Date.now() - needPassword.at < 2 * 60_000 ? { roomCode: needPassword.roomCode, wrong: needPassword.wrong } : null; // 오래된 요청은 버린다
+  return { ...rest, userId, connection, error: lastError, waking, needPassword: askPw };
 }
 
 function persist() {
   chrome.storage.local.set({ room });
+}
+
+function setRoomPw(pw) {
+  roomPw = pw ?? null;
+  try {
+    if (roomPw) chrome.storage.session.set({ roomPw });
+    else chrome.storage.session.remove('roomPw');
+  } catch {}
 }
 
 function resetRoom() {
@@ -181,7 +196,7 @@ function connect() {
       rawSend(pending);
       pending = null;
     } else if (room.roomCode) {
-      rawSend({ type: C2S.JOIN_ROOM, roomCode: room.roomCode, userId }); // 이전 방으로 복귀
+      rawSend({ type: C2S.JOIN_ROOM, roomCode: room.roomCode, userId, ...(roomPw ? { password: roomPw } : {}) }); // 이전 방으로 복귀
     }
   };
   sock.onmessage = (e) => {
@@ -306,6 +321,8 @@ function handleServer(m) {
         video: m.video,
         waitingIds: m.waitingIds ?? [],
         adIds: m.adIds ?? [],
+        hasPassword: !!m.hasPassword,
+        maxMembers: m.maxMembers ?? null,
         serverOffset: m.serverNow - Date.now(),
       };
       for (const p of room.participants) remember(p);
@@ -319,6 +336,7 @@ function handleServer(m) {
       clockSamples = [];
       syncProfile();
       lastError = null;
+      needPassword = null;
       persist();
       broadcast();
       // 입장/재접속: 서버 상태에 맞춘다. 방을 방금 만든 사람은 반대로 내 영상의 현재 상태로 방을 시작한다.
@@ -444,6 +462,31 @@ function handleServerError(m) {
   } else if (m.code === ERR.NOT_ALLOWED) {
     toast(m.message);
     sendToTab({ cmd: CMD.SYNC, state: publicState() }); // 로컬 조작을 방 상태로 되돌림
+  } else if (m.code === ERR.PASSWORD_REQUIRED || m.code === ERR.WRONG_PASSWORD) {
+    if (room.roomCode) {
+      // 이미 들어가 있던 방에 재접속하는데 자리가 없어짐(오래 끊겨 내보내짐): 방을 나간 상태로 두고 알린다
+      toast('비밀번호가 필요한 방이라 다시 들어갈 수 없어요. 확장 아이콘에서 비밀번호를 입력해 주세요.');
+      needPassword = { roomCode: room.roomCode, wrong: false, at: Date.now() };
+      lastError = m.message;
+      leaveRoom(false);
+      return;
+    }
+    needPassword = { roomCode: joiningCode, wrong: m.code === ERR.WRONG_PASSWORD, at: Date.now() };
+    setRoomPw(null);
+    lastError = m.message;
+    toast(`${m.message} 확장 아이콘을 눌러 비밀번호를 입력해 주세요.`);
+    broadcast();
+  } else if (m.code === ERR.ROOM_FULL || m.code === ERR.TOO_MANY_ATTEMPTS) {
+    setRoomPw(null);
+    if (room.roomCode) {
+      toast(m.message);
+      lastError = m.message;
+      leaveRoom(false);
+      return;
+    }
+    lastError = m.message;
+    toast(m.message);
+    broadcast();
   } else if (m.code === ERR.REPLACED) {
     leaveRoom(false);
     lastError = m.message;
@@ -491,6 +534,7 @@ function leaveRoom(notifyServer = true) {
   }
   pending = null;
   cancelWake();
+  setRoomPw(null);
   justCreated = false;
   resetRoom();
   clearTimeout(reconnectTimer);
@@ -502,6 +546,9 @@ function leaveRoom(notifyServer = true) {
 function enterRoom(msg, tabId, site = null) {
   if (room.roomCode) leaveRoom();
   lastError = null;
+  needPassword = null;
+  joiningCode = msg.type === C2S.JOIN_ROOM ? msg.roomCode : null;
+  setRoomPw(msg.password ?? null);
   room.tabId = tabId ?? null;
   room.site = site;
   persist();
@@ -574,7 +621,26 @@ async function onCommand(m, sender) {
         broadcast();
         return { ok: false };
       }
-      enterRoom({ type: C2S.CREATE_ROOM, userId }, m.tabId ?? fromTab, siteOf(m.site));
+      {
+        const msg = { type: C2S.CREATE_ROOM, userId };
+        if (m.password) {
+          if (!isValidNewPassword(m.password)) {
+            lastError = '비밀번호는 4~32자로 정해 주세요.';
+            broadcast();
+            return { ok: false };
+          }
+          msg.password = m.password;
+        }
+        if (m.maxMembers) {
+          if (!isValidMaxMembers(m.maxMembers)) {
+            lastError = '최대 인원은 2~20명으로 정해 주세요.';
+            broadcast();
+            return { ok: false };
+          }
+          msg.maxMembers = m.maxMembers;
+        }
+        enterRoom(msg, m.tabId ?? fromTab, siteOf(m.site));
+      }
       return { ok: true };
 
     case CMD.JOIN_ROOM: {
@@ -595,7 +661,10 @@ async function onCommand(m, sender) {
         const mem = (await chrome.storage.local.get('roomMemory')).roomMemory;
         pendingRestore = mem?.roomCode === roomCode && Date.now() - mem.at < ROOM_MEMORY_MS ? mem : null;
       }
-      enterRoom({ type: C2S.JOIN_ROOM, roomCode, userId }, m.tabId ?? fromTab, siteOf(m.site));
+      {
+        const password = typeof m.password === 'string' && m.password ? m.password.slice(0, MAX_PASSWORD_LENGTH) : undefined;
+        enterRoom({ type: C2S.JOIN_ROOM, roomCode, userId, ...(password ? { password } : {}) }, m.tabId ?? fromTab, siteOf(m.site));
+      }
       return { ok: true };
     }
 

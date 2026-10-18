@@ -19,12 +19,18 @@
   <main>
     <!-- 방이 없을 때 -->
     <section id="lobby" class="card" hidden>
+      <details class="opts" id="createOpts">
+        <summary>방 옵션 (선택)</summary>
+        <label>🔒 비밀번호 <input id="createPw" type="password" maxlength="32" placeholder="4~32자, 비우면 없음" autocomplete="new-password"></label>
+        <label>👥 최대 인원 <input id="createMax" type="number" min="2" max="20" placeholder="2~20, 비우면 제한 없음"></label>
+      </details>
       <button id="create" class="btn primary big">🎬 방 만들기</button>
       <div class="or">또는 코드로 참가</div>
       <div class="join">
         <input id="code" maxlength="6" placeholder="방 코드 6자리" autocomplete="off" spellcheck="false">
         <button id="join" class="btn">참가</button>
       </div>
+      <input id="joinPw" class="joinpw" type="password" maxlength="32" placeholder="비밀번호 (있는 방만)" autocomplete="off">
       <p class="hint" id="noVideo" hidden>이 페이지에서는 영상을 찾지 못했어요. 쿠팡플레이·넷플릭스·웨이브·티빙의 영상 페이지에서 시도해 주세요.</p>
     </section>
 
