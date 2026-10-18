@@ -9,7 +9,9 @@ export const MSG = {
     'err.password_required': '비밀번호가 필요한 방이에요.',
     'err.wrong_password': '비밀번호가 맞지 않아요.',
     'err.room_full': '방이 가득 찼어요 (최대 {max}명).',
-    'err.too_many_attempts': '참가 시도가 너무 많아요. 잠시 뒤에 다시 해 주세요.',
+    'err.too_many_attempts': '시도가 너무 많아요. 잠시 뒤에 다시 해 주세요.',
+    'err.identity_mismatch': '이 사용자 ID 는 다른 기기에서 쓰고 있어서 들어갈 수 없어요.',
+    'err.server_busy': '지금은 방을 더 만들 수 없어요. 잠시 뒤에 다시 해 주세요.',
     'common.someone': '누군가',
   },
   en: {
@@ -21,7 +23,9 @@ export const MSG = {
     'err.password_required': 'This room needs a password.',
     'err.wrong_password': "That password doesn't match.",
     'err.room_full': 'The room is full (max {max}).',
-    'err.too_many_attempts': 'Too many join attempts. Please try again in a moment.',
+    'err.too_many_attempts': 'Too many attempts. Please try again in a moment.',
+    'err.identity_mismatch': 'This user ID is in use on another device, so you can\'t join.',
+    'err.server_busy': "Can't create more rooms right now. Please try again in a moment.",
     'common.someone': 'Someone',
   },
 };

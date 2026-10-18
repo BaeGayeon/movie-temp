@@ -6,15 +6,17 @@ import WebSocket from 'ws';
 import { createServer } from '../src/index.js';
 import { RoomManager } from '../src/rooms.js';
 
-const app = createServer({ port: 0, host: '127.0.0.1', graceMs: 200, emptyTtlMs: 200, bufferWaitMs: 400, resumeDelayMs: 100 });
+const app = createServer({ port: 0, host: '127.0.0.1', maxConnsPerIp: 1e6, createLimit: 1e6, graceMs: 200, emptyTtlMs: 200, bufferWaitMs: 400, resumeDelayMs: 100 });
 let port;
 before(async () => {
   port = await app.listen();
 });
 after(() => app.close());
 
+const EXT_ORIGIN = `chrome-extension://${'a'.repeat(32)}`;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let uid = 0;
+const secretOf = (userId) => `secret-${userId}`.padEnd(32, 'x');
 const newUserId = () => `user-${String(++uid).padStart(4, '0')}-testtest`;
 
 class Client {
@@ -37,7 +39,9 @@ class Client {
     });
     return this;
   }
+  // 방 만들기/참가에는 본인 확인용 secret 이 필요하다. 테스트에서는 userId 로 만든 고정 값을 자동으로 붙인다(직접 넣으면 그대로 둔다)
   send(m) {
+    if (typeof m === 'object' && (m.type === 'create_room' || m.type === 'join_room') && m.secret === undefined) m = { ...m, secret: secretOf(m.userId) };
     this.ws.send(typeof m === 'string' ? m : JSON.stringify(m));
   }
   // 조건에 맞는 메시지를 기다린다(이미 받은 것 포함)
@@ -99,7 +103,11 @@ test('GET /privacy: ?lang=en 또는 Accept-Language 로 영어 페이지', async
 
 test('GET /health', async () => {
   const res = await fetch(`http://127.0.0.1:${port}/health`);
-  assert.equal(res.headers.get('access-control-allow-origin'), '*', '확장(호스트 권한 없는 스토어 빌드)이 잠든 서버를 깨우려면 CORS 헤더가 필요하다');
+  assert.equal(res.headers.get('access-control-allow-origin'), null, '웹페이지(Origin 없음/확장이 아님)에는 CORS 헤더를 주지 않는다');
+  const ext = await fetch(`http://127.0.0.1:${port}/health`, { headers: { Origin: EXT_ORIGIN } });
+  assert.equal(ext.headers.get('access-control-allow-origin'), EXT_ORIGIN, '확장(호스트 권한 없는 스토어 빌드)이 잠든 서버를 깨우려면 CORS 헤더가 필요하다');
+  const web = await fetch(`http://127.0.0.1:${port}/health`, { headers: { Origin: 'https://evil.example' } });
+  assert.equal(web.headers.get('access-control-allow-origin'), null);
   assert.equal(res.status, 200);
   assert.equal((await res.json()).ok, true);
 });
@@ -109,7 +117,8 @@ test('GET /rooms/<코드>: 방 존재 여부만 돌려준다', async () => {
   const url = (c) => `http://127.0.0.1:${port}/rooms/${c}`;
   const yes = await fetch(url(code));
   assert.equal(yes.status, 200);
-  assert.equal(yes.headers.get('access-control-allow-origin'), '*');
+  assert.equal(yes.headers.get('access-control-allow-origin'), null);
+  assert.equal((await fetch(url(code), { headers: { Origin: EXT_ORIGIN } })).headers.get('access-control-allow-origin'), EXT_ORIGIN);
   assert.deepEqual(await yes.json(), { exists: true, hasPassword: false });
   assert.deepEqual(await (await fetch(url(code.toLowerCase()))).json(), { exists: true, hasPassword: false });
   assert.deepEqual(await (await fetch(url('ZZZZZZ'))).json(), { exists: false, hasPassword: false });
@@ -783,7 +792,7 @@ test('반응 없는 방은 idleTtlMs 뒤에 닫히고 참가자에게 알림', (
   let t = 0;
   const rm = new RoomManager({ idleTtlMs: 60_000, idleSweepMs: 3_600_000, now: () => t });
   const a = fakeConn();
-  rm.create(a, 'user-aaaa-testtest');
+  rm.create(a, 'user-aaaa-testtest', { secret: secretOf('user-aaaa-testtest') });
   const code = [...rm.rooms.keys()][0];
   t = 59_000;
   rm.closeIdleRooms();
@@ -803,7 +812,7 @@ test('채팅/재생 같은 활동이 있으면 idle 시간이 다시 시작됨',
   let t = 0;
   const rm = new RoomManager({ idleTtlMs: 60_000, idleSweepMs: 3_600_000, now: () => t });
   const a = fakeConn();
-  rm.create(a, 'user-bbbb-testtest');
+  rm.create(a, 'user-bbbb-testtest', { secret: secretOf('user-bbbb-testtest') });
   t = 50_000;
   rm.chat(a, '안녕', undefined);
   t = 100_000; // 마지막 활동(50초) 기준 50초 지남
@@ -829,6 +838,12 @@ async function makeRoomWith(opts) {
   const created = await a.next('room_created');
   const state = await a.next('room_state');
   return { a, code: created.roomCode, state };
+}
+
+async function joinRoomWith(code, opts) {
+  const c = await new Client().open();
+  c.send({ type: 'join_room', roomCode: code, userId: c.userId, ...opts });
+  return { c, state: await c.next('room_state') };
 }
 
 test('비밀번호 방: 비밀번호 없이/틀리게 참가하면 거부, 맞으면 입장', async () => {
@@ -891,7 +906,7 @@ test('참가 실패가 잦으면 IP 별로 잠시 차단', () => {
   let t = 0;
   const rm = new RoomManager({ joinFailLimit: 3, joinFailWindowMs: 60_000, idleSweepMs: 3_600_000, now: () => t });
   const host = fakeConn();
-  rm.create(host, 'user-aaaa-testtest', { password: 'secret1' });
+  rm.create(host, 'user-aaaa-testtest', { password: 'secret1', secret: secretOf('user-aaaa-testtest') });
   const code = [...rm.rooms.keys()][0];
   const guess = () => {
     const g = fakeConn();
@@ -901,17 +916,17 @@ test('참가 실패가 잦으면 IP 별로 잠시 차단', () => {
   const codes = [];
   for (let i = 0; i < 5; i++) {
     const g = guess();
-    rm.join(g, i % 2 ? 'ZZZZZZ' : code, `user-guess${i}-testtest`, i % 2 ? undefined : 'wrong');
+    rm.join(g, i % 2 ? 'ZZZZZZ' : code, `user-guess${i}-testtest`, i % 2 ? undefined : 'wrong', undefined, secretOf(`user-guess${i}-testtest`));
     codes.push(g.sent.find((m) => m.type === 'error').code);
   }
   assert.deepEqual(codes, ['wrong_password', 'room_not_found', 'wrong_password', 'too_many_attempts', 'too_many_attempts']);
   const other = fakeConn();
   other.ip = '5.6.7.8';
-  rm.join(other, code, 'user-other-testtest', 'secret1');
+  rm.join(other, code, 'user-other-testtest', 'secret1', undefined, secretOf('user-other-testtest'));
   assert.ok(other.sent.some((m) => m.type === 'room_state'), '다른 IP 는 영향 없음');
   t = 61_000;
   const later = guess();
-  rm.join(later, code, 'user-later-testtest', 'secret1');
+  rm.join(later, code, 'user-later-testtest', 'secret1', undefined, secretOf('user-later-testtest'));
   assert.ok(later.sent.some((m) => m.type === 'room_state'), '시간이 지나면 풀림');
   rm.shutdown();
 });
@@ -977,4 +992,89 @@ test('기본 닉네임: 클라이언트 언어(lang)에 따라 게스트/Guest, 
   const st2 = await ko.next('room_state');
   assert.match(st2.participants.find((p) => p.id === ko.userId).name, /^Guest\d{4}$/);
   en.a.close(); bad.close(); ko.close();
+});
+
+test('보안: 방에 공개된 userId 로 재접속해도 secret 이 다르면 거절(방장 가로채기 방지)', async () => {
+  const { a, code } = await makeRoomWith({ password: 'secret1' });
+  const { c: guest, state } = await joinRoomWith(code, { password: 'secret1' });
+  assert.equal(state.hostId, a.userId); // 방 안의 누구나 방장의 userId 를 안다
+  const atk = await new Client(a.userId).open();
+  atk.send({ type: 'join_room', roomCode: code, userId: a.userId, secret: 'attacker-secret-attacker-secret-0000' });
+  assert.equal((await atk.next('error')).code, 'identity_mismatch');
+  await a.none('error'); // 원래 방장의 연결은 끊기지 않는다
+  guest.send({ type: 'set_permission', mode: 'host_only' });
+  const real = await new Client(a.userId).open(); // 진짜 방장은 자기 secret 으로 재접속
+  real.send({ type: 'join_room', roomCode: code, userId: a.userId });
+  assert.equal((await real.next('room_state')).hostId, a.userId);
+});
+
+test('보안: secret 없는/형식이 틀린 create_room, join_room 은 무시', async () => {
+  const c = await new Client().open();
+  c.send(JSON.stringify({ type: 'create_room', userId: c.userId }));
+  c.send(JSON.stringify({ type: 'create_room', userId: c.userId, secret: 'short' }));
+  await c.none('room_created');
+  c.close();
+});
+
+test('보안: 방 만들기는 IP 당 횟수 제한, 서버 전체 방 수 상한', () => {
+  const rm = new RoomManager({ createLimit: 2, maxRooms: 3, idleSweepMs: 3_600_000 });
+  const mk = (ip, n) => {
+    const c = fakeConn();
+    c.ip = ip;
+    rm.create(c, `user-${n}-testtest`, { secret: secretOf(`user-${n}`) });
+    return c.sent.find((m) => m.type === 'error')?.code;
+  };
+  assert.deepEqual([mk('1.1.1.1', 1), mk('1.1.1.1', 2), mk('1.1.1.1', 3)], [undefined, undefined, 'too_many_attempts']);
+  assert.equal(mk('2.2.2.2', 4), undefined);
+  assert.equal(mk('3.3.3.3', 5), 'server_busy');
+  rm.shutdown();
+});
+
+test('보안: 한 방의 인원은 최대 인원을 정하지 않아도 50명까지', () => {
+  const rm = new RoomManager({ idleSweepMs: 3_600_000 });
+  const host = fakeConn();
+  rm.create(host, 'user-host-testtest', { secret: secretOf('host') });
+  const code = [...rm.rooms.keys()][0];
+  let full;
+  for (let i = 1; i < 60 && !full; i++) {
+    const g = fakeConn();
+    rm.join(g, code, `user-g${i}-testtest`, undefined, undefined, secretOf(`g${i}`));
+    full = g.sent.find((m) => m.type === 'error');
+  }
+  assert.equal(full.code, 'room_full');
+  assert.equal(full.max, 50);
+  rm.shutdown();
+});
+
+test('보안: 확장이 아닌 Origin 의 WebSocket 은 거절, 연결 수는 IP 당 제한', async () => {
+  const s = createServer({ port: 0, host: '127.0.0.1', maxConnsPerIp: 2 });
+  const p = await s.listen();
+  const tryOpen = (origin) =>
+    new Promise((resolve) => {
+      const ws = new WebSocket(`ws://127.0.0.1:${p}`, origin ? { headers: { Origin: origin } } : {});
+      ws.once('open', () => resolve({ ws, status: 101 }));
+      ws.once('unexpected-response', (_req, res) => resolve({ status: res.statusCode }));
+      ws.once('error', () => {});
+    });
+  try {
+    assert.equal((await tryOpen('https://evil.example')).status, 403);
+    assert.equal((await tryOpen(EXT_ORIGIN)).status, 101);
+    assert.equal((await tryOpen()).status, 101);
+    assert.equal((await tryOpen()).status, 429);
+  } finally {
+    await s.close();
+  }
+  const pinned = createServer({ port: 0, host: '127.0.0.1', extensionId: 'b'.repeat(32) });
+  const p2 = await pinned.listen();
+  try {
+    const r = await new Promise((resolve) => {
+      const ws = new WebSocket(`ws://127.0.0.1:${p2}`, { headers: { Origin: EXT_ORIGIN } });
+      ws.once('open', () => resolve(101));
+      ws.once('unexpected-response', (_q, res) => resolve(res.statusCode));
+      ws.once('error', () => {});
+    });
+    assert.equal(r, 403, 'EXTENSION_ID 를 정하면 그 확장만 허용');
+  } finally {
+    await pinned.close();
+  }
 });

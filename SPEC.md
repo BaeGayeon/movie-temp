@@ -94,8 +94,8 @@ watchparty/                (이 저장소 루트)
 
 ```
 // 1단계
-{ type: "create_room", userId }
-{ type: "join_room", roomCode, userId }
+{ type: "create_room", userId, secret }
+{ type: "join_room", roomCode, userId, secret }
 { type: "leave_room" }
 { type: "video", action: "play" | "pause" | "seek", time, sentAt }
 { type: "set_permission", mode: "host_only" | "everyone" }
@@ -115,7 +115,10 @@ watchparty/                (이 저장소 루트)
 // 4단계
 { type: "create_room", userId, password?, maxMembers? }   // 비밀번호(영문·숫자 4~32자), 최대 인원(2~20)
 { type: "set_room_options", password?: string | null, maxMembers?: number | null }   // 방장만. null 은 해제. 서버가 room_options 로 모두에게 알림(비밀번호 내용은 없음)
-{ type: "join_room", roomCode, userId, password? }   // 비밀번호 포함. error code: password_required / wrong_password / room_full / too_many_attempts
+{ type: "join_room", roomCode, userId, secret, password? }   // 비밀번호 포함. error code: password_required / wrong_password / room_full / too_many_attempts / identity_mismatch / server_busy
+// 배포 전 보안 보강: userId 는 방 안에 공개되므로 secret(확장이 기기에 만든 비공개 값, 32~64자)이 본인 확인 수단이다. 서버는 해시만 보관하고,
+//   이미 등록된 userId 로 다른 secret 이 오면 identity_mismatch. 방 만들기(IP 당 분당 10회, 서버 전체 2000개), 동시 연결(IP 당 20개), 방당 최대 50명 제한.
+//   WebSocket/CORS 는 chrome-extension:// Origin 만 허용(EXTENSION_ID 환경변수로 특정 확장만), X-Forwarded-For 는 TRUST_PROXY=1 일 때만 신뢰
 // avatar.kind: "image"는 value에 base64 데이터 URL
 ```
 

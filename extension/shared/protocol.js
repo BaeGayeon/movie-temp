@@ -54,6 +54,8 @@ export const ERR = {
   WRONG_PASSWORD: 'wrong_password',
   ROOM_FULL: 'room_full', // 오류 메시지에 max(방의 최대 인원)를 함께 보낸다
   TOO_MANY_ATTEMPTS: 'too_many_attempts', // 참가 실패가 잦아 잠시 차단
+  IDENTITY_MISMATCH: 'identity_mismatch', // 이미 방에 등록된 userId 인데 비공개 secret 이 맞지 않음(다른 사람의 userId 로 들어오려 함)
+  SERVER_BUSY: 'server_busy', // 서버가 만들 수 있는 방 수의 상한
 };
 
 export const VIDEO_ACTIONS = ['play', 'pause', 'seek'];
@@ -140,6 +142,9 @@ export const ROOM_CODE_RE = /^[A-Z0-9]{6}$/;
 // 방 만들기/참가 때 클라이언트가 보내는 표시 언어(기본 닉네임 "게스트1234"/"Guest1234" 을 고르는 데만 쓴다). 틀린 값은 무시한다
 const LANGS = ['ko', 'en'];
 const USER_ID_RE = /^[A-Za-z0-9_-]{8,64}$/;
+// secret: 확장이 기기에 만들어 두는 비공개 값. userId 는 방 안의 모두에게 공개되므로(participants[].id, hostId) 본인 확인은 이 값으로 한다.
+// 서버는 해시만 방 메모리에 두고 다른 참가자에게 전달하지 않는다.
+const SECRET_RE = /^[A-Za-z0-9_-]{32,64}$/;
 const MAX_TIME = 24 * 60 * 60; // 초
 
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
@@ -150,7 +155,8 @@ const isTime = (v) => isNum(v) && v >= 0 && v <= MAX_TIME;
 const validators = {
   [C2S.CREATE_ROOM]: (m) => {
     if (typeof m.userId !== 'string' || !USER_ID_RE.test(m.userId)) return null;
-    const out = { type: m.type, userId: m.userId };
+    if (typeof m.secret !== 'string' || !SECRET_RE.test(m.secret)) return null;
+    const out = { type: m.type, userId: m.userId, secret: m.secret };
     if (LANGS.includes(m.lang)) out.lang = m.lang;
     if (m.password !== undefined) {
       if (!isValidNewPassword(m.password)) return null;
@@ -165,10 +171,11 @@ const validators = {
 
   [C2S.JOIN_ROOM]: (m) => {
     if (typeof m.userId !== 'string' || !USER_ID_RE.test(m.userId)) return null;
+    if (typeof m.secret !== 'string' || !SECRET_RE.test(m.secret)) return null;
     if (typeof m.roomCode !== 'string') return null;
     const roomCode = m.roomCode.toUpperCase();
     if (!ROOM_CODE_RE.test(roomCode)) return null;
-    const out = { type: m.type, userId: m.userId, roomCode };
+    const out = { type: m.type, userId: m.userId, secret: m.secret, roomCode };
     if (LANGS.includes(m.lang)) out.lang = m.lang;
     if (m.password !== undefined) {
       if (typeof m.password !== 'string' || m.password.length > MAX_PASSWORD_LENGTH) return null;
