@@ -1,6 +1,6 @@
 import { APP_NAME, APP_NAME_KO } from '../config.js';
 import { CMD } from '../shared/cmd.js';
-import { COLOR_PALETTE, MAX_NAME_LENGTH } from '../shared/protocol.js';
+import { COLOR_PALETTE, MAX_NAME_LENGTH, MIN_PASSWORD_LENGTH, MAX_PASSWORD_LENGTH, MIN_ROOM_MEMBERS, MAX_ROOM_MEMBERS, isValidNewPassword, isValidMaxMembers } from '../shared/protocol.js';
 import { renderAvatar, bitmapToAvatarDataUrl } from '../shared/avatar.js';
 import { createEmojiPicker, EMOJI_PICKER_CSS } from '../shared/emoji-picker.js';
 import { ROOT_THEME_CSS, pastelize } from '../shared/theme.js';
@@ -73,6 +73,12 @@ function render() {
   $('elsewhereSite').textContent = state?.site || '다른 탭';
   $('error').textContent = state?.error ?? (state?.waking ? '서버를 깨우는 중이에요 (최대 1분)…' : '');
   $('error').classList.toggle('info', !state?.error && !!state?.waking);
+  // 비밀번호가 필요한 방에 참가하려다 거절됨: 코드를 채워 두고 비밀번호 칸으로 안내
+  if (state?.needPassword && !inRoom && document.activeElement !== $('joinPw') && $('joinPw').dataset.askedFor !== state.needPassword.roomCode) {
+    $('joinPw').dataset.askedFor = state.needPassword.roomCode;
+    $('code').value = state.needPassword.roomCode;
+    $('joinPw').focus();
+  }
   if (!here) return;
 
   // 방 코드: 글자마다 칩으로
@@ -86,7 +92,7 @@ function render() {
   const [connText, connCls] = CONN[state.connection] ?? CONN.disconnected;
   $('conn').textContent = connText;
   $('conn').className = `status ${connCls}`;
-  $('count').textContent = `${state.participants.length}명`;
+  $('count').textContent = `${state.hasPassword ? '🔒 ' : ''}${state.participants.length}${state.maxMembers ? `/${state.maxMembers}` : ''}명`;
 
   // 참가자: 프사 + 닉네임 + 방장/나 표시
   $('people').replaceChildren(
@@ -130,19 +136,25 @@ async function checkVideo() {
   const tab = await activeTab();
   const reply = await chrome.runtime.sendMessage({ cmd: CMD.HAS_VIDEO, tabId: tab?.id }).catch(() => null);
   const ok = !!reply?.ok;
-  for (const id of ['create', 'join', 'code']) $(id).disabled = !ok;
+  for (const id of ['create', 'join', 'code', 'joinPw', 'createPw', 'createMax']) $(id).disabled = !ok;
   $('noVideo').hidden = ok;
 }
 setInterval(checkVideo, 1500);
 
 $('create').addEventListener('click', async () => {
   const tab = await activeTab();
-  chrome.runtime.sendMessage({ cmd: CMD.CREATE_ROOM, tabId: tab?.id, site: tab?.url });
+  const password = $('createPw').value;
+  const maxMembers = $('createMax').value ? Number($('createMax').value) : undefined;
+  if (password && !isValidNewPassword(password)) return ($('error').textContent = `비밀번호는 ${MIN_PASSWORD_LENGTH}~${MAX_PASSWORD_LENGTH}자로 정해 주세요.`);
+  if (maxMembers !== undefined && !isValidMaxMembers(maxMembers)) return ($('error').textContent = `최대 인원은 ${MIN_ROOM_MEMBERS}~${MAX_ROOM_MEMBERS}명으로 정해 주세요.`);
+  chrome.runtime.sendMessage({ cmd: CMD.CREATE_ROOM, tabId: tab?.id, site: tab?.url, password: password || undefined, maxMembers });
+  $('createPw').value = ''; // 비밀번호를 입력칸에 남기지 않는다
 });
 
 $('join').addEventListener('click', async () => {
   const tab = await activeTab();
-  chrome.runtime.sendMessage({ cmd: CMD.JOIN_ROOM, roomCode: $('code').value, tabId: tab?.id, site: tab?.url });
+  chrome.runtime.sendMessage({ cmd: CMD.JOIN_ROOM, roomCode: $('code').value, tabId: tab?.id, site: tab?.url, password: $('joinPw').value || undefined });
+  $('joinPw').value = '';
 });
 
 $('countdown').addEventListener('click', () =>

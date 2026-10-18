@@ -63,8 +63,9 @@ export function createServer({ port = Number(process.env.PORT) || 8080, host = '
 
   const wss = new WebSocketServer({ server, maxPayload: MAX_PAYLOAD });
 
-  wss.on('connection', (ws) => {
+  wss.on('connection', (ws, req) => {
     const conn = {
+      ip: clientIp(req),
       userId: null,
       roomCode: null,
       send: (obj) => ws.readyState === ws.OPEN && ws.send(JSON.stringify(obj)),
@@ -89,10 +90,10 @@ export function createServer({ port = Number(process.env.PORT) || 8080, host = '
 
       switch (msg.type) {
         case C2S.CREATE_ROOM:
-          rooms.create(conn, msg.userId);
+          rooms.create(conn, msg.userId, { password: msg.password, maxMembers: msg.maxMembers });
           break;
         case C2S.JOIN_ROOM:
-          rooms.join(conn, msg.roomCode, msg.userId);
+          rooms.join(conn, msg.roomCode, msg.userId, msg.password);
           break;
         case C2S.LEAVE_ROOM:
           rooms.leave(conn);

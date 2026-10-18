@@ -17,7 +17,7 @@ export const C2S = {
   CHAT: 'chat',
   TYPING: 'typing',
   REACTION: 'reaction',
-  // 4단계 (비밀번호/인원 제한은 보류)
+  // 4단계: 방 옵션(비밀번호/인원 제한)은 방을 만들 때 create_room 에 실어 보낸다. set_room_options 는 쓰지 않는다.
   SET_ROOM_OPTIONS: 'set_room_options',
 };
 
@@ -47,6 +47,10 @@ export const ERR = {
   ROOM_NOT_FOUND: 'room_not_found',
   NOT_ALLOWED: 'not_allowed',
   REPLACED: 'replaced',
+  PASSWORD_REQUIRED: 'password_required', // 비밀번호가 있는 방에 비밀번호 없이 들어오려 함
+  WRONG_PASSWORD: 'wrong_password',
+  ROOM_FULL: 'room_full',
+  TOO_MANY_ATTEMPTS: 'too_many_attempts', // 참가 실패가 잦아 잠시 차단
 };
 
 export const VIDEO_ACTIONS = ['play', 'pause', 'seek'];
@@ -118,6 +122,15 @@ export function validateProfile(p) {
 }
 export const MODES = ['host_only', 'everyone'];
 
+// 방 옵션: 비밀번호(선택, 4~32자)와 최대 인원(선택, 2~20명)
+export const MIN_PASSWORD_LENGTH = 4;
+export const MAX_PASSWORD_LENGTH = 32;
+export const MIN_ROOM_MEMBERS = 2;
+export const MAX_ROOM_MEMBERS = 20;
+export const isValidNewPassword = (v) =>
+  typeof v === 'string' && v.length >= MIN_PASSWORD_LENGTH && v.length <= MAX_PASSWORD_LENGTH && !/[\p{C}\u2028\u2029]/u.test(v);
+export const isValidMaxMembers = (v) => Number.isInteger(v) && v >= MIN_ROOM_MEMBERS && v <= MAX_ROOM_MEMBERS;
+
 export const ROOM_CODE_RE = /^[A-Z0-9]{6}$/;
 const USER_ID_RE = /^[A-Za-z0-9_-]{8,64}$/;
 const MAX_TIME = 24 * 60 * 60; // 초
@@ -128,17 +141,31 @@ const isTime = (v) => isNum(v) && v >= 0 && v <= MAX_TIME;
 // 타입별 검증기: 올바르면 정규화된 메시지를, 아니면 null 을 반환한다.
 // 여기에 없는 타입(이후 단계 메시지 포함)은 무시된다.
 const validators = {
-  [C2S.CREATE_ROOM]: (m) =>
-    typeof m.userId === 'string' && USER_ID_RE.test(m.userId)
-      ? { type: m.type, userId: m.userId }
-      : null,
+  [C2S.CREATE_ROOM]: (m) => {
+    if (typeof m.userId !== 'string' || !USER_ID_RE.test(m.userId)) return null;
+    const out = { type: m.type, userId: m.userId };
+    if (m.password !== undefined) {
+      if (!isValidNewPassword(m.password)) return null;
+      out.password = m.password;
+    }
+    if (m.maxMembers !== undefined) {
+      if (!isValidMaxMembers(m.maxMembers)) return null;
+      out.maxMembers = m.maxMembers;
+    }
+    return out;
+  },
 
   [C2S.JOIN_ROOM]: (m) => {
     if (typeof m.userId !== 'string' || !USER_ID_RE.test(m.userId)) return null;
     if (typeof m.roomCode !== 'string') return null;
     const roomCode = m.roomCode.toUpperCase();
     if (!ROOM_CODE_RE.test(roomCode)) return null;
-    return { type: m.type, userId: m.userId, roomCode };
+    const out = { type: m.type, userId: m.userId, roomCode };
+    if (m.password !== undefined) {
+      if (typeof m.password !== 'string' || m.password.length > MAX_PASSWORD_LENGTH) return null;
+      out.password = m.password;
+    }
+    return out;
   },
 
   [C2S.LEAVE_ROOM]: (m) => ({ type: m.type }),
