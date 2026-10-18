@@ -290,22 +290,27 @@ async function wakeServer() {
     await new Promise((r) => setTimeout(r, WAKE_RETRY_MS));
   }
   clearTimeout(showTimer);
-  if (run !== wakeRun) return false; // 그 사이 방을 나가는 등으로 취소됨
+  if (run !== wakeRun) return { ok: false, reason: 'cancelled' }; // 그 사이 방을 나가는 등으로 취소됨
   waking = false;
-  return ok;
+  // 실패 이유: 요청이 바로바로 실패했으면 서버가 꺼져 있거나 주소가 틀린 것(unreachable), 1분을 기다려도 안 깨어나면 timeout
+  return ok ? { ok: true } : { ok: false, reason: fastFails >= WAKE_FAST_FAILS ? 'unreachable' : 'timeout' };
 }
+
+// 개발용 확장은 내 컴퓨터의 서버(localhost)를 바라본다: 서버가 꺼져 있을 가능성이 가장 높으니 켜는 방법을 알려 준다
+const LOCAL_SERVER = /^wss?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/.test(SERVER_URL);
+const wakeFailText = (reason) => t(reason === 'unreachable' ? (LOCAL_SERVER ? 'bg.serverDownLocal' : 'bg.serverUnreachable') : 'bg.wakeTimeout');
 
 function sendOrQueue(msg) {
   if (ws?.readyState === WebSocket.OPEN) rawSend(msg);
   else {
     pending = msg;
     retry = 0;
-    wakeServer().then((ok) => {
+    wakeServer().then(({ ok, reason }) => {
       if (pending !== msg) return; // 취소되었거나 다른 요청으로 바뀜
       if (ok) connect();
       else {
         pending = null;
-        lastError = t('bg.connectFailed');
+        lastError = wakeFailText(reason);
         broadcast();
       }
     });
