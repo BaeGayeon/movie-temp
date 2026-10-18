@@ -14,6 +14,14 @@
         <p class="tagline" data-i18n="popup.tagline">같이 보면 더 재밌어요 🍿</p>
       </div>
     </div>
+    <label class="lang" data-i18n-title="popup.lang" title="🌐 언어">
+      <span class="lang-ic" aria-hidden="true">🌐</span>
+      <select id="langSel" aria-label="Language">
+        <option value="auto" data-i18n="popup.langAuto">자동</option>
+        <option value="ko">한국어</option>
+        <option value="en">English</option>
+      </select>
+    </label>
   </header>
 
   <main>
@@ -186,20 +194,10 @@
       </div>
     </details>
 
-    <details class="card" id="syncBox" data-fold="sync">
-      <summary data-i18n="popup.sync">⚙️ 동기화 설정</summary>
-      <div class="inner">
-        <label class="check" data-i18n-title="popup.adDetectTip" title="90초보다 짧은 영상은 광고로 보고, 광고 중에는 재생·일시정지·이동을 주고받지 않아요"><input type="checkbox" id="adDetect"> <span data-i18n="popup.adDetect">광고 구간은 동기화에서 제외</span></label>
-      </div>
-    </details>
-
-    <label class="langrow"><span data-i18n="popup.lang">🌐 언어</span>
-      <select id="langSel" aria-label="Language">
-        <option value="auto" data-i18n="popup.langAuto">자동 (브라우저 설정)</option>
-        <option value="ko">한국어</option>
-        <option value="en">English</option>
-      </select>
-    </label>
+    <!-- 설정이 하나뿐이라 접는 카드 대신 펼쳐진 카드로 -->
+    <section class="card check-card" id="syncBox">
+      <label class="check" data-i18n-title="popup.adDetectTip" title="90초보다 짧은 영상은 광고로 보고, 광고 중에는 재생·일시정지·이동을 주고받지 않아요"><input type="checkbox" id="adDetect"> <span data-i18n="popup.adDetect">광고 구간은 동기화에서 제외</span></label>
+    </section>
     </div>
   </main>
   <script type="module" src="popup.js"></script>

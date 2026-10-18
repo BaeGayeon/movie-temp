@@ -7,7 +7,7 @@ export const MSG = {
     'popup.tabMe': '내 설정',
     'popup.roomSettings': '⚙️ 방 설정',
     'popup.lang': '🌐 언어',
-    'popup.langAuto': '자동 (브라우저 설정)',
+    'popup.langAuto': '자동',
 
     // 로비
     'popup.createOpts': '방 옵션 (선택)',
@@ -129,7 +129,6 @@ export const MSG = {
     'popup.fontBlocked': '글꼴 접근이 차단돼 있어요. 크롬 설정에서 허용하거나, 아래에 글꼴 이름을 직접 입력해 주세요.',
 
     // 동기화 설정
-    'popup.sync': '⚙️ 동기화 설정',
     'popup.adDetect': '광고 구간은 동기화에서 제외',
     'popup.adDetectTip': '90초보다 짧은 영상은 광고로 보고, 광고 중에는 재생·일시정지·이동을 주고받지 않아요',
 
@@ -164,7 +163,7 @@ export const MSG = {
     'popup.tabMe': 'My settings',
     'popup.roomSettings': '⚙️ Room settings',
     'popup.lang': '🌐 Language',
-    'popup.langAuto': 'Auto (browser)',
+    'popup.langAuto': 'Auto',
 
     // Lobby
     'popup.createOpts': 'Room options (optional)',
@@ -286,7 +285,6 @@ export const MSG = {
     'popup.fontBlocked': 'Font access is blocked. Allow it in Chrome settings, or type a font name below.',
 
     // Sync settings
-    'popup.sync': '⚙️ Sync settings',
     'popup.adDetect': 'Skip ad breaks when syncing',
     'popup.adDetectTip': 'Videos shorter than 90 seconds are treated as ads, and play/pause/seek aren’t shared during ads',
 
