@@ -727,6 +727,32 @@ test('광고: 광고 보는 사람이 있으면 방이 멈추고, 광고가 끝�
   b.close();
 });
 
+test('광고: 먼저 광고를 본 사람이 끝나도, 방이 멈춘 뒤 광고에 들어온 사람이 끝날 때까지 기다린다', async () => {
+  const { a, code } = await makeRoom();
+  const { c: b } = await joinRoom(code);
+  a.send({ type: 'video', action: 'play', time: 10, sentAt: 1 });
+  await b.next('video');
+  a.send({ type: 'buffering', isBuffering: true, reason: 'ad' });
+  await a.next('buffer_state'); // a 가 받은 자기 광고 보고 결과
+  const s1 = await b.next('buffer_state');
+  assert.equal(s1.video.playing, false);
+  b.send({ type: 'buffering', isBuffering: true, reason: 'ad' }); // 방이 이미 멈춘 뒤에 b 의 광고가 시작됨
+  const s2 = await a.next('buffer_state');
+  assert.deepEqual([...s2.adIds].sort(), [a.userId, b.userId].sort());
+  await b.next('buffer_state'); // b 가 받은 두 번째 상태
+  a.send({ type: 'buffering', isBuffering: false }); // a 의 광고가 먼저 끝남
+  const s3 = await b.next('buffer_state');
+  assert.deepEqual(s3.waitingIds, [b.userId]);
+  assert.equal(s3.video.playing, false, 'b 가 광고를 보는 동안 방은 계속 멈춰 있어야 한다');
+  await a.next('buffer_state'); // a 가 받은 a 의 광고 종료 결과
+  b.send({ type: 'buffering', isBuffering: false });
+  const s4 = await a.next('buffer_state');
+  assert.deepEqual(s4.waitingIds, []);
+  assert.equal(s4.video.playing, true);
+  a.close();
+  b.close();
+});
+
 test('광고 reason 검증: ad 외의 값은 거부', async () => {
   const { a } = await makeRoom();
   a.send({ type: 'buffering', isBuffering: true, reason: 'x' });

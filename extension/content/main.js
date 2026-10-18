@@ -159,7 +159,9 @@
         bufferingReported = false;
         send({ cmd: CMD.BUFFERING, isBuffering: false }); // 버퍼링 보고는 광고 보고로 대체
       }
-      if (active() && state.video.playing && !adReported) {
+      // 방이 재생 중일 때만이 아니라, 다른 사람의 광고/버퍼링 때문에 방이 멈춰 있을 때도 보고한다.
+      // 그러지 않으면 먼저 광고를 본 사람이 끝나는 순간 대기 목록이 비어 방이 재개되고, 아직 광고 중인 내 화면은 방과 어긋난다.
+      if (active() && (state.video.playing || state.waitingIds?.length) && !adReported) {
         adReported = true;
         send({ cmd: CMD.BUFFERING, isBuffering: true, reason: 'ad' }); // 위치는 보내지 않는다(광고 위치는 의미 없음)
       }
