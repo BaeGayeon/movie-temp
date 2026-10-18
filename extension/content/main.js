@@ -682,6 +682,23 @@
   setInterval(scan, 3000); // 레이아웃 변화 등 DOM 변경 없이 영상이 나타나는 경우 대비
   scan();
 
+  // 광고 후보(다른 video, iframe, 광고 글자 등)가 보이거나 바뀐 순간만 따로 모아 둔다. 일반 기록(diag)은 400줄이라 광고가 드문 사이트에서
+  // 광고 뒤에 복사해도 그 순간이 밀려났을 수 있어서, 진단 정보 복사 때 맨 위에 붙인다(웨이브처럼 광고를 직접 보기 어려운 사이트용).
+  const adLog = [];
+  let adLogSig = '';
+  setInterval(() => {
+    if (!video) return;
+    const dbg = adapter.debug?.() ?? {};
+    const hot = inAd || dbg.adOnScreen || dbg.otherVideos?.length || dbg.iframes?.length || dbg.texts?.length;
+    const sig = hot ? JSON.stringify({ inAd, ...dbg }) : '';
+    if (sig === adLogSig) return;
+    adLogSig = sig;
+    const t = new Date();
+    const stamp = `${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}:${String(t.getSeconds()).padStart(2, '0')}`;
+    adLog.push(`${stamp} ${sig || '(광고 후보 없음으로 돌아옴)'}`);
+    if (adLog.length > 80) adLog.shift();
+  }, 1000);
+
   // 2초마다 현재 값을 기록(방에 있을 때): 내 위치(pos)와 <video> 값(vct)이 어긋나는지, 방의 기준 위치와 얼마나 다른지 본다
   setInterval(() => {
     if (!video || !active()) return;
@@ -694,7 +711,7 @@
   chrome.runtime.onMessage.addListener((m, _sender, sendResponse) => {
     switch (m.cmd) {
       case CMD.DIAG:
-        if (isTop) sendResponse({ text: `[${location.hostname}] ${navigator.userAgent.split(' ').slice(-2).join(' ')}\n${diag.join('\n')}` });
+        if (isTop) sendResponse({ text: `[${location.hostname}] ${navigator.userAgent.split(' ').slice(-2).join(' ')}\n${adLog.length ? `[광고 후보 변화 기록 ${adLog.length}개]\n${adLog.join('\n')}\n[일반 기록]\n` : ''}${diag.join('\n')}` });
         break;
       case CMD.HAS_VIDEO:
         if (video) sendResponse(true); // 영상이 없는 프레임은 응답하지 않는다(응답한 프레임이 있으면 그걸 쓴다)
