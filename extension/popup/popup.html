@@ -17,6 +17,8 @@
   </header>
 
   <main>
+    <!-- 연결 안내/오류: 맨 위에 두어 눈에 띄게 한다 -->
+    <div class="error" id="error" role="status"></div>
     <!-- 방이 없을 때 -->
     <section id="lobby" class="card" hidden>
       <details class="opts" id="createOpts">
@@ -178,7 +180,6 @@
       </div>
     </details>
 
-    <div class="error" id="error"></div>
     <label class="langrow"><span data-i18n="popup.lang">🌐 언어</span>
       <select id="langSel" aria-label="Language">
         <option value="auto" data-i18n="popup.langAuto">자동 (브라우저 설정)</option>

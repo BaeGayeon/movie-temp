@@ -94,7 +94,7 @@ async function init() {
 function publicState() {
   const { chat, ...rest } = room;
   const askPw = needPassword && Date.now() - needPassword.at < 2 * 60_000 ? { roomCode: needPassword.roomCode, wrong: needPassword.wrong } : null; // 오래된 요청은 버린다
-  return { ...rest, userId, connection, error: lastError, waking, needPassword: askPw };
+  return { ...rest, userId, connection, error: lastError, waking, busy: pending !== null, needPassword: askPw }; // busy: 방 만들기/참가 요청을 서버 연결 전에 쥐고 있는 중
 }
 
 function persist() {
