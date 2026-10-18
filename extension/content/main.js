@@ -102,8 +102,28 @@
     });
   } catch {}
 
+  // 광고/버퍼링 안내는 한 곳에서 하나만 보여 준다(내 광고 안내와 다른 사람 광고 안내가 따로 두 개 뜨지 않게).
+  //  - 나만 광고: "광고 시청 중이에요. 끝나면 다 같이 이어서 재생해요."
+  //  - 나와 다른 사람도 광고: "나와 OO, OO 님이 광고 시청 중이에요. 끝나면 같이 재생해요."
+  //  - 다른 사람만 광고: "OO 님이 광고 시청 중이에요. 끝나면 같이 재생해요." / 광고는 없고 버퍼링: "OO 님이 버퍼링 중이에요. 기다리는 중…"
+  let ownAdNotice = false;
+  function renderNotices() {
+    if (!isTop) return;
+    const nameOf = (id) => state?.participants?.find((p) => p.id === id)?.name ?? '누군가';
+    const adIds = state?.adIds ?? [];
+    const others = active() ? adIds.filter((id) => id !== state.userId).map(nameOf) : [];
+    const bufs = active() ? (state?.waitingIds ?? []).filter((id) => !adIds.includes(id)).map(nameOf) : [];
+    if (ownAdNotice && active()) {
+      ui.showWaiting(null);
+      ui.showAd(others.length ? `나와 ${others.join(', ')} 님이 광고 시청 중이에요. 끝나면 같이 재생해요.` : '광고 시청 중이에요. 끝나면 다 같이 이어서 재생해요.');
+      return;
+    }
+    ui.showAd(null);
+    ui.showWaiting(others.length ? `${others.join(', ')} 님이 광고 시청 중이에요. 끝나면 같이 재생해요.` : bufs.length ? `${bufs.join(', ')} 님이 버퍼링 중이에요. 기다리는 중…` : null);
+  }
   function setAdNotice(on) {
-    if (isTop) ui.showAd(on && active() ? '광고 시청 중이에요. 끝나면 다 같이 이어서 재생해요.' : null);
+    ownAdNotice = !!on && active();
+    renderNotices();
   }
 
   // 광고: 내 영상은 방과 따로 두고, 방에는 "광고 중이니 기다려 달라"고 알린다(다른 사람 영상도 멈추고, 광고가 끝나면 함께 다시 재생)
@@ -127,7 +147,9 @@
         bufferingReported = false;
         send({ cmd: CMD.BUFFERING, isBuffering: false }); // 버퍼링 보고는 광고 보고로 대체
       }
-      if (active() && state.video.playing && !adReported) {
+      // 방이 재생 중이거나, 다른 사람의 광고/버퍼링 때문에 이미 멈춰 기다리는 중일 때(= 내가 더 늦게 광고를 시작한 경우)에도 알린다.
+      // 알리지 않으면 먼저 시작한 사람의 광고가 끝나는 순간 내 광고가 아직 남았는데도 방이 다시 재생된다.
+      if (active() && (state.video.playing || (state.waitingIds?.length ?? 0) > 0) && !adReported) {
         adReported = true;
         send({ cmd: CMD.BUFFERING, isBuffering: true, reason: 'ad' }); // 위치는 보내지 않는다(광고 위치는 의미 없음)
       }
@@ -768,9 +790,7 @@
           const ads = (state.adIds ?? []).filter((id) => id !== state.userId).map(nameOf);
           const bufs = state.waitingIds.filter((id) => !(state.adIds ?? []).includes(id)).map(nameOf);
           const names = [...ads, ...bufs];
-          ui.showWaiting(
-            ads.length ? `${ads.join(', ')} 님이 광고 시청 중이에요. 끝나면 같이 재생해요.` : bufs.length ? `${bufs.join(', ')} 님이 버퍼링 중이에요. 기다리는 중…` : null,
-          );
+          renderNotices();
           if (!names.length && state.video.playing && state.video.updatedAt > serverNow()) {
             ui.toast('모두 준비됐어요. 곧 함께 재생해요');
           }
