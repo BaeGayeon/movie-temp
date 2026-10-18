@@ -87,14 +87,13 @@ const CSS = `
   .sendstat .link:hover { color: var(--accent-ink, var(--ink)); }
 
   .typing { min-height: 18px; padding: 0 14px 2px; font-size: 12px; color: var(--ink-soft); }
-  .reacts { display: flex; gap: 0; padding: 2px 8px; flex-wrap: wrap; align-items: center; }
-  .reacts .grp { display: flex; margin-right: 8px; } /* 감정이 비슷한 것끼리 묶고 묶음 사이에 간격 */
-  .reacts .brk { flex-basis: 100%; height: 0; } /* 최근 이모지가 있으면 그 줄을 따로 쓴다(＋ 가 혼자 떨어지지 않도록) */
-  .reacts .brk[hidden] { display: none; }
+  .reacts { display: flex; gap: 0 8px; padding: 2px 8px; flex-wrap: wrap; align-items: center; } /* 묶음 사이 간격은 gap 으로: 한 줄 안에서만 생기므로 줄 끝에 여백이 따로 필요하지 않다(왼쪽 여백만큼만 있으면 된다) */
+  .reacts .grp { display: flex; } /* 감정이 비슷한 것끼리 묶음. 묶음은 줄 사이에 쪼개지지 않고 통째로 줄바꿈 */
   .reacts .rlabel { font-size: 11px; color: var(--ink-soft); padding: 0 6px 0 4px; }
   .reacts .rlabel[hidden] { display: none; }
+  .reacts .tail { display: flex; flex-wrap: wrap; align-items: center; }
+  .reacts .tail[hidden] { display: none; }
   .reacts .grp[hidden] { display: none; }
-  .reacts .grp.recent { margin-right: 4px; } /* 최근에 직접 고른 이모지(기본 목록에 없는 것) */
   .reacts button { background: transparent; font-size: 17px; border-radius: 8px; padding: 2px 4px; transition: transform .08s; }
   .reacts button:hover { background: var(--surface-2); transform: scale(1.15); }
   ::selection { background: var(--accent); color: var(--on-accent); } /* 사이트 기본 선택색이 안 보이는 경우가 있어 직접 지정 */
@@ -617,12 +616,12 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
       }
       row.append(grp);
     }
-    const brk = el('div', 'brk');
     const rlabel = el('span', 'rlabel', t('chat.recent'));
+    const tail = el('div', 'tail'); // "최근" 라벨과 최근 이모지는 한 덩어리로 줄바꿈된다
     const recent = el('div', 'grp recent');
     recent.title = t('chat.recentTitle');
     const renderRecent = () => {
-      brk.hidden = rlabel.hidden = recent.hidden = recentReactions.length === 0;
+      tail.hidden = rlabel.hidden = recent.hidden = recentReactions.length === 0;
       recent.replaceChildren(
         ...recentReactions.map((emoji) => {
           const b = el('button', '', emoji);
@@ -634,11 +633,11 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     };
     reactionRows.push(renderRecent);
     renderRecent();
-    row.append(brk, rlabel, recent);
+    tail.append(rlabel, recent);
     const more = el('button', '', '＋');
     more.title = t('chat.allEmoji');
     more.addEventListener('click', () => openPicker(more, (emoji) => sendReaction(emoji), false));
-    row.append(more);
+    row.append(more, tail); // ＋ 는 기본 이모지 바로 뒤에 붙여 혼자 떨어지지 않게
     return row;
   }
 
