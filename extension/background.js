@@ -6,7 +6,11 @@ import { initI18n, t, getLang, serverErrorText } from './shared/i18n.js';
 
 initI18n(); // 서비스 워커가 다시 떠도 저장된 언어 설정을 읽는다(그 전에는 브라우저 언어)
 
-const PING_MS = 20_000;
+const PING_MS = 5_000;
+// 연결이 조용히 죽는 경우(공유기/프록시가 연결을 닫지 않고 멈춤)는 브라우저가 한참 뒤에야 알려 준다.
+// 서버는 ping 마다 바로 응답하므로, 이 시간 동안 서버에서 아무 메시지도 없으면 끊긴 것으로 보고 직접 다시 연결한다.
+const DEAD_MS = 15_000;
+const CONNECT_TIMEOUT_MS = 10_000; // 연결을 시작했는데 이 시간 안에 열리지 않으면(핸드셰이크가 멈춤) 포기하고 다시 시도한다
 const MAX_BACKOFF_MS = 30_000;
 const MAX_CLOCK_SAMPLES = 5;
 const MAX_CHAT_HISTORY = 3000; // 채팅 + 재생/정지/이동/입퇴장 알림
@@ -63,6 +67,8 @@ let justCreated = false; // 내가 방금 방을 만들었음(첫 room_state 에
 
 let ws = null;
 let pingTimer = null;
+let watchdogTimer = null;
+let lastRecvAt = 0; // 서버에서 마지막으로 메시지를 받은 시각
 let reconnectTimer = null;
 let retry = 0;
 let pending = null; // 연결이 열리면 보낼 메시지(방 만들기/참가)
@@ -221,14 +227,23 @@ function connect() {
   const sock = new WebSocket(SERVER_URL);
   ws = sock;
   setConnection('connecting');
+  const openTimer = setTimeout(() => {
+    if (ws === sock && sock.readyState === WebSocket.CONNECTING) dropSocket(sock);
+  }, CONNECT_TIMEOUT_MS);
 
   sock.onopen = () => {
+    clearTimeout(openTimer);
     if (ws !== sock) return;
     retry = 0;
     setConnection('connected');
     const ping = () => rawSend({ type: C2S.PING, clientTime: Date.now() });
     pingTimer = setInterval(ping, PING_MS);
     ping();
+    lastRecvAt = Date.now();
+    clearInterval(watchdogTimer);
+    watchdogTimer = setInterval(() => {
+      if (ws === sock && Date.now() - lastRecvAt > DEAD_MS) dropSocket(sock);
+    }, 5000);
     if (pending) {
       rawSend(pending);
       pending = null;
@@ -238,6 +253,7 @@ function connect() {
   };
   sock.onmessage = (e) => {
     if (ws !== sock) return;
+    lastRecvAt = Date.now();
     let m;
     try {
       m = JSON.parse(e.data);
@@ -246,16 +262,29 @@ function connect() {
     }
     handleServer(m);
   };
-  sock.onclose = () => {
-    if (ws !== sock) return;
-    ws = null;
-    clearInterval(pingTimer);
-    connection = 'disconnected';
-    if (room.roomCode && lostAt === null) lostAt = Date.now();
-    if (room.roomCode || pending) scheduleReconnect();
-    else broadcast();
-  };
+  sock.onclose = () => onSocketClosed(sock);
   sock.onerror = () => {};
+}
+
+function onSocketClosed(sock) {
+  if (ws !== sock) return;
+  ws = null;
+  clearInterval(pingTimer);
+  clearInterval(watchdogTimer);
+  connection = 'disconnected';
+  if (room.roomCode && lostAt === null) lostAt = Date.now();
+  if (room.roomCode || pending) scheduleReconnect();
+  else broadcast();
+}
+
+// 서버에서 한참 아무 소식이 없는 연결: 닫히길 기다리지 않고 끊긴 것으로 처리해 바로 다시 연결한다
+function dropSocket(sock) {
+  sock.onclose = null;
+  sock.onmessage = null;
+  try {
+    sock.close();
+  } catch {}
+  onSocketClosed(sock);
 }
 
 function scheduleReconnect() {
