@@ -364,6 +364,9 @@ $('adDetect').addEventListener('change', async (e) => {
 // ---------- 프로필 (이름, 이모지 프사 + 배경색, 채팅 색) ----------
 const AVATARS = ['🙂', '😎', '🤓', '🥳', '😺', '🐶', '🐻', '🐼', '🦊', '🐸', '🐧', '🦄'];
 let profile = { name: '', avatar: { kind: 'emoji', value: AVATARS[0], bg: COLOR_PALETTE[5] }, color: COLOR_PALETTE[3] };
+// 사진 프사와 이모지 프사를 오가도 서로 지워지지 않게 반대쪽을 기기에만 보관한다(서버로는 현재 쓰는 프사만 보낸다).
+// image: 이모지를 쓰는 동안 보관 중인 사진(64x64 데이터 URL), emoji: 사진을 쓰는 동안 보관 중인 최근 이모지
+let alt = { image: null, emoji: null };
 let hasPhotoSource = false; // 위치 다시 맞추기용 원본(photoSource)이 내 기기에 저장돼 있는지
 let draftSource; // 저장 전 변경: undefined=그대로, null=삭제, 문자열=새 원본. [저장]을 눌러야 기기에 반영된다
 
@@ -411,7 +414,10 @@ function swatches(container, pickerBox, key, colors, current, onPick) {
 
 function renderProfile() {
   renderAvatar($('pav'), profile.avatar, 38);
-  $('clearPhoto').hidden = profile.avatar.kind !== 'image';
+  const isImage = profile.avatar.kind === 'image';
+  $('clearPhoto').hidden = !isImage && !alt.image;
+  $('swapAvatar').hidden = isImage ? !alt.emoji : !alt.image;
+  $('swapAvatar').textContent = isImage ? `${alt.emoji} 이모지로` : '🖼 사진으로';
   $('editPhoto').hidden = profile.avatar.kind !== 'image' || !(draftSource === undefined ? hasPhotoSource : draftSource);
   $('pnamePreview').textContent = profile.name || '닉네임';
   $('pnamePreview').style.color = pastelize(profile.color); // 채팅에서 보이는 대로(닉네임은 글자색)
@@ -420,7 +426,7 @@ function renderProfile() {
       const b = document.createElement('button');
       b.textContent = e;
       if (profile.avatar.kind === 'emoji' && e === profile.avatar.value) b.className = 'sel';
-      b.addEventListener('click', () => update({ avatar: { ...profile.avatar, kind: 'emoji', value: e } }));
+      b.addEventListener('click', () => pickEmoji(e));
       return b;
     }),
     moreEmojiButton(),
@@ -435,6 +441,11 @@ function setDirty(v) {
   dirty = v;
   $('saveProfile').disabled = !v;
   $('saveHint').textContent = v ? '저장해야 반영돼요' : '';
+}
+function pickEmoji(e) {
+  if (profile.avatar.kind === 'image') alt.image = profile.avatar.value; // 쓰던 사진은 보관
+  alt.emoji = e;
+  update({ avatar: { ...profile.avatar, kind: 'emoji', value: e } });
 }
 function update(patch) {
   profile = { ...profile, ...patch };
@@ -452,6 +463,7 @@ $('saveProfile').addEventListener('click', () => {
   chrome.runtime.sendMessage({ cmd: CMD.SET_PROFILE, profile });
   if (draftSource) chrome.storage.local.set({ photoSource: draftSource });
   else if (draftSource === null) chrome.storage.local.remove('photoSource');
+  chrome.storage.local.set({ avatarAlt: alt });
   hasPhotoSource = draftSource === undefined ? hasPhotoSource : !!draftSource;
   draftSource = undefined;
   setDirty(false);
@@ -474,7 +486,7 @@ function moreEmojiButton() {
 function toggleEmojiPicker() {
   const box = $('pickerBox');
   if (!picker) {
-    picker = createEmojiPicker({ onPick: (e) => update({ avatar: { ...profile.avatar, kind: 'emoji', value: e } }) });
+    picker = createEmojiPicker({ onPick: pickEmoji });
     box.append(picker.el);
   }
   box.hidden = !box.hidden;
@@ -774,6 +786,8 @@ $('cropApply').addEventListener('click', () => {
     const photoSource = crop.fromSource ? null : bitmapToSourceDataUrl(crop.bmp); // 저장된 원본에서 연 경우는 그대로 둔다
     closeCropper();
     if (photoSource) draftSource = photoSource;
+    if (profile.avatar.kind === 'emoji') alt.emoji = profile.avatar.value; // 쓰던 이모지는 보관
+    alt.image = null;
     update({ avatar: { kind: 'image', value: url, bg: profile.avatar.bg } });
   } catch (err) {
     $('perror').textContent = err.message?.includes('20KB') ? err.message : '이미지를 불러올 수 없어요. 다른 사진을 골라 주세요.';
@@ -794,7 +808,22 @@ $('editPhoto').addEventListener('click', async () => {
 });
 $('clearPhoto').addEventListener('click', () => {
   draftSource = null;
-  update({ avatar: { kind: 'emoji', value: AVATARS[0], bg: profile.avatar.bg } });
+  alt.image = null;
+  const emoji = profile.avatar.kind === 'emoji' ? profile.avatar.value : (alt.emoji ?? AVATARS[0]);
+  update({ avatar: { kind: 'emoji', value: emoji, bg: profile.avatar.bg } });
+});
+$('swapAvatar').addEventListener('click', () => {
+  if (profile.avatar.kind === 'image') {
+    const image = profile.avatar.value;
+    update({ avatar: { ...profile.avatar, kind: 'emoji', value: alt.emoji } });
+    alt.image = image;
+  } else {
+    const emoji = profile.avatar.value;
+    update({ avatar: { ...profile.avatar, kind: 'image', value: alt.image } });
+    alt.emoji = emoji;
+    alt.image = null;
+  }
+  renderProfile();
 });
 
 pickers.push($('bgPicker'), $('colorPicker'));
@@ -802,6 +831,8 @@ pickers.push($('bgPicker'), $('colorPicker'));
 async function loadProfile() {
   customColors = (await chrome.storage.local.get('customColors')).customColors ?? {};
   hasPhotoSource = !!(await chrome.storage.local.get('photoSource')).photoSource;
+  const savedAlt = (await chrome.storage.local.get('avatarAlt')).avatarAlt;
+  if (savedAlt?.image?.startsWith('data:image/') || typeof savedAlt?.emoji === 'string') alt = { image: savedAlt.image ?? null, emoji: savedAlt.emoji ?? null };
   const saved = (await chrome.storage.local.get('profile')).profile;
   if (saved) profile = saved;
   else {
