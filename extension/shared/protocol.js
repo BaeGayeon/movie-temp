@@ -183,7 +183,11 @@ const validators = {
     if (text.length < 1 || text.length > MAX_CHAT_LENGTH || /[\p{Cc}\u2028\u2029]/u.test(text.replace(/\n/g, ''))) return null;
     // videoTime: 보낸 시점의 영상 재생 위치(초). 선택 사항
     if (m.videoTime !== undefined && !isTime(m.videoTime)) return null;
-    return m.videoTime === undefined ? { type: m.type, text } : { type: m.type, text, videoTime: m.videoTime };
+    const out = { type: m.type, text };
+    if (m.videoTime !== undefined) out.videoTime = m.videoTime;
+    // replyTo: 답장 대상 메시지의 id(서버가 붙여 준 8자리 16진수). 형식이 틀리면 답장 표시만 버리고 메시지는 보낸다
+    if (typeof m.replyTo === 'string' && /^[0-9a-f]{8}$/.test(m.replyTo)) out.replyTo = m.replyTo;
+    return out;
   },
 
   [C2S.TYPING]: (m) => (typeof m.isTyping === 'boolean' ? { type: m.type, isTyping: m.isTyping } : null),

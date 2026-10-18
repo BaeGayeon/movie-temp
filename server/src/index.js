@@ -84,7 +84,7 @@ export function createServer({ port = Number(process.env.PORT) || 8080, host = '
           rooms.profileUpdate(conn, msg.profile);
           break;
         case C2S.CHAT:
-          rooms.chat(conn, msg.text, msg.videoTime);
+          rooms.chat(conn, msg.text, msg.videoTime, msg.replyTo);
           break;
         case C2S.TYPING:
           rooms.typing(conn, msg.isTyping);

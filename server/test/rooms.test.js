@@ -463,13 +463,33 @@ test('채팅: 본인 포함 전체 전달, userId 만 붙고 서버 시각, 길�
   assert.equal(ca.userId, a.userId);
   assert.equal(ca.text, '안녕하세요 <b>x</b>\n둘째줄'); // 태그는 그대로(클라이언트가 textContent 로 렌더링), 줄바꿈은 유지
   assert.ok(Math.abs(ca.sentAt - Date.now()) < 1000);
-  assert.deepEqual(Object.keys(ca).sort(), ['sentAt', 'text', 'type', 'userId']);
+  assert.deepEqual(Object.keys(ca).sort(), ['id', 'sentAt', 'text', 'type', 'userId']);
+  assert.match(ca.id, /^[0-9a-f]{8}$/);
 
   a.send({ type: 'chat', text: '   ' });
   a.send({ type: 'chat', text: 'x'.repeat(2001) });
   a.send({ type: 'chat', text: 123 });
   a.send({ type: 'chat', text: 'a\u0007b' }); // 제어문자
   await b.none('chat');
+  a.close();
+  b.close();
+});
+
+test('채팅 답장: replyTo 는 형식이 맞을 때만 전달, 메시지마다 id 가 다름', async () => {
+  const { a, code } = await makeRoom();
+  const { c: b } = await joinRoom(code);
+  a.send({ type: 'chat', text: '원본' });
+  const orig = await b.next('chat');
+  b.send({ type: 'chat', text: '답장', replyTo: orig.id });
+  const reply = await a.next('chat'); // 원본(a 본인 수신분)
+  const got = await a.next('chat');
+  assert.equal(reply.id, orig.id);
+  assert.equal(got.replyTo, orig.id);
+  assert.notEqual(got.id, orig.id);
+  b.send({ type: 'chat', text: '엉뚱', replyTo: '<script>' });
+  const bad = await a.next('chat');
+  assert.equal(bad.text, '엉뚱');
+  assert.equal('replyTo' in bad, false);
   a.close();
   b.close();
 });

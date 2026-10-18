@@ -93,6 +93,20 @@ const CSS = `
   .fold { background: none; padding: 0; margin-left: 6px; color: var(--ink-soft); text-decoration: underline; font-size: .9em; }
   .fold:hover { color: var(--ink); }
   .text a { color: inherit; text-decoration: underline; }
+  .rbtn { background: transparent; color: var(--ink-soft); font-size: 12px; padding: 0 4px; border-radius: 6px; opacity: 0; transition: opacity .1s; }
+  .msg:hover .rbtn, .rbtn:focus-visible { opacity: 1; }
+  .rbtn:hover { color: var(--ink); background: var(--surface-3); }
+  .quote { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; font-size: .857em; color: var(--ink-soft);
+    background: transparent; border-left: 2px solid var(--border-3); padding: 0 0 0 6px; cursor: pointer; }
+  .quote:hover { color: var(--ink); }
+  .quote.gone { cursor: default; font-style: italic; }
+  .replying { display: flex; align-items: center; gap: 6px; margin: 0 8px; padding: 4px 8px; font-size: 12px; color: var(--ink-soft); background: var(--surface-2); border-radius: 10px; }
+  .replying[hidden] { display: none; }
+  .replying .rtext { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .replying button { background: transparent; color: var(--ink-soft); padding: 0 4px; border-radius: 6px; }
+  .replying button:hover { color: var(--ink); background: var(--surface-3); }
+  @keyframes hl { 0%, 60% { box-shadow: 0 0 0 2px var(--accent); } 100% { box-shadow: 0 0 0 2px transparent; } }
+  .msg.hl .text { animation: hl 1.4s ease-out; }
   .form .send { color: var(--on-accent); font-weight: 600; background: var(--accent); border-radius: 999px; padding: 6px 14px; }
   .form .send:hover { background: var(--accent-light); }
 
@@ -153,6 +167,10 @@ const MIN_W = 220;
 const MIN_H = 200;
 const FOLD_CHARS = 250; // 이보다 길거나
 const FOLD_LINES = 6; // 줄이 이보다 많으면 접어서 보여 준다
+const snippet = (text) => {
+  const flat = text.replace(/\s+/g, ' ').trim();
+  return flat.length > 40 ? `${flat.slice(0, 40)}…` : flat;
+};
 const URL_RE = /https?:\/\/[^\s<>"'`]+/g;
 
 // 접을 위치(문자열 인덱스). 접을 필요가 없으면 -1. 이모지(서로게이트 쌍)와 URL 한가운데서는 자르지 않는다.
@@ -260,7 +278,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
   let unread = 0;
 
   // DOM 참조
-  let wrap, panel, head, list, typingLine, input, counter, bubbleBox, badge, floats, menu, opacity, clockCb, videoCb, eventsCb, modeBtn, pop, picker, styleSeg;
+  let wrap, panel, head, list, typingLine, input, counter, replyBar, replyText, bubbleBox, badge, floats, menu, opacity, clockCb, videoCb, eventsCb, modeBtn, pop, picker, styleSeg;
 
   try {
     chrome.storage.local.get('chatPrefs').then((r) => {
@@ -600,6 +618,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     typingSent = false;
   }
   let updateInputCounter = () => {};
+  let replyTo = null; // 지금 답장하려는 메시지 id
   function noteTyping() {
     if (!input.value.trim()) return stopTyping();
     const now = Date.now();
@@ -618,7 +637,8 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     // 연결이 끊긴 상태에서 보내면 글이 사라지지 않게 입력칸에 남겨 둔다
     if (getState()?.connection !== 'connected') return onNotify('연결이 끊겨 보내지 못했어요. 다시 연결되면 보내 주세요.');
     stopTyping();
-    onSend(text);
+    onSend(text, replyTo ?? undefined);
+    cancelReply();
     input.value = '';
     updateInputCounter();
   }
@@ -777,9 +797,22 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     const body = el('div', 'body');
     const nameLine = el('div', 'name');
     nameLine.append(el('span', 'name-text'), el('span', 'meta'));
-    body.append(nameLine, messageText(m.text));
-    row.append(el('span', 'av'), body);
+    if (m.id) {
+      const rbtn = el('button', 'rbtn', '↩');
+      rbtn.title = '답장';
+      rbtn.addEventListener('click', () => startReply(m.id));
+      nameLine.append(rbtn);
+    }
     const entry = { ...m, el: row };
+    body.append(nameLine);
+    if (m.replyTo) {
+      entry.quoteEl = el('button', 'quote');
+      entry.quoteEl.addEventListener('click', () => jumpTo(entry.replyTo));
+      body.append(entry.quoteEl);
+      fillQuote(entry);
+    }
+    body.append(messageText(m.text));
+    row.append(el('span', 'av'), body);
     applyProfile(row, m.userId);
     renderMeta(entry);
     list.append(row);
@@ -810,6 +843,41 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     paint();
     box.append(body, toggle);
     return box;
+  }
+
+  // ---------- 답장 ----------
+  const findById = (id) => (id ? messages.find((x) => x.id === id && x.kind !== 'event') : null);
+  function fillQuote(m) {
+    const orig = findById(m.replyTo);
+    m.quoteEl.classList.toggle('gone', !orig);
+    m.quoteEl.textContent = orig ? `↩ ${profileOf(orig.userId).name}: ${snippet(orig.text)}` : '↩ 볼 수 없는 메시지에 대한 답장';
+  }
+  function jumpTo(id) {
+    const orig = findById(id);
+    if (!orig) return;
+    const [r, lr] = [orig.el.getBoundingClientRect(), list.getBoundingClientRect()];
+    list.scrollTop += r.top - lr.top - (lr.height - r.height) / 2;
+    orig.el.classList.remove('hl');
+    void orig.el.offsetWidth; // 애니메이션 다시 시작
+    orig.el.classList.add('hl');
+    setTimeout(() => orig.el.classList.remove('hl'), 1500);
+  }
+  function startReply(id) {
+    const orig = findById(id);
+    if (!orig) return;
+    replyTo = id;
+    startReplyLabel();
+    replyBar.hidden = false;
+    input.focus();
+  }
+  function startReplyLabel() {
+    const orig = findById(replyTo);
+    if (!orig) return cancelReply();
+    replyText.textContent = `${profileOf(orig.userId).name}에게 답장: ${snippet(orig.text)}`;
+  }
+  function cancelReply() {
+    replyTo = null;
+    if (replyBar) replyBar.hidden = true;
   }
 
   function trimMessages() {
@@ -925,7 +993,8 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     // 입력줄: 이모지 선택기 버튼 + 입력 + 전송
     input = el('textarea');
     input.rows = 2;
-    input.placeholder = '메시지 입력 (Shift+Enter 줄바꿈)';
+    input.placeholder = '메시지 입력';
+    input.title = 'Enter 전송 · Shift+Enter 줄바꿈';
     input.maxLength = MAX_CHAT_LENGTH;
     input.spellcheck = false;
     counter = el('span', 'counter');
@@ -950,6 +1019,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     for (const t of ['keydown', 'keyup', 'keypress']) input.addEventListener(t, (e) => e.stopPropagation());
     let lastSubmitEvent = null;
     const onInputKey = (e) => {
+      if (e.type === 'keydown' && e.key === 'Escape' && replyTo) cancelReply();
       if (e.type === 'keydown' && (e.key === 'Tab' || e.key === 'Escape')) userMovedFocusAt = Date.now(); // 사용자가 직접 입력칸을 벗어나려는 키
       if (e.type !== 'keydown' || e.key !== 'Enter' || e.shiftKey || e.isComposing || e.keyCode === 229 || lastSubmitEvent === e) return; // Shift+Enter 는 줄바꿈
       lastSubmitEvent = e; // 같은 키 이벤트로 두 번 전송되지 않게
@@ -1017,7 +1087,14 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     });
     dragMove(head);
     head.append(menu); // 메뉴는 헤더 기준으로 배치
-    panel.append(head, list, typingLine, reactionRow(), form, ...handles);
+    replyBar = el('div', 'replying');
+    replyBar.hidden = true;
+    replyText = el('span', 'rtext');
+    const replyX = el('button', null, '✕');
+    replyX.title = '답장 취소 (Esc)';
+    replyX.addEventListener('click', cancelReply);
+    replyBar.append(replyText, replyX);
+    panel.append(head, list, typingLine, reactionRow(), replyBar, form, ...handles);
 
     // 접힌 상태: 말풍선 + 배지, 마우스를 올리면 리액션 버튼
     bubbleBox = el('div', 'dock-bubble');
@@ -1080,6 +1157,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
       for (const t of typingTimers.values()) clearTimeout(t);
       typingTimers.clear();
       list.replaceChildren();
+      cancelReply();
       messages.length = 0;
       lastEvent.clear();
       unread = 0;
@@ -1115,9 +1193,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
       if ((prefs.collapsed || prefs.hidden) && !mine) {
         unread++;
         renderBadge();
-        const flat = m.text.replace(/\s+/g, ' ');
-        const t = flat.length > 40 ? `${flat.slice(0, 40)}…` : flat;
-        onNotify(`${profileOf(m.userId).name}: ${t}`);
+        onNotify(`${profileOf(m.userId).name}: ${snippet(m.text)}`);
       }
     },
 
@@ -1126,8 +1202,12 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
       if (!built) return;
       for (const m of messages) {
         if (m.kind === 'event') fillEvent(m.el, m); // 이름/색이 바뀌었을 수 있음(글자만 덮어쓰면 닉네임 색이 사라진다)
-        else applyProfile(m.el, m.userId);
+        else {
+          applyProfile(m.el, m.userId);
+          if (m.quoteEl) fillQuote(m);
+        }
       }
+      if (replyTo) startReplyLabel();
       renderTyping();
     },
 

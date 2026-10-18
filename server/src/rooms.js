@@ -1,4 +1,4 @@
-import { randomInt } from 'node:crypto';
+import { randomInt, randomBytes } from 'node:crypto';
 import { S2C, ERR, VIDEO_ACTION_SYNC, DEFAULT_COLORS, DEFAULT_AVATAR_EMOJI } from './protocol.js';
 
 const AD_ROLLBACK_MS = 6000; // 광고 보고 직전 이 시간 안의 본인 이벤트는 광고 전환 중 생긴 것으로 보고 되돌린다
@@ -231,11 +231,13 @@ export class RoomManager {
   }
 
   // 채팅: 메시지에는 userId 만 붙이고 방 전체(본인 포함)에 전파. 사용자당 빈도 제한.
-  chat(conn, text, videoTime) {
+  chat(conn, text, videoTime, replyTo) {
     const found = this.#find(conn);
     if (!found || !this.#take(found.p, 'chat', 5, 1.5)) return; // 버스트 5개, 평균 초당 1.5개
-    const msg = { type: S2C.CHAT, userId: found.p.id, text, sentAt: this.now() };
+    // id: 답장이 가리킬 수 있도록 서버가 메시지마다 붙인다(8자리 16진수)
+    const msg = { type: S2C.CHAT, id: randomBytes(4).toString('hex'), userId: found.p.id, text, sentAt: this.now() };
     if (videoTime !== undefined) msg.videoTime = videoTime; // 보낸 시점의 재생 위치(초)
+    if (replyTo !== undefined) msg.replyTo = replyTo; // 답장 대상 메시지 id
     this.#broadcast(found.room, msg);
   }
 
