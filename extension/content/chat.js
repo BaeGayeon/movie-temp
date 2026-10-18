@@ -79,7 +79,7 @@ const CSS = `
   .reacts button { background: transparent; font-size: 17px; border-radius: 8px; padding: 2px 4px; transition: transform .08s; }
   .reacts button:hover { background: var(--surface-2); transform: scale(1.15); }
   ::selection { background: var(--accent); color: var(--on-accent); } /* 사이트 기본 선택색이 안 보이는 경우가 있어 직접 지정 */
-  .form { display: flex; gap: 6px; padding: 6px 8px 10px; align-items: flex-end; }
+  .form { display: flex; gap: 6px; padding: 6px 8px 10px; align-items: stretch; }
   .compose { flex: 1; min-width: 0; position: relative; display: flex; }
   .form textarea { flex: 1; min-width: 0; display: block; resize: none; overflow-y: auto; font: inherit; line-height: 1.4; height: calc(2.8em + 14px); color: var(--ink); background: var(--surface); border: 1px solid var(--border-2); border-radius: 14px; padding: 6px 12px; outline: none;
     scrollbar-width: thin; scrollbar-color: var(--surface-3) transparent; }
@@ -119,7 +119,7 @@ const CSS = `
     100% { background: transparent; box-shadow: 0 0 0 5px transparent; } }
   .list.plain .msg.hl, .list.compact .msg.hl { border-radius: 8px; animation: hlrow 1.4s ease-out; }
   .list.plain .msg.hl .text, .list.compact .msg.hl .text { animation: none; }
-  .form .send { color: var(--on-accent); font-weight: 600; background: var(--accent); border-radius: 999px; padding: 6px 14px; }
+  .form .send { color: var(--on-accent); font-weight: 600; background: var(--accent); border-radius: 14px; padding: 6px 14px; flex: none; }
   .form .send:hover { background: var(--accent-light); }
 
   .rz { position: absolute; }
