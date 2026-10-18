@@ -113,7 +113,8 @@ watchparty/                (이 저장소 루트)
 { type: "reaction", emoji }
 
 // 4단계
-{ type: "create_room", userId, password?, maxMembers? }   // 비밀번호(4~32자), 최대 인원(2~20). set_room_options 는 쓰지 않음
+{ type: "create_room", userId, password?, maxMembers? }   // 비밀번호(영문·숫자 4~32자), 최대 인원(2~20)
+{ type: "set_room_options", password?: string | null, maxMembers?: number | null }   // 방장만. null 은 해제. 서버가 room_options 로 모두에게 알림(비밀번호 내용은 없음)
 { type: "join_room", roomCode, userId, password? }   // 비밀번호 포함. error code: password_required / wrong_password / room_full / too_many_attempts
 // avatar.kind: "image"는 value에 base64 데이터 URL
 ```

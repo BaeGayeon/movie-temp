@@ -409,6 +409,17 @@ function handleServer(m) {
       toast(`${nameOf(m.hostId)}님이 새 방장이에요`); // 나일 때도 닉네임으로
       break;
 
+    case S2C.ROOM_OPTIONS:
+      room.hasPassword = !!m.hasPassword;
+      room.maxMembers = m.maxMembers ?? null;
+      // 다른 방장이 비밀번호를 바꿨으면 내가 기억하던 것은 더 맞지 않는다(재접속 때는 다시 입력하게 된다)
+      if (m.passwordChanged && m.fromId !== userId) setRoomPw(null);
+      if (!room.hasPassword) setRoomPw(null);
+      persist();
+      broadcast();
+      if (m.fromId !== userId) toast('방장이 방 옵션을 바꿨어요');
+      break;
+
     case S2C.MODE_CHANGED:
       room.mode = m.mode;
       persist();
@@ -459,7 +470,6 @@ function handleServer(m) {
 
 function handleServerError(m) {
   if (m.code === ERR.ROOM_NOT_FOUND) {
-    if (!room.roomCode) toast(m.message || '방이 닫혔어요'); // 참가가 실패한 경우: 입장 전이라 팝업이 아니라 그 탭에 알린다
     if (room.roomCode) {
       toast(m.message || '방이 사라졌어요');
       const tabId = room.tabId;
@@ -480,10 +490,10 @@ function handleServerError(m) {
       leaveRoom(false);
       return;
     }
+    // 입력과 오류는 참가를 시작한 곳(초대 배너 또는 팝업)에서 보여 준다. 상태로만 알린다
     needPassword = { roomCode: joiningCode, wrong: m.code === ERR.WRONG_PASSWORD, at: Date.now() };
     setRoomPw(null);
     lastError = m.message;
-    toast(`${m.message} 확장 아이콘을 눌러 비밀번호를 입력해 주세요.`);
     broadcast();
   } else if (m.code === ERR.ROOM_FULL || m.code === ERR.TOO_MANY_ATTEMPTS) {
     setRoomPw(null);
@@ -494,7 +504,6 @@ function handleServerError(m) {
       return;
     }
     lastError = m.message;
-    toast(m.message);
     broadcast();
   } else if (m.code === ERR.REPLACED) {
     leaveRoom(false);
@@ -505,15 +514,15 @@ function handleServerError(m) {
 
 // 초대 링크의 방이 아직 있는지 서버에 묻는다. 서버가 깨어나는 중이거나 네트워크 오류면 null(모름)
 const ROOM_CHECK_TIMEOUT_MS = 6000;
-async function roomExists(code) {
+async function roomInfo(code) {
   try {
     const url = `${SERVER_URL.replace(/^ws/, 'http')}/rooms/${code}`;
     const res = await fetch(url, { signal: AbortSignal.timeout(ROOM_CHECK_TIMEOUT_MS), cache: 'no-store' });
-    if (!res.ok) return null;
+    if (!res.ok) return { exists: null };
     const body = await res.json();
-    return typeof body.exists === 'boolean' ? body.exists : null;
+    return { exists: typeof body.exists === 'boolean' ? body.exists : null, hasPassword: body.hasPassword === true };
   } catch {
-    return null;
+    return { exists: null };
   }
 }
 
@@ -617,7 +626,7 @@ async function onCommand(m, sender) {
 
     case CMD.CHECK_ROOM: {
       const code = String(m.roomCode ?? '').trim().toUpperCase();
-      return { exists: ROOM_CODE_RE.test(code) ? await roomExists(code) : null };
+      return ROOM_CODE_RE.test(code) ? await roomInfo(code) : { exists: null };
     }
 
     case CMD.HAS_VIDEO:
@@ -634,7 +643,7 @@ async function onCommand(m, sender) {
         const msg = { type: C2S.CREATE_ROOM, userId };
         if (m.password) {
           if (!isValidNewPassword(m.password)) {
-            lastError = '비밀번호는 4~32자로 정해 주세요.';
+            lastError = '비밀번호는 영문과 숫자 4~32자로 정해 주세요.';
             broadcast();
             return { ok: false };
           }
@@ -689,6 +698,37 @@ async function onCommand(m, sender) {
         broadcast();
       }
       return { ok: true };
+
+    case CMD.GET_ROOM_PW:
+      // 비밀번호는 팝업(확장 페이지)에만 알려 준다. 탭(content)으로 보내는 상태에는 넣지 않는다
+      const fromExtensionPage = !!sender.url?.startsWith(chrome.runtime.getURL('')); // 페이지(content script)가 아니라 확장 자신의 페이지(팝업)에서 온 요청만
+      return { password: fromExtensionPage && room.roomCode && room.hostId === userId ? roomPw : null };
+
+    case CMD.SET_ROOM_OPTIONS: {
+      if (!room.roomCode || room.hostId !== userId) return { ok: false };
+      const msg = { type: C2S.SET_ROOM_OPTIONS };
+      if (m.password !== undefined) {
+        if (m.password !== null && !isValidNewPassword(m.password)) {
+          lastError = '비밀번호는 영문과 숫자 4~32자로 정해 주세요.';
+          broadcast();
+          return { ok: false };
+        }
+        msg.password = m.password;
+      }
+      if (m.maxMembers !== undefined) {
+        if (m.maxMembers !== null && !isValidMaxMembers(m.maxMembers)) {
+          lastError = '최대 인원은 2~20명으로 정해 주세요.';
+          broadcast();
+          return { ok: false };
+        }
+        msg.maxMembers = m.maxMembers;
+      }
+      if (!('password' in msg) && !('maxMembers' in msg)) return { ok: false };
+      lastError = null;
+      if ('password' in msg) setRoomPw(msg.password); // 바꾼 비밀번호를 기억해 방장이 볼 수 있게 한다(없애면 지운다)
+      rawSend(msg);
+      return { ok: true };
+    }
 
     case CMD.SET_MODE:
       if (MODES.includes(m.mode) && room.hostId === userId) rawSend({ type: C2S.SET_PERMISSION, mode: m.mode });

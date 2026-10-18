@@ -10,8 +10,18 @@ const CSS = `
   .toast { background: var(--surface); color: var(--ink); border: 1px solid var(--border-3); padding: 8px 18px; border-radius: 999px;
     box-shadow: var(--shadow-lg); font-weight: 500; animation: pop .2s ease; }
   .banner { position: absolute; top: 16px; left: 50%; transform: translateX(-50%); pointer-events: auto; background: var(--surface); color: var(--ink);
-    border: 1px solid var(--border-3); padding: 8px 10px 8px 18px; border-radius: 999px; display: flex; gap: 10px; align-items: center;
-    box-shadow: var(--shadow-lg); font-weight: 500; animation: pop-x .2s ease; }
+    border: 1px solid var(--border-3); padding: 8px 10px 8px 18px; border-radius: 26px; display: flex; flex-direction: column; gap: 6px; align-items: center;
+    box-shadow: var(--shadow-lg); font-weight: 500; animation: pop-x .2s ease; width: max-content; max-width: calc(100vw - 32px); }
+  .brow { display: flex; gap: 10px; align-items: center; justify-content: center; flex-wrap: wrap; }
+  .brow button { white-space: nowrap; }
+  .bmsg { font-size: 12px; font-weight: 600; color: var(--danger); text-align: center; padding-right: 8px; }
+  .bmsg:empty { display: none; }
+  .pw { position: relative; display: flex; }
+  .pw[hidden] { display: none; }
+  .pw input { font: inherit; font-weight: 600; width: 150px; box-sizing: border-box; color: var(--ink); background: var(--surface-2); border: 2px solid var(--border-3);
+    border-radius: 999px; padding: 5px 34px 5px 12px; outline: none; }
+  .pw input:focus { border-color: var(--accent); }
+  button.eye { position: absolute; right: 3px; top: 50%; transform: translateY(-50%); display: flex; padding: 4px; background: none; color: var(--ink-soft); box-shadow: none; }
   button { font: inherit; font-weight: 600; cursor: pointer; border: 0; border-radius: 999px; padding: 6px 14px; color: var(--on-accent); background: var(--accent); }
   button:active { transform: translateY(1px); }
   button.sub { background: var(--surface-2); color: var(--accent-ink); box-shadow: none; }
@@ -101,6 +111,26 @@ export function createUI() {
     }
   }
 
+  // 보기/숨기기(눈) 아이콘. 사이트의 Trusted Types 정책에 걸리지 않도록 innerHTML 대신 요소를 만들어 쓴다
+  function eyeIcon(off) {
+    const NS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(NS, 'svg');
+    for (const [k, v] of Object.entries({ viewBox: '0 0 24 24', width: '18', height: '18', fill: 'none', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })) svg.setAttribute(k, v);
+    const add = (tag, attrs) => {
+      const e = document.createElementNS(NS, tag);
+      for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+      svg.append(e);
+    };
+    if (off) {
+      add('path', { d: 'M17.94 17.94A10.9 10.9 0 0 1 12 19C5 19 1 12 1 12a19.8 19.8 0 0 1 5.06-5.94M9.9 4.24A10.9 10.9 0 0 1 12 5c7 0 11 7 11 7a19.9 19.9 0 0 1-3.16 4.19M14.12 14.12A3 3 0 1 1 9.88 9.88' });
+      add('path', { d: 'M1 1l22 22' });
+    } else {
+      add('path', { d: 'M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z' });
+      add('circle', { cx: '12', cy: '12', r: '3' });
+    }
+    return svg;
+  }
+
   function button(label, cls, onClick) {
     const b = document.createElement('button');
     b.textContent = label;
@@ -110,6 +140,7 @@ export function createUI() {
   }
 
   let banner = null;
+  let invite = null; // 열려 있는 초대 배너의 조작 함수들
   let inviteTimer = null;
   const INVITE_TTL_MS = 30_000;
   const EXPIRED_TTL_MS = 6000;
@@ -129,23 +160,113 @@ export function createUI() {
       setTimeout(() => el.remove(), ms);
     },
 
-    // onDismiss: 참가/닫기/자동으로 사라질 때 불린다(주소의 ?wp= 를 지우는 데 쓴다)
-    showInvite(roomCode, onJoin, onDismiss = () => {}) {
+    // 초대 배너. onJoin(password | undefined): 참가 버튼. onDismiss: 닫기/자동으로 사라질 때(주소의 ?wp= 를 지우는 데 쓴다).
+    // passwordRequired: 방에 비밀번호가 있는 걸 알면 처음부터 입력칸을 보여 준다(모르면 참가가 거절될 때 inviteNeedsPassword 로 보여 준다).
+    // 참가 결과(비밀번호 필요/틀림, 가득 참 등)는 배너 안에서 보여 주고, 성공하면 inviteJoined() 로 닫는다.
+    showInvite(roomCode, onJoin, onDismiss = () => {}, { passwordRequired = false } = {}) {
       ensure();
       this.hideInvite();
       const el = (banner = document.createElement('div'));
       banner.className = 'banner';
+      const row = document.createElement('div');
+      row.className = 'brow';
       const label = document.createElement('span');
       label.textContent = `같이 보기 초대가 왔어요 (방 ${roomCode})`;
-      const close = (join) => {
+      const pwBox = document.createElement('span');
+      pwBox.className = 'pw';
+      pwBox.hidden = !passwordRequired;
+      const input = document.createElement('input');
+      input.type = 'password';
+      input.placeholder = '비밀번호';
+      input.autocomplete = 'off';
+      input.addEventListener('input', () => {
+        const clean = input.value.replace(/[^A-Za-z0-9]/g, '').slice(0, 32); // 비밀번호는 영문·숫자만
+        if (clean !== input.value) input.value = clean;
+      });
+      const eye = button('', 'eye', () => {
+        input.type = input.type === 'password' ? 'text' : 'password';
+        eye.replaceChildren(eyeIcon(input.type === 'text'));
+        eye.setAttribute('aria-label', input.type === 'text' ? '비밀번호 숨기기' : '비밀번호 보기');
+        input.focus();
+      });
+      eye.type = 'button';
+      eye.setAttribute('aria-label', '비밀번호 보기');
+      eye.replaceChildren(eyeIcon(false));
+      pwBox.append(input, eye);
+      const msg = document.createElement('div');
+      msg.className = 'bmsg';
+      const close = () => {
         if (banner !== el) return;
         this.hideInvite();
         onDismiss();
-        if (join) onJoin();
       };
-      banner.append(label, button('참가', '', () => close(true)), button('닫기', 'sub', () => close(false)));
+      const joinBtn = button('참가', '', () => {
+        const pw = input.value;
+        if (!pwBox.hidden && !pw) {
+          msg.textContent = '비밀번호를 입력해 주세요.';
+          input.focus();
+          return;
+        }
+        msg.textContent = '';
+        joinBtn.disabled = true;
+        joinBtn.textContent = '참가 중…';
+        arm();
+        onJoin(pw || undefined);
+      });
+      const closeBtn = button('닫기', 'sub', close);
+      const arm = () => {
+        clearTimeout(inviteTimer);
+        inviteTimer = setTimeout(close, INVITE_TTL_MS); // 한참 누르지 않으면 사라진다
+      };
+      row.append(label, pwBox, joinBtn, closeBtn);
+      banner.append(row, msg);
       layer.append(banner);
-      inviteTimer = setTimeout(() => close(false), INVITE_TTL_MS); // 한참 누르지 않으면 사라진다
+      invite = {
+        el,
+        arm,
+        close,
+        needsPassword(text) {
+          pwBox.hidden = false;
+          input.value = '';
+          joinBtn.disabled = false;
+          joinBtn.textContent = '참가';
+          msg.textContent = text;
+          input.focus();
+          arm();
+        },
+        failed(text) {
+          pwBox.hidden = true;
+          joinBtn.hidden = true;
+          msg.textContent = text;
+          clearTimeout(inviteTimer);
+          inviteTimer = setTimeout(close, EXPIRED_TTL_MS);
+        },
+        enter: () => {
+          if (!pwBox.hidden && layer.getRootNode().activeElement === input) joinBtn.click();
+        },
+      };
+      window.__bmtInviteKeyHook = (e) => {
+        if (e.type === 'keydown' && e.key === 'Enter' && invite?.el === el) invite.enter();
+      }; // keyguard 가 사이트로 키가 새지 않게 전파를 끊으므로, 엔터로 참가하려면 끊기 전에 불러 준다
+      arm();
+      if (passwordRequired) input.focus();
+    },
+
+    inviteNeedsPassword(text) {
+      invite?.needsPassword(text);
+    },
+
+    inviteFailed(text) {
+      invite?.failed(text);
+    },
+
+    // 참가 성공: 배너를 닫는다
+    inviteJoined() {
+      invite?.close();
+    },
+
+    get inviteOpen() {
+      return !!invite;
     },
 
     // 이미 닫힌 방의 초대: 참가 버튼 없이 안내만 잠깐 보여 준다
@@ -154,6 +275,8 @@ export function createUI() {
       this.hideInvite();
       const el = (banner = document.createElement('div'));
       banner.className = 'banner';
+      const row = document.createElement('div');
+      row.className = 'brow';
       const label = document.createElement('span');
       label.textContent = `만료된 초대예요. 방 ${roomCode}은 이미 닫혔어요`;
       const close = () => {
@@ -161,7 +284,8 @@ export function createUI() {
         this.hideInvite();
         onDismiss();
       };
-      banner.append(label, button('닫기', 'sub', close));
+      row.append(label, button('닫기', 'sub', close));
+      banner.append(row);
       layer.append(banner);
       inviteTimer = setTimeout(close, EXPIRED_TTL_MS);
     },
@@ -170,6 +294,8 @@ export function createUI() {
       clearTimeout(inviteTimer);
       banner?.remove();
       banner = null;
+      invite = null;
+      window.__bmtInviteKeyHook = null;
     },
 
     // 자동재생이 막혔을 때 영상 위에 클릭 안내를 띄운다

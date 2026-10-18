@@ -320,6 +320,25 @@ export class RoomManager {
     this.#broadcast(room, { type: S2C.MODE_CHANGED, mode });
   }
 
+  // 방장이 비밀번호/최대 인원을 바꾼다. 이미 방에 있는 사람은 그대로 두고, 새로 들어오는 사람부터 적용된다. 방장이 아니면 무시.
+  setOptions(conn, { password, maxMembers }) {
+    const found = this.#find(conn);
+    if (!found) return;
+    const { room, p } = found;
+    if (p.id !== room.hostId) return;
+    const passwordChanged = password !== undefined;
+    if (passwordChanged) room.password = password === null ? null : hashPassword(password);
+    if (maxMembers !== undefined) room.maxMembers = maxMembers;
+    room.lastActivityAt = this.now();
+    this.#broadcast(room, {
+      type: S2C.ROOM_OPTIONS,
+      hasPassword: !!room.password,
+      maxMembers: room.maxMembers,
+      passwordChanged,
+      fromId: p.id,
+    });
+  }
+
   shutdown() {
     clearInterval(this.idleTimer);
     for (const room of this.rooms.values()) {

@@ -72,7 +72,8 @@ option { color: #222; }
 .or { display: flex; align-items: center; gap: 8px; margin: 12px 0 10px; color: var(--ink-soft); font-size: 12px; }
 .or::before, .or::after { content: ''; flex: 1; height: 2px; border-radius: 2px; background: var(--border); }
 .join { display: flex; gap: 8px; }
-.join input { flex: 1; text-transform: uppercase; letter-spacing: 3px; font-weight: 700; text-align: center; }
+.join input, .joinpw { text-transform: uppercase; letter-spacing: 3px; font-weight: 700; text-align: center; } /* 코드 칸과 비밀번호 칸은 같은 모양 */
+.join input { flex: 1; }
 .join .btn { flex: none; }
 .hint { margin: 10px 0 0; font-size: 12px; color: var(--ink-soft); text-align: center; }
 
@@ -180,6 +181,25 @@ summary > .ic { margin-right: .45em; }
 /* 방 옵션(비밀번호/최대 인원) */
 .opts { margin-bottom: 10px; font-size: 13px; }
 .opts > summary { cursor: pointer; color: var(--ink-soft); font-weight: 700; padding: 4px 2px; user-select: none; }
+.optnote { margin: 4px 2px 0; color: var(--ink-soft); font-size: 12px; line-height: 1.4; }
 .opts label { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-weight: 700; }
+.opts .lbl { flex: none; width: 92px; display: flex; align-items: center; } /* 두 줄의 입력칸 시작 위치를 맞춘다 */
 .opts input { flex: 1; min-width: 0; }
-.joinpw { width: 100%; margin-top: 8px; box-sizing: border-box; }
+/* 비밀번호 칸 + 보기/숨기기(눈) 버튼 */
+.pwwrap { position: relative; display: flex; flex: 1; min-width: 0; }
+.pwwrap.full { width: 100%; margin-top: 8px; }
+.pwwrap input { flex: 1; width: 100%; box-sizing: border-box; padding-right: 44px; }
+.joinpw { padding-left: 44px; text-transform: none; } /* 비밀번호는 대소문자를 구분하므로 코드 칸처럼 대문자로 바꿔 보이지 않는다 */ /* 가운데 글자가 치우치지 않게 눈 버튼 자리만큼 양쪽을 비운다 */
+.pweye { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); display: flex; padding: 6px; border: 0; border-radius: 50%; background: none; color: var(--ink-soft); cursor: pointer; }
+.pweye:hover { color: var(--ink); }
+
+/* 방장용 방 옵션 카드 */
+.optline { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.optline .lbl { flex: none; width: 70px; font-weight: 700; font-size: 13px; }
+.optline input { flex: 1; min-width: 0; }
+.optval { flex: 1; min-width: 0; font-size: 13px; color: var(--ink-soft); font-weight: 600; word-break: break-all; }
+.optval.mono { color: var(--ink); letter-spacing: 1px; }
+.iconbtn { display: flex; padding: 5px; border: 0; border-radius: 50%; background: none; color: var(--ink-soft); cursor: pointer; }
+.iconbtn:hover { color: var(--ink); }
+#pwButtons, #pwForm { margin-bottom: 10px; }
+#pwForm .pwwrap { flex: 1; }

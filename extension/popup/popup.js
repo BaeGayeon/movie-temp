@@ -118,10 +118,88 @@ function render() {
     b.disabled = !isHost;
   }
   $('countdownRow').hidden = !isHost;
+  $('optBox').hidden = !isHost;
+  if (isHost) renderOptions();
   const waiting = state.waitingIds.map((id) => state.participants.find((p) => p.id === id)?.name ?? '누군가');
   $('waitInfo').hidden = waiting.length === 0;
   $('waitInfo').textContent = `⏳ ${waiting.join(', ')} 님을 기다리는 중이에요`;
 }
+
+// ---------- 방장용 방 옵션(비밀번호 확인/변경/삭제, 최대 인원) ----------
+let knownPw = null; // 이 브라우저가 기억하는 방 비밀번호(모르면 null)
+let pwShown = false;
+let pwKey = '';
+
+async function refreshPw() {
+  const r = await chrome.runtime.sendMessage({ cmd: CMD.GET_ROOM_PW }).catch(() => null);
+  knownPw = r?.password ?? null;
+  paintPw();
+}
+
+function paintPw() {
+  const has = !!state?.hasPassword;
+  const value = $('pwValue');
+  const known = has && !!knownPw;
+  value.classList.toggle('mono', known);
+  value.textContent = !has ? '설정 안 함' : known ? (pwShown ? knownPw : '•'.repeat(knownPw.length)) : '설정돼 있어요 (이 기기에서는 볼 수 없어요)';
+  $('pwEye').hidden = !known;
+  $('pwCopy').hidden = !known;
+  $('pwEye').innerHTML = pwShown ? EYE_OFF : EYE; // 정적 SVG 문자열만 넣는다
+  $('pwEye').setAttribute('aria-label', pwShown ? '비밀번호 숨기기' : '비밀번호 보기');
+  $('pwEdit').textContent = has ? '변경' : '설정';
+  $('pwRemove').hidden = !has;
+}
+
+function renderOptions() {
+  const key = `${state.roomCode}:${state.hasPassword}`;
+  if (key !== pwKey) {
+    pwKey = key;
+    pwShown = false;
+    refreshPw();
+  }
+  paintPw();
+  if (document.activeElement !== $('maxEdit')) $('maxEdit').value = state.maxMembers ?? '';
+}
+
+async function setOptions(opts) {
+  const r = await chrome.runtime.sendMessage({ cmd: CMD.SET_ROOM_OPTIONS, ...opts }).catch(() => null);
+  if (r?.ok) $('error').textContent = '';
+  await refreshPw();
+  return !!r?.ok;
+}
+
+$('pwEdit').addEventListener('click', () => {
+  $('pwForm').hidden = false;
+  $('pwNew').focus();
+});
+$('pwCancel').addEventListener('click', () => {
+  $('pwNew').value = '';
+  $('pwNew').parentElement.hidePassword();
+  $('pwForm').hidden = true;
+});
+$('pwSave').addEventListener('click', async () => {
+  const pw = $('pwNew').value;
+  if (!isValidNewPassword(pw)) return ($('error').textContent = `비밀번호는 영문과 숫자 ${MIN_PASSWORD_LENGTH}~${MAX_PASSWORD_LENGTH}자로 정해 주세요.`);
+  if (await setOptions({ password: pw })) $('pwCancel').click();
+});
+$('pwRemove').addEventListener('click', async () => {
+  if (confirm('비밀번호를 없앨까요? 누구나 방 코드만 알면 들어올 수 있게 돼요.')) await setOptions({ password: null });
+});
+$('pwEye').addEventListener('click', () => {
+  pwShown = !pwShown;
+  paintPw();
+});
+$('pwCopy').addEventListener('click', async () => {
+  if (!knownPw) return;
+  await navigator.clipboard.writeText(knownPw).catch(() => {});
+  $('pwCopy').textContent = '복사됨';
+  setTimeout(() => ($('pwCopy').textContent = '복사'), 1200);
+});
+$('maxSave').addEventListener('click', async () => {
+  const n = $('maxEdit').value ? Number($('maxEdit').value) : null;
+  if (n !== null && !isValidMaxMembers(n)) return ($('error').textContent = `최대 인원은 ${MIN_ROOM_MEMBERS}~${MAX_ROOM_MEMBERS}명으로 정해 주세요.`);
+  await setOptions({ maxMembers: n });
+});
 
 function badge(text, cls) {
   const b = document.createElement('span');
@@ -141,20 +219,60 @@ async function checkVideo() {
 }
 setInterval(checkVideo, 1500);
 
+// 방 코드와 비밀번호는 영문과 숫자만 입력할 수 있다(한글 등은 입력되자마자 지운다. 붙여넣기, 한글 조합 입력 포함)
+// 길이 제한도 여기서 한다(maxlength 는 걸러내기 전에 자르므로 "ABC-DEF" 를 붙여넣으면 마지막 글자가 빠진다)
+for (const [id, max] of [['code', 6], ['createPw', MAX_PASSWORD_LENGTH], ['joinPw', MAX_PASSWORD_LENGTH], ['pwNew', MAX_PASSWORD_LENGTH]]) {
+  const el = $(id);
+  const keepAlnum = () => {
+    const clean = el.value.replace(/[^A-Za-z0-9]/g, '').slice(0, max);
+    if (clean !== el.value) el.value = clean;
+  };
+  el.addEventListener('input', keepAlnum);
+  el.addEventListener('compositionend', keepAlnum);
+}
+
+// 비밀번호 칸의 보기/숨기기(눈) 버튼
+const EYE = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+const EYE_OFF = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.9 10.9 0 0 1 12 19C5 19 1 12 1 12a19.8 19.8 0 0 1 5.06-5.94M9.9 4.24A10.9 10.9 0 0 1 12 5c7 0 11 7 11 7a19.9 19.9 0 0 1-3.16 4.19M14.12 14.12A3 3 0 1 1 9.88 9.88"/><path d="M1 1l22 22"/></svg>';
+for (const wrap of document.querySelectorAll('.pwwrap')) {
+  const input = wrap.querySelector('input');
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'pweye';
+  const sync = () => {
+    const shown = input.type === 'text';
+    btn.innerHTML = shown ? EYE_OFF : EYE; // 정적 SVG 문자열만 넣는다
+    btn.setAttribute('aria-label', shown ? '비밀번호 숨기기' : '비밀번호 보기');
+  };
+  btn.addEventListener('click', () => {
+    input.type = input.type === 'password' ? 'text' : 'password';
+    sync();
+    input.focus();
+  });
+  sync();
+  wrap.append(btn);
+  wrap.hidePassword = () => {
+    input.type = 'password';
+    sync();
+  };
+}
+
 $('create').addEventListener('click', async () => {
   const tab = await activeTab();
   const password = $('createPw').value;
   const maxMembers = $('createMax').value ? Number($('createMax').value) : undefined;
-  if (password && !isValidNewPassword(password)) return ($('error').textContent = `비밀번호는 ${MIN_PASSWORD_LENGTH}~${MAX_PASSWORD_LENGTH}자로 정해 주세요.`);
+  if (password && !isValidNewPassword(password)) return ($('error').textContent = `비밀번호는 영문과 숫자 ${MIN_PASSWORD_LENGTH}~${MAX_PASSWORD_LENGTH}자로 정해 주세요.`);
   if (maxMembers !== undefined && !isValidMaxMembers(maxMembers)) return ($('error').textContent = `최대 인원은 ${MIN_ROOM_MEMBERS}~${MAX_ROOM_MEMBERS}명으로 정해 주세요.`);
   chrome.runtime.sendMessage({ cmd: CMD.CREATE_ROOM, tabId: tab?.id, site: tab?.url, password: password || undefined, maxMembers });
   $('createPw').value = ''; // 비밀번호를 입력칸에 남기지 않는다
+  $('createPw').parentElement.hidePassword();
 });
 
 $('join').addEventListener('click', async () => {
   const tab = await activeTab();
   chrome.runtime.sendMessage({ cmd: CMD.JOIN_ROOM, roomCode: $('code').value, tabId: tab?.id, site: tab?.url, password: $('joinPw').value || undefined });
   $('joinPw').value = '';
+  $('joinPw').parentElement.hidePassword();
 });
 
 $('countdown').addEventListener('click', () =>
