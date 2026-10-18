@@ -33,6 +33,11 @@ const CSS = `
     padding: 8px 18px; border-radius: 999px; box-shadow: var(--shadow); font-weight: 500; white-space: nowrap; }
   .waiting { position: absolute; bottom: 90px; left: 50%; transform: translateX(-50%); background: var(--surface); color: var(--accent-ink); border: 1px solid var(--border-3);
     padding: 8px 18px; border-radius: 999px; box-shadow: var(--shadow); font-weight: 500; white-space: nowrap; }
+  .conn { position: absolute; top: 18px; left: 18px; display: flex; align-items: center; gap: 10px; max-width: min(400px, calc(100% - 36px)); background: var(--warn-bg); color: var(--warn-ink); border: 1px solid var(--warn-border);
+    padding: 9px 18px; border-radius: 14px; box-shadow: var(--shadow); font-weight: 500; line-height: 1.35; text-align: left; }
+  .conn::before { content: ''; flex: none; width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--warn-border); border-top-color: var(--warn-ink); animation: conn-spin .8s linear infinite; }
+  @keyframes conn-spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .conn::before { animation-duration: 3s; } }
   .click { position: absolute; pointer-events: auto; transform: translate(-50%, -50%); font-size: 16px; padding: 12px 22px; box-shadow: var(--shadow-lg); }
   @keyframes pop-x { from { transform: translate(-50%, -6px) scale(.94); opacity: 0; } to { transform: translateX(-50%); opacity: 1; } }
   @keyframes pop { from { transform: translateY(-6px) scale(.94); opacity: 0; } to { transform: none; opacity: 1; } }
@@ -150,6 +155,7 @@ export function createUI() {
   let countTimer = null;
   let waitEl = null;
   let adEl = null;
+  let connEl = null;
 
   return {
     toast(text, ms = 3000) {
@@ -362,6 +368,23 @@ export function createUI() {
         layer.append(adEl);
       }
       adEl.textContent = text;
+    },
+
+    // 서버와 연결이 끊겨 다시 연결하는 중(영상 위 맨 위). text 가 없으면 숨김
+    showConnection(text) {
+      if (!text) {
+        connEl?.remove();
+        connEl = null;
+        return;
+      }
+      ensure();
+      if (!connEl) {
+        connEl = document.createElement('div');
+        connEl.className = 'conn';
+        connEl.setAttribute('role', 'status');
+        layer.append(connEl);
+      }
+      connEl.textContent = text;
     },
 
     // 버퍼링 대기 표시. text 가 없으면 숨김
