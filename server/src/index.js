@@ -36,9 +36,10 @@ export function createServer({
   // 스토어에 올린 확장의 ID(32자). 정하면 그 확장의 Origin 만 허용하고, 없으면 아무 확장의 Origin 이나 허용한다
   extensionId = process.env.EXTENSION_ID,
   maxRooms = envInt('MAX_ROOMS', undefined),
+  restoreKey = process.env.RESTORE_KEY, // 방 복구 토큰 서명 키(재시작 뒤에도 같은 값이어야 한다)
   ...roomOpts
 } = {}) {
-  const rooms = new RoomManager({ ...roomOpts, ...(maxRooms ? { maxRooms } : {}) });
+  const rooms = new RoomManager({ ...roomOpts, ...(maxRooms ? { maxRooms } : {}), ...(restoreKey ? { restoreKey } : {}) });
 
   // IP 별 방 존재 확인 횟수(1분 창). Render 같은 프록시 뒤에서는 프록시가 덧붙인 마지막 X-Forwarded-For 값을 클라이언트로 본다
   const clientIp = (req) => (trustProxy && String(req.headers['x-forwarded-for'] ?? '').split(',').pop().trim()) || req.socket.remoteAddress || '';
@@ -162,7 +163,7 @@ export function createServer({
             conn.send({ type: S2C.ERROR, code: ERR.TOO_MANY_ROOMS, message: '방을 너무 자주 만들고 있어요. 잠시 뒤에 다시 해 주세요.' });
             break;
           }
-          rooms.create(conn, msg.userId, { password: msg.password, maxMembers: msg.maxMembers, lang: msg.lang, roomCode: msg.roomCode, mode: msg.mode, secret: msg.secret });
+          rooms.create(conn, msg.userId, { password: msg.password, maxMembers: msg.maxMembers, lang: msg.lang, roomCode: msg.roomCode, mode: msg.mode, secret: msg.secret, restoreToken: msg.restoreToken });
           break;
         case C2S.JOIN_ROOM:
           rooms.join(conn, msg.roomCode, msg.userId, msg.password, msg.lang, msg.secret);
@@ -252,6 +253,7 @@ export function createServer({
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  if (!process.env.RESTORE_KEY) console.warn('RESTORE_KEY 가 없어요: 서버가 재시작되면 방을 복구할 수 없어요(환경변수로 고정할 것)');
   const app = createServer();
   app.listen().then((p) => console.log(`server listening on :${p}`));
   // Render 는 배포할 때 새 서버를 먼저 띄우고 옛 서버에 SIGTERM 을 보낸다(기본 30초 뒤 강제 종료).

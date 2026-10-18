@@ -14,6 +14,7 @@ function keepSnapshot(room, userId, at) {
 // 헷갈리는 문자(0/O, 1/I)를 뺀 영숫자
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
+const RESTORE_TOKEN_TTL_MS = 24 * 60 * 60_000; // 복구 토큰이 유효한 시간(마지막으로 방 상태를 받은 뒤)
 const ROOM_HARD_MAX = 50; // 방장이 인원 제한을 두지 않아도 한 방에 들어올 수 있는 최대 인원
 const MAX_IDENTITIES = 100; // 방이 기억하는 userId(본인 확인 값/프로필) 수가 이만큼 넘으면 방에 없는 사람의 것부터 정리
 
@@ -39,6 +40,8 @@ export class RoomManager {
     bufferWaitMs = 15_000, // 버퍼링 대기 상한
     adWaitMs = 10 * 60_000, // 광고 대기 상한(광고는 길 수 있다)
     resumeDelayMs = 500, // 모두 준비된 뒤 함께 재개하기까지의 여유
+    restoreKey = randomBytes(32), // 복구 토큰 서명 키. 재시작 뒤에도 토큰을 확인하려면 환경변수(RESTORE_KEY)로 고정해야 한다
+    restoreTtlMs = RESTORE_TOKEN_TTL_MS,
     maxRooms = 3000, // 서버 전체 방 수 상한(방은 메모리에 있다)
     joinFailLimit = 10, // 연결 주소(IP) 당 이 횟수만큼 참가에 실패(없는 방/틀린 비밀번호)하면 잠시 차단
     joinFailWindowMs = 60_000,
@@ -52,6 +55,8 @@ export class RoomManager {
     this.resumeDelayMs = resumeDelayMs;
     this.now = now;
     this.maxRooms = maxRooms;
+    this.restoreKey = restoreKey;
+    this.restoreTtlMs = restoreTtlMs;
     this.joinFailLimit = joinFailLimit;
     this.joinFailWindowMs = joinFailWindowMs;
     this.joinFails = new Map(); // ip -> { count, resetAt }
@@ -77,8 +82,27 @@ export class RoomManager {
     }
   }
 
+  // 방 복구 토큰: 방 멤버만 받는다(room_state). 서버가 방을 기억하지 못해도(재시작) 서명으로 "이 방의 멤버였다"를 확인한다
+  issueRestoreToken(code) {
+    const t = Math.floor(this.now() / 1000);
+    return `${t}.${createHmac('sha256', this.restoreKey).update(`${code}.${t}`).digest('hex').slice(0, 32)}`;
+  }
+
+  #validRestoreToken(code, token) {
+    const [t, sig] = String(token).split('.');
+    const issued = Number(t) * 1000;
+    const now = this.now();
+    if (!(issued <= now + 60_000 && now - issued <= this.restoreTtlMs)) return false;
+    const want = createHmac('sha256', this.restoreKey).update(`${code}.${t}`).digest('hex').slice(0, 32);
+    return typeof sig === 'string' && sig.length === want.length && timingSafeEqual(Buffer.from(sig), Buffer.from(want));
+  }
+
   // roomCode/mode 가 있으면 서버 재시작으로 사라진 방을 같은 코드로 복구하는 것이다(만든 사람이 방장이 된다)
-  create(conn, userId, { password, maxMembers, lang, roomCode, mode, secret } = {}) {
+  create(conn, userId, { password, maxMembers, lang, roomCode, mode, secret, restoreToken } = {}) {
+    if (roomCode && !this.#validRestoreToken(roomCode, restoreToken)) {
+      conn.send({ type: S2C.ERROR, code: ERR.RESTORE_DENIED, message: '방을 복구할 수 없어요.' });
+      return;
+    }
     this.leave(conn);
     if (roomCode && this.rooms.has(roomCode)) {
       conn.send({ type: S2C.ERROR, code: ERR.ROOM_EXISTS, message: '이미 복구된 방이에요. 참가해 주세요.' });
@@ -523,6 +547,7 @@ export class RoomManager {
       hostId: room.hostId,
       mode: room.mode,
       hasPassword: !!room.password, // 비밀번호/해시는 절대 내려보내지 않는다
+      restoreToken: this.issueRestoreToken(room.code), // 방 멤버에게만. 서버가 재시작돼도 이 방을 복구할 수 있는 사람인지 확인하는 데 쓴다
       maxMembers: room.maxMembers,
       participants: [...room.participants.values()].sort((a, b) => a.joinSeq - b.joinSeq).map(pub),
       video: { ...room.video },

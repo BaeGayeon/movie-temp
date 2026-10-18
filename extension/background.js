@@ -39,6 +39,7 @@ const freshRoom = () => ({
   hostId: null,
   mode: 'everyone',
   hasPassword: false,
+  restoreToken: null, // 서버가 재시작돼 방이 사라졌을 때 방을 다시 만들 자격을 보이는 서명 토큰(room_state 로 받는다). content/팝업에는 내보내지 않는다
   maxMembers: null,
   participants: [],
   video: { playing: false, time: 0, updatedAt: 0 },
@@ -110,7 +111,7 @@ async function init() {
 // ---------- 상태 ----------
 
 function publicState() {
-  const { chat, ...rest } = room;
+  const { chat, restoreToken, ...rest } = room;
   const askPw = needPassword && Date.now() - needPassword.at < 2 * 60_000 ? { roomCode: needPassword.roomCode, wrong: needPassword.wrong } : null; // 오래된 요청은 버린다
   return { ...rest, userId, connection, error: lastError, waking, busy: pending !== null, needPassword: askPw }; // busy: 방 만들기/참가 요청을 서버 연결 전에 쥐고 있는 중
 }
@@ -370,6 +371,7 @@ function handleServer(m) {
         waitingIds: m.waitingIds ?? [],
         adIds: m.adIds ?? [],
         hasPassword: !!m.hasPassword,
+        restoreToken: m.restoreToken ?? room.restoreToken,
         maxMembers: m.maxMembers ?? null,
         serverOffset: m.serverNow - Date.now(),
       };
@@ -515,7 +517,7 @@ function handleServer(m) {
 
 // 방이 서버에서 사라졌다: 연결이 끊긴 지 얼마 안 됐으면(서버 재시작) 복구를 시도한다. 시도했으면 true
 function tryRestoreRoom() {
-  if (!room.roomCode || lostAt === null || Date.now() - lostAt > RESTORE_WINDOW_MS) return false;
+  if (!room.roomCode || !room.restoreToken || lostAt === null || Date.now() - lostAt > RESTORE_WINDOW_MS) return false;
   // 비밀번호가 걸린 방인데 비밀번호를 모르면 복구하면 비밀번호가 사라지므로 하지 않는다
   if (room.hasPassword && !(roomPw && isValidNewPassword(roomPw))) return false;
   if (room.hostId === userId || restoreTries >= RESTORE_WAIT_TRIES) {
@@ -526,6 +528,7 @@ function tryRestoreRoom() {
       secret,
       lang: getLang(),
       roomCode: room.roomCode,
+      restoreToken: room.restoreToken,
       mode: room.mode,
       ...(room.maxMembers ? { maxMembers: room.maxMembers } : {}),
       ...(room.hasPassword ? { password: roomPw } : {}),
@@ -546,7 +549,7 @@ function handleServerError(m) {
     rawSend(rejoinMsg());
     return;
   }
-  if (m.code === ERR.ROOM_NOT_FOUND || m.code === ERR.ROOM_IDLE_CLOSED) {
+  if (m.code === ERR.ROOM_NOT_FOUND || m.code === ERR.ROOM_IDLE_CLOSED || m.code === ERR.RESTORE_DENIED) {
     if (room.roomCode) {
       toast(text);
       const tabId = room.tabId;

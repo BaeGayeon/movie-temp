@@ -1089,7 +1089,7 @@ test('서버 전체 방 수 상한: 넘으면 server_full, 방이 닫히면 다�
 // ---- 서버 재시작 대비: 방 복구와 재시작 알림
 test('방 복구: create_room 에 roomCode/mode/옵션을 주면 같은 코드로 다시 만든다, 이미 있으면 room_exists', async () => {
   const a = await new Client().open();
-  a.send({ type: 'create_room', userId: a.userId, roomCode: 'rst234', mode: 'host_only', maxMembers: 3, password: 'secret1' });
+  a.send({ type: 'create_room', userId: a.userId, roomCode: 'rst234', restoreToken: app.rooms.issueRestoreToken('RST234'), mode: 'host_only', maxMembers: 3, password: 'secret1' });
   const created = await a.next('room_created');
   assert.equal(created.roomCode, 'RST234', '소문자로 보내도 대문자로 만든다');
   const state = await a.next('room_state');
@@ -1100,7 +1100,7 @@ test('방 복구: create_room 에 roomCode/mode/옵션을 주면 같은 코드�
 
   // 같은 코드로 또 복구하려 하면(다른 사람이 먼저 복구한 경우) 에러, 방은 그대로
   const b = await new Client().open();
-  b.send({ type: 'create_room', userId: b.userId, roomCode: 'RST234' });
+  b.send({ type: 'create_room', userId: b.userId, roomCode: 'RST234', restoreToken: app.rooms.issueRestoreToken('RST234') });
   assert.equal((await b.next('error')).code, 'room_exists');
   await b.none('room_created');
   // 비밀번호는 복구된 방에서도 지켜진다
@@ -1114,7 +1114,7 @@ test('방 복구: create_room 에 roomCode/mode/옵션을 주면 같은 코드�
 
 test('방 복구: 잘못된 코드/모드는 무시된다', async () => {
   const a = await new Client().open();
-  a.send({ type: 'create_room', userId: a.userId, roomCode: 'xx' });
+  a.send({ type: 'create_room', userId: a.userId, roomCode: 'xx', restoreToken: app.rooms.issueRestoreToken('XX') });
   a.send({ type: 'create_room', userId: a.userId, mode: 'nope' });
   await a.none('room_created', 250);
   a.close();
@@ -1202,4 +1202,61 @@ test('보안: 확장이 아닌 Origin 의 WebSocket 은 거절, EXTENSION_ID 를
     await srv.close();
     await pinned.close();
   }
+});
+
+// ---- 방 복구 토큰: 방 코드만 아는 사람이 복구(방장 차지)하는 것을 막는다
+test('방 복구 토큰: 방 멤버는 room_state 로 받고, 서버가 재시작돼도(같은 키) 그 토큰으로 복구된다', async () => {
+  const { a, code, state } = await makeRoom();
+  assert.match(state.restoreToken, /^\d+\.[0-9a-f]{32}$/);
+  const b = await new Client().open();
+  b.send({ type: 'create_room', userId: b.userId, roomCode: code, restoreToken: state.restoreToken }); // 방이 아직 있어서 room_exists
+  assert.equal((await b.next('error')).code, 'room_exists');
+  // 재시작 흉내: 같은 키의 새 서버는 옛 방을 모르지만 토큰은 확인할 수 있다
+  const key = 'k'.repeat(32);
+  const old = new RoomManager({ restoreKey: key, idleSweepMs: 3_600_000 });
+  const host = fakeConn();
+  old.create(host, 'user-aaaa-testtest', { secret: secretOf('user-aaaa-testtest') });
+  const token = host.sent.find((m) => m.type === 'room_state').restoreToken;
+  const code2 = host.sent.find((m) => m.type === 'room_created').roomCode;
+  old.shutdown();
+  const fresh = new RoomManager({ restoreKey: key, idleSweepMs: 3_600_000 });
+  const again = fakeConn();
+  fresh.create(again, 'user-aaaa-testtest', { secret: secretOf('user-aaaa-testtest'), roomCode: code2, restoreToken: token });
+  assert.equal(again.sent.find((m) => m.type === 'room_created')?.roomCode, code2);
+  fresh.shutdown();
+  a.close();
+  b.close();
+});
+
+test('방 복구 토큰: 없거나 위조/다른 방/다른 키/오래된 토큰이면 restore_denied, 방은 만들어지지 않는다', () => {
+  let t = 1_000_000_000_000;
+  const rm = new RoomManager({ restoreKey: 'k'.repeat(32), restoreTtlMs: 60_000, idleSweepMs: 3_600_000, now: () => t });
+  const good = rm.issueRestoreToken('ABCDEF');
+  const try_ = (restoreToken, roomCode = 'ABCDEF') => {
+    const c = fakeConn();
+    c.ip = `9.9.9.${Math.floor(Math.random() * 200)}`;
+    rm.create(c, 'user-zzzz-testtest', { secret: secretOf('user-zzzz-testtest'), roomCode, restoreToken });
+    return c.sent.find((m) => m.type === 'error')?.code ?? (c.sent.some((m) => m.type === 'room_created') ? 'created' : 'nothing');
+  };
+  assert.equal(try_(undefined), 'restore_denied');
+  assert.equal(try_(`${Math.floor(t / 1000)}.${'0'.repeat(32)}`), 'restore_denied', '위조');
+  assert.equal(try_(good, 'ZZZZZZ'), 'restore_denied', '다른 방 코드의 토큰');
+  const other = new RoomManager({ restoreKey: 'x'.repeat(32), idleSweepMs: 3_600_000, now: () => t });
+  assert.equal(try_(other.issueRestoreToken('ABCDEF')), 'restore_denied', '다른 서버 키');
+  other.shutdown();
+  assert.equal(rm.rooms.size, 0);
+  assert.equal(try_(good), 'created');
+  rm.rooms.clear();
+  t += 61_000;
+  assert.equal(try_(good), 'restore_denied', '오래된 토큰');
+  rm.shutdown();
+});
+
+test('방 복구 토큰: roomCode 가 있는데 토큰 형식이 없으면 메시지를 무시한다', async () => {
+  const a = await new Client().open();
+  a.send({ type: 'create_room', userId: a.userId, roomCode: 'ABCDEF' });
+  a.send({ type: 'create_room', userId: a.userId, roomCode: 'ABCDEF', restoreToken: 'nope' });
+  await a.none('room_created');
+  await a.none('error');
+  a.close();
 });

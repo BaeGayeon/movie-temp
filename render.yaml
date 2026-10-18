@@ -13,6 +13,9 @@ services:
       - key: NODE_VERSION
         value: "20"
       # Render 프록시가 붙인 X-Forwarded-For 로 접속자 IP 를 판별한다(IP 별 제한용). 프록시 없는 환경에서는 켜지 말 것
+      # 서버 재시작(배포) 뒤 방 복구 토큰을 확인하는 서명 키. 처음 한 번 만들어지고 이후 배포에서도 같은 값을 쓴다
+      - key: RESTORE_KEY
+        generateValue: true
       - key: TRUST_PROXY
         value: "1"
       # 스토어에 올린 확장의 ID(32자)를 대시보드에서 넣으면 그 확장의 접속만 받는다. 비워 두면 아무 확장의 접속이나 받는다

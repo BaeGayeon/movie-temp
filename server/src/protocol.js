@@ -59,6 +59,7 @@ export const ERR = {
   TOO_MANY_CONNECTIONS: 'too_many_connections', // 같은 주소(IP)에서 동시 연결이 너무 많거나 서버 전체 연결 수가 가득 참(서버가 이 에러를 보내고 연결을 닫는다)
   TOO_MANY_ROOMS: 'too_many_rooms', // 같은 주소(IP)에서 방을 너무 자주 만듦
   SERVER_FULL: 'server_full', // 서버 전체 방 수가 가득 참
+  RESTORE_DENIED: 'restore_denied', // 방 복구(create_room 에 roomCode)에 쓴 복구 토큰이 없거나 틀리거나 오래됨(방 멤버가 아니거나 너무 오래 전에 나감)
   ROOM_EXISTS: 'room_exists', // 방 복구(create_room 에 roomCode)를 요청했는데 그 코드의 방이 이미 있음(다른 사람이 먼저 복구함 -> 참가하면 된다)
 };
 
@@ -149,6 +150,7 @@ const USER_ID_RE = /^[A-Za-z0-9_-]{8,64}$/;
 // secret: 확장이 기기에 만들어 두는 비공개 값. userId 는 방 안의 모두에게 공개되므로(participants[].id, hostId) 본인 확인은 이 값으로 한다.
 // 서버는 해시만 방 메모리에 두고 다른 참가자에게 전달하지 않는다.
 const SECRET_RE = /^[A-Za-z0-9_-]{32,64}$/;
+const RESTORE_TOKEN_RE = /^\d{1,12}\.[0-9a-f]{32}$/; // <발급 시각(초)>.<서명>
 const MAX_TIME = 24 * 60 * 60; // 초
 
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
@@ -162,11 +164,14 @@ const validators = {
     if (typeof m.secret !== 'string' || !SECRET_RE.test(m.secret)) return null;
     const out = { type: m.type, userId: m.userId, secret: m.secret };
     if (LANGS.includes(m.lang)) out.lang = m.lang;
-    // 방 복구: 서버가 재시작돼 방이 사라졌을 때 확장이 같은 코드/옵션으로 다시 만든다
+    // 방 복구: 서버가 재시작돼 방이 사라졌을 때 확장이 같은 코드/옵션으로 다시 만든다.
+    // 방 코드만 알면 아무나 방장이 되는 것을 막으려고, 방 멤버가 room_state 로 받아 둔 복구 토큰(서버가 서명)을 함께 보내야 한다
     if (m.roomCode !== undefined) {
       const code = typeof m.roomCode === 'string' ? m.roomCode.toUpperCase() : '';
       if (!ROOM_CODE_RE.test(code)) return null;
+      if (typeof m.restoreToken !== 'string' || !RESTORE_TOKEN_RE.test(m.restoreToken)) return null;
       out.roomCode = code;
+      out.restoreToken = m.restoreToken;
     }
     if (m.mode !== undefined) {
       if (!MODES.includes(m.mode)) return null;
