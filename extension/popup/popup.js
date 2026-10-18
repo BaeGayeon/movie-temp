@@ -423,6 +423,7 @@ function renderProfile() {
       b.addEventListener('click', () => update({ avatar: { ...profile.avatar, kind: 'emoji', value: e } }));
       return b;
     }),
+    moreEmojiButton(),
   );
   swatches($('bgGrid'), $('bgPicker'), 'bg', COLOR_PALETTE, profile.avatar.bg, (c) => update({ avatar: { ...profile.avatar, bg: c } }));
   swatches($('colorGrid'), $('colorPicker'), 'color', COLOR_PALETTE, profile.color, (c) => update({ color: c }));
@@ -462,7 +463,15 @@ $('pname').addEventListener('input', (e) => update({ name: e.target.value }));
 
 // 모든 이모지 선택기
 let picker = null;
-$('moreEmoji').addEventListener('click', () => {
+function moreEmojiButton() {
+  const b = document.createElement('button');
+  b.textContent = '＋';
+  b.title = '모든 이모지';
+  b.setAttribute('aria-label', '모든 이모지');
+  b.addEventListener('click', toggleEmojiPicker);
+  return b;
+}
+function toggleEmojiPicker() {
   const box = $('pickerBox');
   if (!picker) {
     picker = createEmojiPicker({ onPick: (e) => update({ avatar: { ...profile.avatar, kind: 'emoji', value: e } }) });
@@ -470,7 +479,7 @@ $('moreEmoji').addEventListener('click', () => {
   }
   box.hidden = !box.hidden;
   if (!box.hidden) picker.reset();
-});
+}
 
 // 사진 업로드: 내 컴퓨터에서 64x64 로 줄여 프로필에 포함한다
 
