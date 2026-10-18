@@ -80,8 +80,6 @@ const CSS = `
   .reacts button:hover { background: var(--surface-2); transform: scale(1.15); }
   ::selection { background: var(--accent); color: var(--on-accent); } /* 사이트 기본 선택색이 안 보이는 경우가 있어 직접 지정 */
   .form { display: flex; gap: 6px; padding: 6px 8px 10px; align-items: flex-end; }
-  .form .emo { background: transparent; font-size: 20px; padding: 2px 4px; border-radius: 8px; }
-  .form .emo:hover { background: var(--surface-2); }
   .compose { flex: 1; min-width: 0; position: relative; display: flex; }
   .form textarea { flex: 1; min-width: 0; display: block; resize: none; overflow-y: auto; font: inherit; line-height: 1.4; height: calc(2.8em + 14px); color: var(--ink); background: var(--surface); border: 1px solid var(--border-2); border-radius: 14px; padding: 6px 12px; outline: none;
     scrollbar-width: thin; scrollbar-color: var(--surface-3) transparent; }
@@ -1049,29 +1047,12 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
       if (e.composedPath?.()[0] === input || input.getRootNode().activeElement === input) onInputKey(e);
     };
     input.addEventListener('input', noteTyping);
-    const emo = el('button', 'emo', '😊');
-    emo.title = '이모지';
-    emo.addEventListener('click', () =>
-      openPicker(
-        emo,
-        (emoji) => {
-          const s = input.selectionStart ?? input.value.length;
-          const e = input.selectionEnd ?? s;
-          input.value = input.value.slice(0, s) + emoji + input.value.slice(e);
-          input.focus();
-          input.setSelectionRange(s + emoji.length, s + emoji.length);
-          updateCounter();
-          noteTyping();
-        },
-        true, // 여러 개 연속 입력 가능
-      ),
-    );
     const send = el('button', 'send', '전송');
     send.addEventListener('click', submit);
     const form = el('div', 'form');
     const compose = el('div', 'compose');
     compose.append(input, counter);
-    form.append(emo, compose, send);
+    form.append(compose, send);
 
     // 크기 조절 핸들
     const handles = [
