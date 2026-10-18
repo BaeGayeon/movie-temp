@@ -782,6 +782,24 @@ test('광고: 세 명이 시차를 두고 광고에 들어가도 마지막 사�
   c3.close();
 });
 
+test('채팅: 광고를 보는 중에 보낸 메시지는 ad 표시가 붙어 전해진다(참이 아닌 값은 버린다)', async () => {
+  const { a, code } = await makeRoom();
+  const { c: b } = await joinRoom(code);
+  a.send({ type: 'chat', text: '광고 보는 중', ad: true });
+  const m1 = await b.next('chat');
+  assert.equal(m1.ad, true);
+  assert.equal('videoTime' in m1, false);
+  a.send({ type: 'chat', text: '그냥', videoTime: 12 });
+  const m2 = await b.next('chat');
+  assert.equal('ad' in m2, false);
+  assert.equal(m2.videoTime, 12);
+  a.send({ type: 'chat', text: '이상한 값', ad: 'yes' });
+  const m3 = await b.next('chat');
+  assert.equal('ad' in m3, false);
+  a.close();
+  b.close();
+});
+
 test('광고 reason 검증: ad 외의 값은 거부', async () => {
   const { a } = await makeRoom();
   a.send({ type: 'buffering', isBuffering: true, reason: 'x' });

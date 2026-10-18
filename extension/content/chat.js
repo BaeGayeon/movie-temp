@@ -816,10 +816,11 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     const parts = [];
     if (prefs.showClock) parts.push(fmtClock(m.sentAt));
     if (prefs.showVideoTime && typeof m.videoTime === 'number') parts.push(`▶ ${fmtVideo(m.videoTime)}`);
+    else if (prefs.showVideoTime && m.ad) parts.push(t('chat.inAd')); // 광고 중에는 재생 위치를 보내지 않으므로 시각 자리에 표시
     const meta = m.el.querySelector('.meta');
     meta.textContent = parts.join(' · ');
     meta.hidden = parts.length === 0;
-    m.el.title = `${new Date(m.sentAt).toLocaleTimeString()}${typeof m.videoTime === 'number' ? ` · ${t('chat.playAt', { t: fmtVideo(m.videoTime) })}` : ''}`;
+    m.el.title = `${new Date(m.sentAt).toLocaleTimeString()}${typeof m.videoTime === 'number' ? ` · ${t('chat.playAt', { t: fmtVideo(m.videoTime) })}` : m.ad ? ` · ${t('chat.inAd')}` : ''}`;
   }
 
   function applyProfile(row, userId) {

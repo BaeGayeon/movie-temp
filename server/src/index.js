@@ -193,7 +193,7 @@ export function createServer({
           rooms.profileUpdate(conn, msg.profile);
           break;
         case C2S.CHAT:
-          rooms.chat(conn, msg.text, msg.videoTime, msg.replyTo);
+          rooms.chat(conn, msg.text, msg.videoTime, msg.replyTo, msg.ad);
           break;
         case C2S.TYPING:
           rooms.typing(conn, msg.isTyping);

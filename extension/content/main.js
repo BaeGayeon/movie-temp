@@ -52,7 +52,7 @@
   const chat = isTop
     ? createChat({
         getState: () => state,
-        onSend: (text, replyTo) => (noteDropped(), send({ cmd: CMD.CHAT_SEND, text, videoTime: currentVideoTime(), replyTo })),
+        onSend: (text, replyTo) => (noteDropped(), send({ cmd: CMD.CHAT_SEND, text, videoTime: currentVideoTime(), replyTo, ad: inAdNow() })),
         getInviteLink: () => {
           const u = new URL(location.href);
           u.searchParams.set('wp', state?.roomCode ?? '');
@@ -260,6 +260,8 @@
     return roomTimeNow();
   };
   let framePos = null; // { t, playing, at } — iframe 안 영상이 알려준 위치
+  // 지금 광고를 보는 중인가(영상이 이 프레임에 있으면 내 판정, iframe 안에 있으면 그쪽이 알려준 값)
+  const inAdNow = () => inAd || (!video && !!framePos && Date.now() - framePos.at < 5000 && !!framePos.ad);
   let frameVid = 0; // iframe 안에 영상이 있다고 마지막으로 알려온 시각
   if (isTop) {
     window.addEventListener('message', (e) => {
