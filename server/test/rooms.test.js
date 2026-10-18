@@ -903,3 +903,52 @@ test('참가 실패가 잦으면 IP 별로 잠시 차단', () => {
   assert.ok(later.sent.some((m) => m.type === 'room_state'), '시간이 지나면 풀림');
   rm.shutdown();
 });
+
+test('방장이 방 옵션을 바꾼다: 비밀번호 설정/변경/해제, 최대 인원', async () => {
+  const { a, code } = await makeRoomWith({});
+  const { c: b } = await joinRoom(code);
+  await a.next('participant_joined');
+  // 설정: 모두에게 알림(비밀번호 내용은 없음), 이미 있는 사람은 그대로
+  a.send({ type: 'set_room_options', password: 'newpass1', maxMembers: 3 });
+  const opt = await b.next('room_options');
+  assert.deepEqual({ ...opt }, { type: 'room_options', hasPassword: true, maxMembers: 3, passwordChanged: true, fromId: a.userId });
+  assert.equal(JSON.stringify(opt).includes('newpass1'), false);
+  await a.next('room_options');
+  // 새로 오는 사람은 새 비밀번호가 필요
+  const c = await new Client().open();
+  c.send({ type: 'join_room', roomCode: code, userId: c.userId });
+  assert.equal((await c.next('error')).code, 'password_required');
+  c.send({ type: 'join_room', roomCode: code, userId: c.userId, password: 'newpass1' });
+  await c.next('room_state');
+  // 인원을 현재(3)보다 줄여도 있는 사람은 유지, 새로 오는 사람만 막힘
+  a.send({ type: 'set_room_options', maxMembers: 2 });
+  const opt2 = await b.next('room_options');
+  assert.equal(opt2.passwordChanged, false);
+  assert.equal(opt2.maxMembers, 2);
+  const d = await new Client().open();
+  d.send({ type: 'join_room', roomCode: code, userId: d.userId, password: 'newpass1' });
+  assert.equal((await d.next('error')).code, 'room_full');
+  // 해제
+  a.send({ type: 'set_room_options', password: null, maxMembers: null });
+  const opt3 = await b.next('room_options');
+  assert.deepEqual([opt3.hasPassword, opt3.maxMembers], [false, null]);
+  d.send({ type: 'join_room', roomCode: code, userId: d.userId });
+  await d.next('room_state');
+});
+
+test('방 옵션은 방장만 바꿀 수 있고, 잘못된 값은 무시된다', async () => {
+  const { a, code } = await makeRoomWith({ password: 'secret1' });
+  const b = await new Client().open();
+  b.send({ type: 'join_room', roomCode: code, userId: b.userId, password: 'secret1' });
+  await b.next('room_state');
+  b.send({ type: 'set_room_options', password: null });
+  await a.none('room_options');
+  for (const bad of [{}, { password: 'abc' }, { password: '비밀번호1234' }, { maxMembers: 1 }, { maxMembers: 21 }, { maxMembers: '5' }, { password: 1234 }]) {
+    a.send({ type: 'set_room_options', ...bad });
+  }
+  await a.none('room_options');
+  // 비밀번호는 그대로
+  const c = await new Client().open();
+  c.send({ type: 'join_room', roomCode: code, userId: c.userId });
+  assert.equal((await c.next('error')).code, 'password_required');
+});

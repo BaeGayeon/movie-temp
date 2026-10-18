@@ -118,10 +118,88 @@ function render() {
     b.disabled = !isHost;
   }
   $('countdownRow').hidden = !isHost;
+  $('optBox').hidden = !isHost;
+  if (isHost) renderOptions();
   const waiting = state.waitingIds.map((id) => state.participants.find((p) => p.id === id)?.name ?? '누군가');
   $('waitInfo').hidden = waiting.length === 0;
   $('waitInfo').textContent = `⏳ ${waiting.join(', ')} 님을 기다리는 중이에요`;
 }
+
+// ---------- 방장용 방 옵션(비밀번호 확인/변경/삭제, 최대 인원) ----------
+let knownPw = null; // 이 브라우저가 기억하는 방 비밀번호(모르면 null)
+let pwShown = false;
+let pwKey = '';
+
+async function refreshPw() {
+  const r = await chrome.runtime.sendMessage({ cmd: CMD.GET_ROOM_PW }).catch(() => null);
+  knownPw = r?.password ?? null;
+  paintPw();
+}
+
+function paintPw() {
+  const has = !!state?.hasPassword;
+  const value = $('pwValue');
+  const known = has && !!knownPw;
+  value.classList.toggle('mono', known);
+  value.textContent = !has ? '설정 안 함' : known ? (pwShown ? knownPw : '•'.repeat(knownPw.length)) : '설정돼 있어요 (이 기기에서는 볼 수 없어요)';
+  $('pwEye').hidden = !known;
+  $('pwCopy').hidden = !known;
+  $('pwEye').innerHTML = pwShown ? EYE_OFF : EYE; // 정적 SVG 문자열만 넣는다
+  $('pwEye').setAttribute('aria-label', pwShown ? '비밀번호 숨기기' : '비밀번호 보기');
+  $('pwEdit').textContent = has ? '변경' : '설정';
+  $('pwRemove').hidden = !has;
+}
+
+function renderOptions() {
+  const key = `${state.roomCode}:${state.hasPassword}`;
+  if (key !== pwKey) {
+    pwKey = key;
+    pwShown = false;
+    refreshPw();
+  }
+  paintPw();
+  if (document.activeElement !== $('maxEdit')) $('maxEdit').value = state.maxMembers ?? '';
+}
+
+async function setOptions(opts) {
+  const r = await chrome.runtime.sendMessage({ cmd: CMD.SET_ROOM_OPTIONS, ...opts }).catch(() => null);
+  if (r?.ok) $('error').textContent = '';
+  await refreshPw();
+  return !!r?.ok;
+}
+
+$('pwEdit').addEventListener('click', () => {
+  $('pwForm').hidden = false;
+  $('pwNew').focus();
+});
+$('pwCancel').addEventListener('click', () => {
+  $('pwNew').value = '';
+  $('pwNew').parentElement.hidePassword();
+  $('pwForm').hidden = true;
+});
+$('pwSave').addEventListener('click', async () => {
+  const pw = $('pwNew').value;
+  if (!isValidNewPassword(pw)) return ($('error').textContent = `비밀번호는 영문과 숫자 ${MIN_PASSWORD_LENGTH}~${MAX_PASSWORD_LENGTH}자로 정해 주세요.`);
+  if (await setOptions({ password: pw })) $('pwCancel').click();
+});
+$('pwRemove').addEventListener('click', async () => {
+  if (confirm('비밀번호를 없앨까요? 누구나 방 코드만 알면 들어올 수 있게 돼요.')) await setOptions({ password: null });
+});
+$('pwEye').addEventListener('click', () => {
+  pwShown = !pwShown;
+  paintPw();
+});
+$('pwCopy').addEventListener('click', async () => {
+  if (!knownPw) return;
+  await navigator.clipboard.writeText(knownPw).catch(() => {});
+  $('pwCopy').textContent = '복사됨';
+  setTimeout(() => ($('pwCopy').textContent = '복사'), 1200);
+});
+$('maxSave').addEventListener('click', async () => {
+  const n = $('maxEdit').value ? Number($('maxEdit').value) : null;
+  if (n !== null && !isValidMaxMembers(n)) return ($('error').textContent = `최대 인원은 ${MIN_ROOM_MEMBERS}~${MAX_ROOM_MEMBERS}명으로 정해 주세요.`);
+  await setOptions({ maxMembers: n });
+});
 
 function badge(text, cls) {
   const b = document.createElement('span');
@@ -143,7 +221,7 @@ setInterval(checkVideo, 1500);
 
 // 방 코드와 비밀번호는 영문과 숫자만 입력할 수 있다(한글 등은 입력되자마자 지운다. 붙여넣기, 한글 조합 입력 포함)
 // 길이 제한도 여기서 한다(maxlength 는 걸러내기 전에 자르므로 "ABC-DEF" 를 붙여넣으면 마지막 글자가 빠진다)
-for (const [id, max] of [['code', 6], ['createPw', MAX_PASSWORD_LENGTH], ['joinPw', MAX_PASSWORD_LENGTH]]) {
+for (const [id, max] of [['code', 6], ['createPw', MAX_PASSWORD_LENGTH], ['joinPw', MAX_PASSWORD_LENGTH], ['pwNew', MAX_PASSWORD_LENGTH]]) {
   const el = $(id);
   const keepAlnum = () => {
     const clean = el.value.replace(/[^A-Za-z0-9]/g, '').slice(0, max);

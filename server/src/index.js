@@ -105,6 +105,9 @@ export function createServer({ port = Number(process.env.PORT) || 8080, host = '
         case C2S.SET_PERMISSION:
           rooms.setPermission(conn, msg.mode);
           break;
+        case C2S.SET_ROOM_OPTIONS:
+          rooms.setOptions(conn, msg);
+          break;
         case C2S.COUNTDOWN_START:
           rooms.countdown(conn, msg.seconds);
           break;

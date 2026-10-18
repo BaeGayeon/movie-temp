@@ -12,6 +12,8 @@ export const CMD = {
   LEAVE_ROOM: 'leave_room',
   ROOM_PAGE: 'room_page', // content -> background: 방에 묶인 탭이 처음 보여준 페이지(주소). 벗어나면 방에서 나간다
   SET_MODE: 'set_mode',
+  SET_ROOM_OPTIONS: 'set_room_options', // popup (방장): { password?: string | null, maxMembers?: number | null }
+  GET_ROOM_PW: 'get_room_pw', // popup (방장): 이 브라우저가 기억하는 방 비밀번호(모르면 null)
   VIDEO_EVENT: 'video_event',
   COUNTDOWN_START: 'countdown_start', // popup (방장)
   BUFFERING: 'buffering', // content

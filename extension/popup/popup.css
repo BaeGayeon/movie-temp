@@ -192,3 +192,14 @@ summary > .ic { margin-right: .45em; }
 .joinpw { padding-left: 44px; text-transform: none; } /* 비밀번호는 대소문자를 구분하므로 코드 칸처럼 대문자로 바꿔 보이지 않는다 */ /* 가운데 글자가 치우치지 않게 눈 버튼 자리만큼 양쪽을 비운다 */
 .pweye { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); display: flex; padding: 6px; border: 0; border-radius: 50%; background: none; color: var(--ink-soft); cursor: pointer; }
 .pweye:hover { color: var(--ink); }
+
+/* 방장용 방 옵션 카드 */
+.optline { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.optline .lbl { flex: none; width: 70px; font-weight: 700; font-size: 13px; }
+.optline input { flex: 1; min-width: 0; }
+.optval { flex: 1; min-width: 0; font-size: 13px; color: var(--ink-soft); font-weight: 600; word-break: break-all; }
+.optval.mono { color: var(--ink); letter-spacing: 1px; }
+.iconbtn { display: flex; padding: 5px; border: 0; border-radius: 50%; background: none; color: var(--ink-soft); cursor: pointer; }
+.iconbtn:hover { color: var(--ink); }
+#pwButtons, #pwForm { margin-bottom: 10px; }
+#pwForm .pwwrap { flex: 1; }

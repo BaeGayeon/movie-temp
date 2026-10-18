@@ -409,6 +409,17 @@ function handleServer(m) {
       toast(`${nameOf(m.hostId)}님이 새 방장이에요`); // 나일 때도 닉네임으로
       break;
 
+    case S2C.ROOM_OPTIONS:
+      room.hasPassword = !!m.hasPassword;
+      room.maxMembers = m.maxMembers ?? null;
+      // 다른 방장이 비밀번호를 바꿨으면 내가 기억하던 것은 더 맞지 않는다(재접속 때는 다시 입력하게 된다)
+      if (m.passwordChanged && m.fromId !== userId) setRoomPw(null);
+      if (!room.hasPassword) setRoomPw(null);
+      persist();
+      broadcast();
+      if (m.fromId !== userId) toast('방장이 방 옵션을 바꿨어요');
+      break;
+
     case S2C.MODE_CHANGED:
       room.mode = m.mode;
       persist();
@@ -687,6 +698,37 @@ async function onCommand(m, sender) {
         broadcast();
       }
       return { ok: true };
+
+    case CMD.GET_ROOM_PW:
+      // 비밀번호는 팝업(확장 페이지)에만 알려 준다. 탭(content)으로 보내는 상태에는 넣지 않는다
+      const fromExtensionPage = !!sender.url?.startsWith(chrome.runtime.getURL('')); // 페이지(content script)가 아니라 확장 자신의 페이지(팝업)에서 온 요청만
+      return { password: fromExtensionPage && room.roomCode && room.hostId === userId ? roomPw : null };
+
+    case CMD.SET_ROOM_OPTIONS: {
+      if (!room.roomCode || room.hostId !== userId) return { ok: false };
+      const msg = { type: C2S.SET_ROOM_OPTIONS };
+      if (m.password !== undefined) {
+        if (m.password !== null && !isValidNewPassword(m.password)) {
+          lastError = '비밀번호는 영문과 숫자 4~32자로 정해 주세요.';
+          broadcast();
+          return { ok: false };
+        }
+        msg.password = m.password;
+      }
+      if (m.maxMembers !== undefined) {
+        if (m.maxMembers !== null && !isValidMaxMembers(m.maxMembers)) {
+          lastError = '최대 인원은 2~20명으로 정해 주세요.';
+          broadcast();
+          return { ok: false };
+        }
+        msg.maxMembers = m.maxMembers;
+      }
+      if (!('password' in msg) && !('maxMembers' in msg)) return { ok: false };
+      lastError = null;
+      if ('password' in msg) setRoomPw(msg.password); // 바꾼 비밀번호를 기억해 방장이 볼 수 있게 한다(없애면 지운다)
+      rawSend(msg);
+      return { ok: true };
+    }
 
     case CMD.SET_MODE:
       if (MODES.includes(m.mode) && room.hostId === userId) rawSend({ type: C2S.SET_PERMISSION, mode: m.mode });

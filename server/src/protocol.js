@@ -17,8 +17,8 @@ export const C2S = {
   CHAT: 'chat',
   TYPING: 'typing',
   REACTION: 'reaction',
-  // 4단계: 방 옵션(비밀번호/인원 제한)은 방을 만들 때 create_room 에 실어 보낸다. set_room_options 는 쓰지 않는다.
-  SET_ROOM_OPTIONS: 'set_room_options',
+  // 4단계: 방 옵션(비밀번호/인원 제한)은 방을 만들 때 create_room 에 싣고, 만든 뒤에는 방장이 set_room_options 로 바꾼다.
+  SET_ROOM_OPTIONS: 'set_room_options', // { password?: string | null, maxMembers?: number | null } — null 은 해제
 };
 
 export const S2C = {
@@ -41,6 +41,8 @@ export const S2C = {
   CHAT: 'chat',
   TYPING: 'typing',
   REACTION: 'reaction',
+  // 4단계
+  ROOM_OPTIONS: 'room_options', // { hasPassword, maxMembers, passwordChanged, fromId } — 방장이 방 옵션을 바꿈
 };
 
 export const ERR = {
@@ -222,6 +224,20 @@ const validators = {
   [C2S.TYPING]: (m) => (typeof m.isTyping === 'boolean' ? { type: m.type, isTyping: m.isTyping } : null),
 
   [C2S.REACTION]: (m) => (isSingleEmoji(m.emoji) ? { type: m.type, emoji: m.emoji } : null),
+
+  // 방장이 비밀번호(string = 설정/변경, null = 없앰)와 최대 인원(number = 설정, null = 제한 없음)을 바꾼다. 둘 중 하나는 있어야 한다.
+  [C2S.SET_ROOM_OPTIONS]: (m) => {
+    const out = { type: m.type };
+    if (m.password !== undefined) {
+      if (m.password !== null && !isValidNewPassword(m.password)) return null;
+      out.password = m.password;
+    }
+    if (m.maxMembers !== undefined) {
+      if (m.maxMembers !== null && !isValidMaxMembers(m.maxMembers)) return null;
+      out.maxMembers = m.maxMembers;
+    }
+    return 'password' in out || 'maxMembers' in out ? out : null;
+  },
 
   [C2S.SYNC_REPORT]: (m) =>
     isTime(m.time) && typeof m.playing === 'boolean' && isNum(m.sentAt)
