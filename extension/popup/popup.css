@@ -263,3 +263,20 @@ summary > .ic { margin-right: .45em; }
 .sechead { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .sechead .t { font-size: 13px; font-weight: 800; }
 .sechead.sep { margin-top: 6px; padding-top: 10px; border-top: 1px solid var(--border-3); }
+
+/* 인라인 스타일 정리 */
+.row.wrap { flex-wrap: wrap; }
+.saverow { margin-top: 10px; }
+.saverow .btn { flex: 0 0 auto; }
+
+/* 방에 있을 때: 헤더를 얇게(태그라인 숨김) + 연결 상태는 헤더 오른쪽에 */
+.top > .status { position: absolute; right: 16px; top: 50%; transform: translateY(-50%); z-index: 2; padding: 3px 10px; }
+.in-room .top { padding: 10px 16px 14px; border-radius: 0 0 20px 20px; }
+.in-room .tagline { display: none; }
+.in-room .logo { width: 32px; height: 32px; font-size: 18px; border-radius: 11px; }
+.in-room h1 { font-size: 16px; }
+.in-room .top::before { font-size: 34px; }
+.in-room .top::after { display: none; }
+.in-room h1 small { display: none; } /* 한글 병기는 숨겨 연결 상태 칩과 겹치지 않게 */
+.in-room .brand { padding-right: 96px; }
+.in-room h1 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

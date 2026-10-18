@@ -14,6 +14,7 @@
         <p class="tagline" data-i18n="popup.tagline">같이 보면 더 재밌어요 🍿</p>
       </div>
     </div>
+    <span class="status" id="conn" hidden></span>
   </header>
 
   <main>
@@ -73,7 +74,7 @@
     <!-- 방에 있을 때: 카드마다 접었다 펼 수 있다(펼침 상태는 기억한다) -->
     <section id="room" hidden>
       <details class="card" data-fold="room" open>
-        <summary><span data-i18n="popup.roomCode">🏠 방 코드</span> <span class="status" id="conn"></span></summary>
+        <summary><span data-i18n="popup.roomCode">🏠 방 코드</span></summary>
         <div class="inner">
           <div class="code" id="roomCode"></div>
           <div class="row nowrap">
@@ -155,7 +156,7 @@
         <div id="colorPicker" hidden></div>
         <div class="sec" data-i18n="popup.avatar">프사</div>
         <div class="grid" id="emojiGrid"></div>
-        <div class="row" style="flex-wrap:wrap">
+        <div class="row wrap">
           <button id="upload" class="btn small" data-i18n="popup.upload">📷 사진 올리기</button>
           <button id="swapAvatar" class="btn small" hidden></button>
           <button id="editPhoto" class="btn small" data-i18n="popup.editPhoto" hidden>위치 조절</button>
@@ -177,7 +178,7 @@
         <div id="bgPicker" hidden></div>
           </div>
         </details>
-        <div class="row" style="margin-top:10px"><button id="saveProfile" class="btn small primary" style="flex:0 0 auto" data-i18n="popup.save" disabled>저장</button><span class="sub" id="saveHint"></span></div>
+        <div class="row saverow"><button id="saveProfile" class="btn small primary" data-i18n="popup.save" disabled>저장</button><span class="sub" id="saveHint"></span></div>
       </div>
     </details>
 

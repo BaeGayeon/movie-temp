@@ -89,9 +89,13 @@ const CSS = `
   .reacts button { background: transparent; font-size: 17px; border-radius: 8px; padding: 2px 4px; transition: transform .08s; }
   .reacts button:hover { background: var(--surface-2); transform: scale(1.15); }
   ::selection { background: var(--accent); color: var(--on-accent); } /* 사이트 기본 선택색이 안 보이는 경우가 있어 직접 지정 */
-  .form { display: flex; gap: 6px; padding: 6px 8px 10px; align-items: stretch; }
+  .form { display: flex; gap: 6px; padding: 6px 8px 10px; align-items: flex-end; }
+  .rtoggle { flex: none; width: calc(1.4em + 16px); height: calc(1.4em + 16px); padding: 0; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: transparent; font-size: 17px; line-height: 1; opacity: .55; }
+  .rtoggle:hover { background: var(--surface-2); opacity: 1; }
+  .rtoggle.on { opacity: 1; background: var(--surface-2); }
+  .reacts[hidden] { display: none; }
   .compose { flex: 1; min-width: 0; position: relative; display: flex; }
-  .form textarea { flex: 1; min-width: 0; display: block; resize: none; overflow-y: auto; font: inherit; line-height: 1.4; height: calc(2.8em + 14px); color: var(--ink); background: var(--surface); border: 1px solid var(--border-2); border-radius: 14px; padding: 6px 12px; outline: none;
+  .form textarea { flex: 1; box-sizing: border-box; min-width: 0; display: block; resize: none; overflow-y: auto; font: inherit; line-height: 1.4; height: calc(1.4em + 14px); max-height: calc(7em + 14px); color: var(--ink); background: var(--surface); border: 1px solid var(--border-2); border-radius: 14px; padding: 6px 12px; outline: none;
     scrollbar-width: thin; scrollbar-color: var(--surface-3) transparent; }
   .form textarea::placeholder { color: var(--placeholder); }
   .form textarea:focus { border-color: var(--border-3); }
@@ -186,6 +190,7 @@ const DEFAULT_PREFS = {
   style: 'bubble', // 대화 표시 방식: 'bubble' = 말풍선, 'plain' = 줄글(프사 + 이름/내용), 'compact' = 간단(이름/내용)
   theme: 'charcoal', // 채팅 바탕색: 'charcoal' = 차콜, 'black' = 검정
   hidden: false, // 채팅을 완전히 숨김(팝업에서 다시 켠다)
+  reactsOpen: true, // 리액션 줄을 펼쳐 둠(입력칸 왼쪽 버튼으로 접고 편다)
   v: 3,
 };
 const MIN_W = 220;
@@ -303,7 +308,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
   let unread = 0;
 
   // DOM 참조
-  let wrap, panel, head, list, typingLine, input, counter, replyBar, replyText, bubbleBox, badge, floats, menu, opacity, clockCb, videoCb, eventsCb, modeSeg, pop, picker, styleSeg, themeSeg;
+  let wrap, panel, head, list, typingLine, input, counter, replyBar, replyText, bubbleBox, badge, floats, menu, opacity, clockCb, videoCb, eventsCb, modeSeg, pop, picker, styleSeg, themeSeg, panelReacts, reactToggle;
 
   try {
     chrome.storage.local.get('chatPrefs').then((r) => {
@@ -470,6 +475,9 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     videoCb.checked = prefs.showVideoTime;
     eventsCb.checked = prefs.showEvents;
     list.classList.toggle('no-events', !prefs.showEvents);
+    panelReacts.hidden = !prefs.reactsOpen;
+    reactToggle.classList.toggle('on', prefs.reactsOpen);
+    reactToggle.setAttribute('aria-pressed', String(prefs.reactsOpen));
     wrap.dataset.theme = prefs.theme === 'black' ? 'black' : 'charcoal';
     themeSeg?.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.theme === wrap.dataset.theme));
     list.classList.toggle('plain', prefs.style === 'plain');
@@ -1054,7 +1062,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
 
     // 입력줄: 이모지 선택기 버튼 + 입력 + 전송
     input = el('textarea');
-    input.rows = 2;
+    input.rows = 1;
     L(input, 'placeholder', 'chat.placeholder');
     L(input, 'title', 'chat.inputTip');
     input.maxLength = MAX_CHAT_LENGTH;
@@ -1069,8 +1077,19 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
       counter.classList.toggle('warn', n >= MAX_CHAT_LENGTH);
       counter.textContent = pasteCut ? t('chat.limit', { max: MAX_CHAT_LENGTH }) : `${n}/${MAX_CHAT_LENGTH}`;
     };
-    updateInputCounter = updateCounter;
-    input.addEventListener('input', updateCounter);
+    // 한 줄로 시작해서 글이 길어지면 늘어난다(최대 줄 수는 CSS max-height)
+    const fitInput = () => {
+      input.style.height = 'auto';
+      if (input.scrollHeight > 0) input.style.height = `${input.scrollHeight + 2}px`;
+    };
+    updateInputCounter = () => {
+      updateCounter();
+      fitInput();
+    };
+    input.addEventListener('input', () => {
+      updateCounter();
+      fitInput();
+    });
     input.addEventListener('paste', (e) => {
       const pasted = e.clipboardData?.getData('text') ?? '';
       const kept = input.value.length - (input.selectionEnd - input.selectionStart);
@@ -1114,7 +1133,15 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     const form = el('div', 'form');
     const compose = el('div', 'compose');
     compose.append(input, counter);
-    form.append(compose);
+    reactToggle = el('button', 'rtoggle', '😊');
+    L(reactToggle, 'title', 'chat.reactToggle');
+    reactToggle.addEventListener('click', () => {
+      prefs.reactsOpen = !prefs.reactsOpen;
+      closePicker();
+      applyPrefs();
+      savePrefs();
+    });
+    form.append(reactToggle, compose);
 
     // 크기 조절 핸들
     const handles = [
@@ -1137,7 +1164,8 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     L(replyX, 'title', 'chat.replyCancel');
     replyX.addEventListener('click', cancelReply);
     replyBar.append(replyText, replyX);
-    panel.append(head, listWrap, typingLine, reactionRow(), replyBar, form, ...handles);
+    panelReacts = reactionRow();
+    panel.append(head, listWrap, typingLine, panelReacts, replyBar, form, ...handles);
 
     // 접힌 상태: 말풍선 + 배지, 마우스를 올리면 리액션 버튼
     bubbleBox = el('div', 'dock-bubble');

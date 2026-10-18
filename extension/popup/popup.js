@@ -89,6 +89,8 @@ function render() {
   // 방은 한 탭에만 묶인다: 다른 탭에서 연 팝업에서는 방 UI 대신 "어디서 하는 중인지"만 보여준다
   const here = inRoom && state.tabId === curTabId;
   const elsewhere = inRoom && !here;
+  document.body.classList.toggle('in-room', here); // 방에 있을 땐 헤더를 얇게
+  $('conn').hidden = !here;
   $('lobby').hidden = inRoom;
   $('room').hidden = !here;
   $('elsewhere').hidden = !elsewhere;
@@ -120,6 +122,7 @@ function render() {
   const [connKey, connCls] = CONN[state.connection] ?? CONN.disconnected;
   $('conn').textContent = t(connKey);
   $('conn').className = `status ${connCls}`;
+  $('conn').hidden = false;
   const n = state.participants.length;
   $('count').textContent = `${state.hasPassword ? '🔒 ' : ''}${n === 1 && !state.maxMembers ? t('popup.countOne') : t('popup.count', { n: state.maxMembers ? `${n}/${state.maxMembers}` : n })}`;
 

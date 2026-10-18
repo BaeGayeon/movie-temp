@@ -5,13 +5,13 @@ export const MSG = {
     'popup.tagline': '같이 보면 더 재밌어요 🍿',
     'popup.segCreate': '만들기',
     'popup.segJoin': '참가',
-    'popup.decorate': '🎨 꾸미기 (닉네임 색 · 프사)',
+    'popup.decorate': '꾸미기 (닉네임 색 · 프사)',
     'popup.secFont': '글꼴',
     'popup.secSize': '크기',
     'popup.tabRoom': '방',
     'popup.tabMe': '내 설정',
-    'popup.roomSettings': '⚙️ 방 설정',
-    'popup.sync': '⚙️ 동기화 설정',
+    'popup.roomSettings': '방 설정',
+    'popup.sync': '동기화 설정',
     'popup.lang': '🌐 언어',
     'popup.langAuto': '자동',
 
@@ -38,7 +38,7 @@ export const MSG = {
     'popup.cancel': '취소',
 
     // 방
-    'popup.roomCode': '🏠 방 코드',
+    'popup.roomCode': '방 코드',
     'popup.copyLink': '🔗 링크 복사',
     'popup.copyCode': '📋 코드 복사',
     'popup.copiedBang': '✅ 복사됨!',
@@ -50,14 +50,14 @@ export const MSG = {
     'popup.connDisconnected': '🔴 끊김 · 재연결 중',
     'popup.waking': '서버를 깨우는 중이에요 (최대 1분)…',
     'popup.connectingServer': '서버에 연결하는 중이에요…',
-    'popup.people': '🧑‍🤝‍🧑 같이 보는 사람',
+    'popup.people': '같이 보는 사람',
     'popup.count': '{n}명',
     'popup.countOne': '1명',
     'popup.badgeHost': '👑 방장',
     'popup.badgeMe': '나',
     'popup.someone': '누군가',
     'popup.waiting': '⏳ {names} 님을 기다리는 중이에요',
-    'popup.control': '🎮 조작 권한',
+    'popup.control': '조작 권한',
     'popup.modeEveryone': '🙌 모두 조작',
     'popup.modeHost': '👑 방장만',
     'popup.secondsLabel': '카운트다운 초',
@@ -67,7 +67,7 @@ export const MSG = {
     'popup.countdown': '⏱️ 카운트다운 시작',
 
     // 방 옵션(방장)
-    'popup.roomOpts': '🔒 방 옵션',
+    'popup.roomOpts': '방 옵션',
     'popup.pwLabel': '비밀번호',
     'popup.pwNone': '설정 안 함',
     'popup.pwUnknown': '설정돼 있어요 (이 기기에서는 볼 수 없어요)',
@@ -88,7 +88,7 @@ export const MSG = {
     'popup.pwRemoveAsk': '비밀번호를 없앨까요? 누구나 방 코드만 알면 들어올 수 있게 돼요.',
 
     // 프로필
-    'popup.profile': '🎨 내 프로필',
+    'popup.profile': '내 프로필',
     'popup.namePlaceholder': '닉네임 (최대 16자)',
     'popup.namePreview': '닉네임',
     'popup.saveNeeded': '저장해야 반영돼요',
@@ -111,7 +111,7 @@ export const MSG = {
     'popup.imageLoadFail': '이미지를 불러올 수 없어요. 다른 사진을 골라 주세요.',
 
     // 채팅 글꼴·크기
-    'popup.font': '🔤 채팅 모양',
+    'popup.font': '채팅 모양',
     'popup.fontSample': '안녕하세요, 같이 봐요 ABC 123 ♥',
     'popup.fontDefault': '기본 글꼴 (SUIT)',
     'popup.fontLoad': '💻 내 컴퓨터 글꼴 허용하고 불러오기',
@@ -165,13 +165,13 @@ export const MSG = {
     'popup.tagline': 'Everything is more fun together 🍿',
     'popup.segCreate': 'Create',
     'popup.segJoin': 'Join',
-    'popup.decorate': '🎨 Customize (name color · avatar)',
+    'popup.decorate': 'Customize (name color · avatar)',
     'popup.secFont': 'Font',
     'popup.secSize': 'Size',
     'popup.tabRoom': 'Room',
     'popup.tabMe': 'My settings',
-    'popup.roomSettings': '⚙️ Room settings',
-    'popup.sync': '⚙️ Sync settings',
+    'popup.roomSettings': 'Room settings',
+    'popup.sync': 'Sync settings',
     'popup.lang': '🌐 Language',
     'popup.langAuto': 'Auto',
 
@@ -198,7 +198,7 @@ export const MSG = {
     'popup.cancel': 'Cancel',
 
     // Room
-    'popup.roomCode': '🏠 Room code',
+    'popup.roomCode': 'Room code',
     'popup.copyLink': '🔗 Copy link',
     'popup.copyCode': '📋 Copy code',
     'popup.copiedBang': '✅ Copied!',
@@ -210,14 +210,14 @@ export const MSG = {
     'popup.connDisconnected': '🔴 Disconnected · reconnecting',
     'popup.waking': 'Waking up the server (up to 1 min)…',
     'popup.connectingServer': 'Connecting to the server…',
-    'popup.people': '🧑‍🤝‍🧑 Watching together',
+    'popup.people': 'Watching together',
     'popup.count': '{n} people',
     'popup.countOne': '1 person',
     'popup.badgeHost': '👑 Host',
     'popup.badgeMe': 'Me',
     'popup.someone': 'Someone',
     'popup.waiting': '⏳ Waiting for {names}',
-    'popup.control': '🎮 Controls',
+    'popup.control': 'Controls',
     'popup.modeEveryone': '🙌 Everyone',
     'popup.modeHost': '👑 Host only',
     'popup.secondsLabel': 'Countdown seconds',
@@ -227,7 +227,7 @@ export const MSG = {
     'popup.countdown': '⏱️ Start countdown',
 
     // Room options (host)
-    'popup.roomOpts': '🔒 Room options',
+    'popup.roomOpts': 'Room options',
     'popup.pwLabel': 'Password',
     'popup.pwNone': 'Not set',
     'popup.pwUnknown': "Set (can't be shown on this device)",
@@ -248,7 +248,7 @@ export const MSG = {
     'popup.pwRemoveAsk': 'Remove the password? Anyone with the room code will be able to join.',
 
     // Profile
-    'popup.profile': '🎨 My profile',
+    'popup.profile': 'My profile',
     'popup.namePlaceholder': 'Nickname (max 16 characters)',
     'popup.namePreview': 'Nickname',
     'popup.saveNeeded': 'Save to apply',
@@ -271,7 +271,7 @@ export const MSG = {
     'popup.imageLoadFail': "Couldn't load that image. Please pick another photo.",
 
     // Chat font & size
-    'popup.font': '🔤 Chat appearance',
+    'popup.font': 'Chat appearance',
     'popup.fontSample': 'Hello, let’s watch together ABC 123 ♥',
     'popup.fontDefault': 'Default font (SUIT)',
     'popup.fontLoad': '💻 Allow & load my computer’s fonts',
