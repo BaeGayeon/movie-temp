@@ -364,7 +364,6 @@ $('adDetect').addEventListener('change', async (e) => {
 // ---------- 프로필 (이름, 이모지 프사 + 배경색, 채팅 색) ----------
 const AVATARS = ['🙂', '😎', '🤓', '🥳', '😺', '🐶', '🐻', '🐼', '🦊', '🐸', '🐧', '🦄'];
 let profile = { name: '', avatar: { kind: 'emoji', value: AVATARS[0], bg: COLOR_PALETTE[5] }, color: COLOR_PALETTE[3] };
-let saveTimer = null;
 let hasPhotoSource = false; // 위치 다시 맞추기용 원본(photoSource)이 내 기기에 있는지
 
 // 기본 색 + 직접 고르기. 직접 고른 색은 기억해 두고, 다른 색으로 바꿨다가 다시 눌러도 그 색이 나온다.
@@ -428,19 +427,31 @@ function renderProfile() {
   swatches($('colorGrid'), $('colorPicker'), 'color', COLOR_PALETTE, profile.color, (c) => update({ color: c }));
 }
 
-// 저장: chrome.storage.local 에 보관하고(background 담당), 방에 있으면 방 전체에 전파된다
+// 편집은 미리보기에만 반영하고, [저장]을 눌러야 chrome.storage.local 에 보관되며(background 담당) 방에 있으면 방 전체에 전파된다
+let dirty = false;
+function setDirty(v) {
+  dirty = v;
+  $('saveProfile').disabled = !v;
+  $('saveHint').textContent = v ? '저장해야 반영돼요' : '';
+}
 function update(patch) {
   profile = { ...profile, ...patch };
+  setDirty(true);
   renderProfile();
-  clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
-    // 닉네임을 비워 둬도 색/프사는 저장되도록, 비었으면 지금 쓰는 이름을 쓴다
-    const name = profile.name.trim() || state?.participants?.find((p) => p.id === state.userId)?.name || '';
-    if (name.length >= 1 && name.length <= MAX_NAME_LENGTH) {
-      chrome.runtime.sendMessage({ cmd: CMD.SET_PROFILE, profile: { ...profile, name } });
-    }
-  }, 300);
 }
+$('saveProfile').addEventListener('click', () => {
+  // 닉네임을 비워 둬도 색/프사는 저장되도록, 비었으면 지금 쓰는 이름을 쓴다
+  const name = profile.name.trim() || state?.participants?.find((p) => p.id === state.userId)?.name || '';
+  if (name.length < 1 || name.length > MAX_NAME_LENGTH) {
+    $('saveHint').textContent = '닉네임을 입력해 주세요';
+    return;
+  }
+  profile = { ...profile, name };
+  chrome.runtime.sendMessage({ cmd: CMD.SET_PROFILE, profile });
+  setDirty(false);
+  $('saveHint').textContent = '저장했어요';
+  setTimeout(() => !dirty && ($('saveHint').textContent = ''), 1500);
+});
 
 $('pname').addEventListener('input', (e) => update({ name: e.target.value }));
 
