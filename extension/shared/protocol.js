@@ -247,6 +247,8 @@ const validators = {
     if (m.videoTime !== undefined && !isTime(m.videoTime)) return null;
     const out = { type: m.type, text };
     if (m.videoTime !== undefined) out.videoTime = m.videoTime;
+    // ad: 보낸 시점에 광고를 보는 중이었음(광고 중에는 videoTime 을 보내지 않으므로, 채팅에 "광고 중"으로 표시하는 용도)
+    if (m.ad === true) out.ad = true;
     // replyTo: 답장 대상 메시지의 id(서버가 붙여 준 8자리 16진수). 형식이 틀리면 답장 표시만 버리고 메시지는 보낸다
     if (typeof m.replyTo === 'string' && /^[0-9a-f]{8}$/.test(m.replyTo)) out.replyTo = m.replyTo;
     return out;

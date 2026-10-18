@@ -562,7 +562,7 @@ function handleServer(m) {
 
     case S2C.CHAT:
       {
-        const entry = { id: m.id, userId: m.userId, text: m.text, sentAt: m.sentAt, videoTime: m.videoTime, replyTo: m.replyTo };
+        const entry = { id: m.id, userId: m.userId, text: m.text, sentAt: m.sentAt, videoTime: m.videoTime, replyTo: m.replyTo, ad: m.ad };
         room.chat.push(entry);
         room.chat = trimChat(room.chat);
         persist();
@@ -965,6 +965,7 @@ async function onCommand(m, sender) {
         const msg = { type: C2S.CHAT, text: String(m.text ?? '') };
         if (Number.isFinite(m.videoTime)) msg.videoTime = Math.max(0, m.videoTime);
         if (typeof m.replyTo === 'string') msg.replyTo = m.replyTo;
+        if (m.ad === true) msg.ad = true;
         rawSend(msg);
       }
       return;
