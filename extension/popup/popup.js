@@ -141,6 +141,32 @@ async function checkVideo() {
 }
 setInterval(checkVideo, 1500);
 
+// 비밀번호 칸의 보기/숨기기(눈) 버튼
+const EYE = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+const EYE_OFF = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.9 10.9 0 0 1 12 19C5 19 1 12 1 12a19.8 19.8 0 0 1 5.06-5.94M9.9 4.24A10.9 10.9 0 0 1 12 5c7 0 11 7 11 7a19.9 19.9 0 0 1-3.16 4.19M14.12 14.12A3 3 0 1 1 9.88 9.88"/><path d="M1 1l22 22"/></svg>';
+for (const wrap of document.querySelectorAll('.pwwrap')) {
+  const input = wrap.querySelector('input');
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'pweye';
+  const sync = () => {
+    const shown = input.type === 'text';
+    btn.innerHTML = shown ? EYE_OFF : EYE; // 정적 SVG 문자열만 넣는다
+    btn.setAttribute('aria-label', shown ? '비밀번호 숨기기' : '비밀번호 보기');
+  };
+  btn.addEventListener('click', () => {
+    input.type = input.type === 'password' ? 'text' : 'password';
+    sync();
+    input.focus();
+  });
+  sync();
+  wrap.append(btn);
+  wrap.hidePassword = () => {
+    input.type = 'password';
+    sync();
+  };
+}
+
 $('create').addEventListener('click', async () => {
   const tab = await activeTab();
   const password = $('createPw').value;
@@ -149,12 +175,14 @@ $('create').addEventListener('click', async () => {
   if (maxMembers !== undefined && !isValidMaxMembers(maxMembers)) return ($('error').textContent = `최대 인원은 ${MIN_ROOM_MEMBERS}~${MAX_ROOM_MEMBERS}명으로 정해 주세요.`);
   chrome.runtime.sendMessage({ cmd: CMD.CREATE_ROOM, tabId: tab?.id, site: tab?.url, password: password || undefined, maxMembers });
   $('createPw').value = ''; // 비밀번호를 입력칸에 남기지 않는다
+  $('createPw').parentElement.hidePassword();
 });
 
 $('join').addEventListener('click', async () => {
   const tab = await activeTab();
   chrome.runtime.sendMessage({ cmd: CMD.JOIN_ROOM, roomCode: $('code').value, tabId: tab?.id, site: tab?.url, password: $('joinPw').value || undefined });
   $('joinPw').value = '';
+  $('joinPw').parentElement.hidePassword();
 });
 
 $('countdown').addEventListener('click', () =>
