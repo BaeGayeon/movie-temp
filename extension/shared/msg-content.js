@@ -128,7 +128,7 @@ export const MSG = {
     'chat.menu.invite': 'Invite',
     'chat.modeShort.float': 'Floating',
     'chat.modeShort.side': 'Right',
-    'chat.modeShort.dock': 'Shrink video',
+    'chat.modeShort.dock': 'Dock',
     'chat.copyLink': '🔗 Copy invite link',
     'chat.copyCode': '📋 Copy room code',
     'chat.copied': '✔ Copied!',

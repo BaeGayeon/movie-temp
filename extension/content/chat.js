@@ -35,7 +35,7 @@ const CSS = `
   .menu[hidden] { display: none; }
   .menu label { display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 500; }
   .menu input[type=range], .menu input[type=checkbox] { accent-color: var(--accent); }
-  .menu input[type=range] { flex: 1; }
+  .menu input[type=range] { flex: 1; min-width: 0; width: 100%; } /* 메뉴가 좁아도 칸 안에서 줄어들게 */
   .seg { display: flex; gap: 2px; padding: 2px; background: var(--bg); border-radius: 10px; }
   .seg button { flex: 1; background: transparent; color: var(--ink-soft); border-radius: 8px; padding: 4px 0; font-size: 12px; }
   .seg button.on { background: var(--surface-3); color: var(--ink); }
