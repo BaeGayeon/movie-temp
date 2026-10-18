@@ -94,6 +94,30 @@ test('GET /health', async () => {
   assert.equal((await res.json()).ok, true);
 });
 
+test('GET /rooms/<코드>: 방 존재 여부만 돌려준다', async () => {
+  const { code } = await makeRoom();
+  const url = (c) => `http://127.0.0.1:${port}/rooms/${c}`;
+  const yes = await fetch(url(code));
+  assert.equal(yes.status, 200);
+  assert.equal(yes.headers.get('access-control-allow-origin'), '*');
+  assert.deepEqual(await yes.json(), { exists: true });
+  assert.deepEqual(await (await fetch(url(code.toLowerCase()))).json(), { exists: true });
+  assert.deepEqual(await (await fetch(url('ZZZZZZ'))).json(), { exists: false });
+  assert.equal((await fetch(url('abc'))).status, 404); // 형식이 다르면 없는 주소
+});
+
+test('GET /rooms/<코드>: IP 당 분당 횟수 제한', async () => {
+  const limited = createServer({ port: 0, host: '127.0.0.1', roomCheckPerMin: 3 });
+  const p = await limited.listen();
+  try {
+    const codes = [];
+    for (let i = 0; i < 5; i++) codes.push((await fetch(`http://127.0.0.1:${p}/rooms/ABCDEF`)).status);
+    assert.deepEqual(codes, [200, 200, 200, 429, 429]);
+  } finally {
+    await limited.close();
+  }
+});
+
 test('extension/shared/protocol.js 는 서버 protocol.js 와 동일', () => {
   const dir = fileURLToPath(new URL('.', import.meta.url));
   const server = readFileSync(`${dir}../src/protocol.js`, 'utf8');
