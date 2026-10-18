@@ -8,15 +8,24 @@ const MAX_BACKOFF_MS = 30_000;
 const MAX_CLOCK_SAMPLES = 5;
 const MAX_CHAT_HISTORY = 3000; // 채팅 + 재생/정지/이동/입퇴장 알림
 // 상한을 넘으면 알림(kind: 'event')부터 오래된 순으로 지워서, 오래 이어진 대화가 알림에 밀려 사라지지 않게 한다
+// 긴 글(최대 2000자)이 쌓여도 chrome.storage.local 한도(약 10MB)를 넘지 않도록 글자 수 합계도 제한한다
+const MAX_CHAT_HISTORY_CHARS = 1_000_000;
 function trimChat(list) {
   let over = list.length - MAX_CHAT_HISTORY;
-  if (over <= 0) return list;
-  const out = [];
-  for (const e of list) {
-    if (over > 0 && e.kind === 'event') over--;
-    else out.push(e);
+  let out = list;
+  if (over > 0) {
+    out = [];
+    for (const e of list) {
+      if (over > 0 && e.kind === 'event') over--;
+      else out.push(e);
+    }
+    if (over > 0) out = out.slice(over);
   }
-  return over > 0 ? out.slice(over) : out;
+  let chars = 0;
+  for (const e of out) chars += e.text?.length ?? 0;
+  let drop = 0;
+  while (chars > MAX_CHAT_HISTORY_CHARS && drop < out.length - 1) chars -= out[drop++].text?.length ?? 0;
+  return drop ? out.slice(drop) : out;
 }
 
 const freshRoom = () => ({
@@ -352,7 +361,7 @@ function handleServer(m) {
 
     case S2C.CHAT:
       {
-        const entry = { userId: m.userId, text: m.text, sentAt: m.sentAt, videoTime: m.videoTime };
+        const entry = { id: m.id, userId: m.userId, text: m.text, sentAt: m.sentAt, videoTime: m.videoTime, replyTo: m.replyTo };
         room.chat.push(entry);
         room.chat = trimChat(room.chat);
         persist();
@@ -628,6 +637,7 @@ async function onCommand(m, sender) {
       if (room.roomCode && fromTab === room.tabId) {
         const msg = { type: C2S.CHAT, text: String(m.text ?? '') };
         if (Number.isFinite(m.videoTime)) msg.videoTime = Math.max(0, m.videoTime);
+        if (typeof m.replyTo === 'string') msg.replyTo = m.replyTo;
         rawSend(msg);
       }
       return;
