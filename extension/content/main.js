@@ -756,7 +756,7 @@
         chat?.showReaction(m.userId, m.emoji);
         break;
       case CMD.TOAST:
-        if (isTop) ui.toast(m.text);
+        if (isTop) ui.toast(m.text, m.ms);
         break;
     }
   });

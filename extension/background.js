@@ -168,9 +168,10 @@ function sendToTab(msg, tabId = room.tabId) {
   chrome.tabs.sendMessage(tabId, msg).catch(() => {});
 }
 
-function toast(text) {
-  sendToTab({ cmd: CMD.TOAST, text });
+function toast(text, ms) {
+  sendToTab({ cmd: CMD.TOAST, text, ms });
 }
+const LONG_TOAST_MS = 7000; // 재시작/복구 같은 알림은 몇 초 안에 끝나는 일이라 놓치기 쉬워서 길게 보여 준다
 
 // 저장된 내 프로필이 서버에 등록된 것과 다르면 (입장/재접속 직후) 등록한다
 function syncProfile() {
@@ -434,7 +435,7 @@ function handleServer(m) {
   switch (m.type) {
     case S2C.SERVER_RESTARTING:
       serverRestarting = true;
-      if (room.roomCode) toast(t('bg.serverRestarting'));
+      if (room.roomCode) toast(t('bg.serverRestarting'), LONG_TOAST_MS);
       break;
 
     case S2C.ROOM_CREATED:
@@ -466,8 +467,12 @@ function handleServer(m) {
       const restored = entering && pendingRestore?.roomCode === m.roomCode;
       if (entering) pendingRestore = null;
       clockSamples = [];
-      if (restoring) toast(t('bg.roomRestored'));
-      if (roomWasLost) waitForOthersBack(m.participants); // 방이 사라졌다가 복구됐다: 나머지가 돌아오길 기다렸다 한 번에 알린다
+      if (restoring) toast(t('bg.roomRestored'), LONG_TOAST_MS);
+      if (roomWasLost) {
+        // 방이 사라졌다가 복구됐다: 언제 끊겼는지 채팅 기록에 남기고, 나머지가 돌아오길 기다렸다 한 번에 알린다
+        pushNotice('down', { at: lostAt ?? Date.now() });
+        waitForOthersBack(m.participants);
+      }
       roomWasLost = false;
       lostAt = null;
       restoreTries = 0;
