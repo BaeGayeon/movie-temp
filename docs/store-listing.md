@@ -22,6 +22,7 @@
 주요 기능
 • 방 만들기 → 초대 링크 공유 → 같은 위치에서 같이 재생
 • 재생·일시정지·이동을 모두에게 맞춰 줘요 (방장만 조작하기 / 모두 조작하기 선택)
+• 재생 속도(배속)도 모두에게 맞춰 줘요 (0.5~3배, 채팅 창에서 바로 조절)
 • 누군가 버퍼링하거나 광고를 보면 다 같이 기다렸다가 함께 이어서 재생해요
 • 영상 위에 뜨는 채팅 (말풍선 / 줄글 / 간단 모드, 떠 있는 창 / 오른쪽에 띄우기 / 오른쪽에 붙이기)
 • 이모지 리액션, 입퇴장·재생 알림, 카운트다운으로 같이 시작
@@ -89,6 +90,7 @@ It never exchanges the video itself or any account information. Everyone just pl
 Features
 • Create a room → share the invite link → play together from the same position
 • Play, pause and seek stay in sync for everyone (choose "host only" or "everyone" can control)
+• Playback speed stays in sync too (0.5x to 3x, adjustable right from the chat window)
 • If someone is buffering or watching an ad, everyone waits and resumes together
 • Chat over the video (bubbles / plain lines / compact, floating window / float on the right / dock on the right)
 • Emoji reactions, join/leave and playback notices, and a countdown to start together
