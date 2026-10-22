@@ -97,7 +97,7 @@ watchparty/                (이 저장소 루트)
 { type: "create_room", userId, secret }
 { type: "join_room", roomCode, userId, secret }
 { type: "leave_room" }
-{ type: "video", action: "play" | "pause" | "seek", time, sentAt }
+{ type: "video", action: "play" | "pause" | "seek" | "rate", time, sentAt, rate? }
 { type: "set_permission", mode: "host_only" | "everyone" }
 { type: "ping" }
 
@@ -127,16 +127,16 @@ watchparty/                (이 저장소 루트)
 ```
 // 1단계
 { type: "room_created", roomCode, hostId }
-{ type: "room_state", roomCode, hostId, mode, participants: [{ id, name }], video: { playing, time, updatedAt } }
+{ type: "room_state", roomCode, hostId, mode, participants: [{ id, name }], video: { playing, time, updatedAt, rate } }
 { type: "participant_joined", user }
 { type: "participant_left", user }
-{ type: "video", action, time, sentAt, fromId }
+{ type: "video", action, time, sentAt, fromId, rate }
 { type: "host_changed", hostId }
 { type: "error", code, message }
 { type: "pong" }
 
 // 2단계
-{ type: "countdown", startAt, time }                 // startAt은 서버 기준 시각
+{ type: "countdown", startAt, time, rate }                 // startAt은 서버 기준 시각
 { type: "buffer_state", waitingIds: [] }
 { type: "server_time", serverNow }                   // 시계 오차 보정용
 
@@ -296,3 +296,11 @@ watchparty/                (이 저장소 루트)
 83. 채팅 입력줄의 이모지 선택 버튼(😊)을 없앴다. 이모지는 OS 이모지 입력기로 직접 넣고, 선택기는 프사와 리액션(＋)에서만 쓴다.
 84. 채팅 바탕색을 차콜(기본)/검정 중에서 고를 수 있다(채팅 설정 메뉴의 차콜|검정 버튼, `chatPrefs.theme` 'charcoal'|'black'). 검정은 차콜 테마의 배경·테두리·내 말풍선만 더 어둡게 덮어쓰고 글자색·포인트는 그대로다.
 85. 프로필 카드는 "닉네임"(이름 입력, 닉네임 색)과 "프사"(이모지/사진, 사진 버튼, 배경색) 두 구역으로 나누고, 저장 버튼은 카드 맨 아래에 둔다.
+
+### 같이보기 배속 동기화 (2026-10-22)
+
+- `video.rate` 는 0.1~4의 유한한 숫자이며 기본값은 1이다. `action: "rate"` 에는 rate가 필수이고, 기존 play/pause/seek에서 생략하면 방의 배속을 유지한다.
+- rate 변경은 재생/정지 여부를 바꾸지 않는다. 방장 전용 모드에서는 배속도 방장만 바꾼다.
+- 재생 위치는 `time + elapsedSeconds * rate` 로 계산한다. 늦은 입장, 카운트다운, 버퍼링 후 재개, 싱크 보정 모두 같은 배속을 사용한다.
+- 내부 미세 보정으로 생기는 ratechange는 재전송하지 않는다. 방 밖의 사용자 배속은 변경하지 않는다.
+- 모든 참가자의 확장과 서버를 함께 갱신해야 한다. 구버전 확장은 방의 배속을 읽지 못하며 여전히 1배속으로 보정한다.

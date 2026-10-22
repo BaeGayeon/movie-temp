@@ -1376,3 +1376,75 @@ test('GET /health 에 serverId 가 있고 room_state 의 serverId 와 같다', a
   assert.equal((await a.next('room_state')).serverId, body.serverId);
   a.close();
 });
+
+test('배속: 두 참가자 중계, 정지 상태 보존, 늦은 입장, 구버전 조작의 배속 보존', async () => {
+  const { a, code } = await makeRoom();
+  const { c: b } = await joinRoom(code);
+  try {
+    a.send({ type: 'video', action: 'rate', rate: 2, time: 100, sentAt: Date.now() });
+    const rate = await b.next('video');
+    assert.equal(rate.action, 'rate');
+    assert.equal(rate.rate, 2);
+    const { c: late, state } = await joinRoom(code);
+    assert.equal(state.video.rate, 2);
+    assert.equal(state.video.playing, false);
+    late.close();
+    a.send({ type: 'video', action: 'play', time: 100, sentAt: Date.now() });
+    assert.equal((await b.next('video')).rate, 2);
+    b.send({ type: 'video', action: 'rate', rate: 1.5, time: 101, sentAt: Date.now() });
+    assert.equal((await a.next('video')).rate, 1.5);
+    const { c: another, state: playing } = await joinRoom(code);
+    assert.equal(playing.video.playing, true);
+    assert.equal(playing.video.rate, 1.5);
+    another.close();
+  } finally { a.close(); b.close(); }
+});
+
+test('배속: 방장 권한과 잘못된 배속 검증', async () => {
+  const { a, code } = await makeRoom();
+  const { c: b } = await joinRoom(code);
+  try {
+    for (const rate of [0, -1, 4.1, '2', null]) {
+      a.send({ type: 'video', action: 'rate', rate, time: 0, sentAt: Date.now() });
+    }
+    a.send({ type: 'video', action: 'rate', time: 0, sentAt: Date.now() });
+    await b.none('video');
+    a.send({ type: 'set_permission', mode: 'host_only' });
+    await b.next('mode_changed');
+    b.send({ type: 'video', action: 'rate', rate: 2, time: 0, sentAt: Date.now() });
+    assert.equal((await b.next('error')).code, 'not_allowed');
+    await a.none('video');
+    a.send({ type: 'video', action: 'rate', rate: 2, time: 0, sentAt: Date.now() });
+    assert.equal((await b.next('video')).rate, 2);
+  } finally { a.close(); b.close(); }
+});
+
+test('배속: 2배속 시간 계산과 카운트다운·버퍼링·주기적 동기화 보존', async () => {
+  const { a, code } = await makeRoom();
+  const { c: b } = await joinRoom(code);
+  try {
+    a.send({ type: 'video', action: 'play', rate: 2, time: 100, sentAt: Date.now() });
+    const played = await b.next('video');
+    await sleep(160);
+    a.send({ type: 'countdown_start', seconds: 1 });
+    const countdown = await b.next('countdown');
+    assert.equal(countdown.rate, 2);
+    const elapsed = countdown.startAt - 1000 - played.serverAt;
+    assert.ok(Math.abs(countdown.time - (100 + elapsed / 1000 * 2)) < 0.1);
+    a.send({ type: 'video', action: 'play', time: 200, rate: 2, sentAt: Date.now() });
+    await b.next('video');
+    b.send({ type: 'buffering', isBuffering: true, time: 201 });
+    const wait = await b.next('buffer_state');
+    assert.equal(wait.video.rate, 2);
+    assert.equal(wait.video.playing, false);
+    b.send({ type: 'buffering', isBuffering: false });
+    const resume = await b.next('buffer_state');
+    assert.equal(resume.video.rate, 2);
+    assert.equal(resume.video.playing, true);
+    await sleep(130);
+    a.send({ type: 'sync_report', playing: true, time: 202, sentAt: Date.now() });
+    const sync = await b.next('video');
+    assert.equal(sync.action, 'sync');
+    assert.equal(sync.rate, 2);
+  } finally { a.close(); b.close(); }
+});

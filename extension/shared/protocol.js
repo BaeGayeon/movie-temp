@@ -63,7 +63,7 @@ export const ERR = {
   ROOM_EXISTS: 'room_exists', // 방 복구(create_room 에 roomCode)를 요청했는데 그 코드의 방이 이미 있음(다른 사람이 먼저 복구함 -> 참가하면 된다)
 };
 
-export const VIDEO_ACTIONS = ['play', 'pause', 'seek'];
+export const VIDEO_ACTIONS = ['play', 'pause', 'seek', 'rate'];
 // 서버 -> 클라이언트 video 메시지에만 쓰는 action: 방장의 실제 위치로 기준점을 갱신(부드러운 보정용)
 export const VIDEO_ACTION_SYNC = 'sync';
 export const MAX_COUNTDOWN_SECONDS = 10;
@@ -206,8 +206,9 @@ const validators = {
   [C2S.LEAVE_ROOM]: (m) => ({ type: m.type }),
 
   [C2S.VIDEO]: (m) =>
-    VIDEO_ACTIONS.includes(m.action) && isTime(m.time) && isNum(m.sentAt)
-      ? { type: m.type, action: m.action, time: m.time, sentAt: m.sentAt }
+    VIDEO_ACTIONS.includes(m.action) && isTime(m.time) && isNum(m.sentAt) &&
+    (m.rate === undefined ? m.action !== 'rate' : isNum(m.rate) && m.rate >= 0.1 && m.rate <= 4)
+      ? { type: m.type, action: m.action, time: m.time, sentAt: m.sentAt, ...(m.rate === undefined ? {} : { rate: m.rate }) }
       : null,
 
   [C2S.SET_PERMISSION]: (m) => (MODES.includes(m.mode) ? { type: m.type, mode: m.mode } : null),

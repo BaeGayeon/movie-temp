@@ -117,7 +117,7 @@ export class RoomManager {
       code: roomCode ?? this.#newCode(),
       hostId: null,
       mode: mode ?? 'everyone',
-      video: { playing: false, time: 0, updatedAt: this.now() },
+      video: { playing: false, time: 0, rate: 1, updatedAt: this.now() },
       participants: new Map(),
       profiles: new Map(), // userId -> { name, avatar, color } (재입장 시 유지)
       secrets: new Map(), // userId -> 본인 확인 값의 해시. userId 는 방 안에 공개되므로 같은 userId 로 다시 들어올 때 이 값이 맞아야 한다
@@ -233,16 +233,17 @@ export class RoomManager {
     const at = this.now();
     // 재생/일시정지는 사용자의 직접 조작이 우선이라 자동 재개하지 않는다.
     // 시크는 재생 여부를 바꾸지 않는다(버퍼링 중인 사람의 시크는 데이터가 도착한 뒤에야 보고되기도 함).
-    if (msg.action !== 'seek') room.autoPaused = false;
+    if (msg.action === 'play' || msg.action === 'pause') room.autoPaused = false;
     keepSnapshot(room, p.id, at); // 직후에 광고였다고 보고되면 되돌리기 위해
     room.video = {
-      playing: msg.action === 'seek' ? room.video.playing : msg.action === 'play',
+      playing: ['seek', 'rate'].includes(msg.action) ? room.video.playing : msg.action === 'play',
+      rate: msg.rate ?? room.video.rate ?? 1,
       time: msg.time,
       updatedAt: at,
     };
     this.#broadcast(
       room,
-      { type: S2C.VIDEO, action: msg.action, time: msg.time, sentAt: msg.sentAt, fromId: p.id, serverAt: at },
+      { type: S2C.VIDEO, action: msg.action, time: msg.time, sentAt: msg.sentAt, fromId: p.id, serverAt: at, rate: room.video.rate },
       p.id,
     );
   }
@@ -262,9 +263,9 @@ export class RoomManager {
     const startAt = now + seconds * 1000;
     const hadWaiting = room.waiting.size > 0;
     this.#clearWait(room);
-    room.video = { playing: true, time, updatedAt: startAt };
+    room.video = { ...room.video, playing: true, time, updatedAt: startAt };
     if (hadWaiting) this.#broadcast(room, this.#bufferMsg(room));
-    this.#broadcast(room, { type: S2C.COUNTDOWN, startAt, time });
+    this.#broadcast(room, { type: S2C.COUNTDOWN, startAt, time, rate: room.video.rate });
   }
 
   // 한 명이 버퍼링 중이면 방 전체를 멈추고, 모두 준비되면 함께 재개한다(상한 bufferWaitMs).
@@ -288,7 +289,7 @@ export class RoomManager {
       if (!room.autoPaused) {
         if (!room.video.playing) return; // 재생 중이 아니면 기다릴 필요 없음
         const time = msg.time ?? this.#currentTime(room, now);
-        room.video = { playing: false, time, updatedAt: now };
+        room.video = { ...room.video, playing: false, time, updatedAt: now };
         room.autoPaused = true;
       }
       room.waiting.add(p.id);
@@ -317,10 +318,10 @@ export class RoomManager {
     if (now - room.lastSyncAt < 2000) return;
     room.lastSyncAt = now;
     keepSnapshot(room, p.id, now);
-    room.video = { playing: true, time: msg.time, updatedAt: now };
+    room.video = { ...room.video, playing: true, time: msg.time, updatedAt: now };
     this.#broadcast(
       room,
-      { type: S2C.VIDEO, action: VIDEO_ACTION_SYNC, time: msg.time, sentAt: msg.sentAt, fromId: p.id, serverAt: now },
+      { type: S2C.VIDEO, action: VIDEO_ACTION_SYNC, time: msg.time, sentAt: msg.sentAt, fromId: p.id, serverAt: now, rate: room.video.rate },
       p.id,
     );
   }
@@ -424,7 +425,7 @@ export class RoomManager {
 
   #currentTime(room, now) {
     const v = room.video;
-    return v.playing ? v.time + Math.max(0, now - v.updatedAt) / 1000 : v.time;
+    return v.playing ? v.time + Math.max(0, now - v.updatedAt) / 1000 * (v.rate ?? 1) : v.time;
   }
 
   #bufferMsg(room) {
@@ -464,6 +465,7 @@ export class RoomManager {
     if (room.autoPaused) {
       room.autoPaused = false;
       room.video = {
+        ...room.video,
         playing: true,
         time: room.video.time,
         updatedAt: this.now() + this.resumeDelayMs,

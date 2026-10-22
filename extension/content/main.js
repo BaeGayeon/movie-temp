@@ -154,7 +154,7 @@
     clearTimeout(bufferTimer);
     setAdNotice(inAd);
     if (inAd) {
-      setRate(1);
+      if (active()) setRate(roomRate());
       if (bufferingReported) {
         bufferingReported = false;
         send({ cmd: CMD.BUFFERING, isBuffering: false }); // 버퍼링 보고는 광고 보고로 대체
@@ -286,7 +286,7 @@
     if (!active()) return undefined;
     const v = state.video;
     const now = serverNow();
-    const t = v.playing && v.updatedAt <= now ? v.time + (now - v.updatedAt) / 1000 : v.time;
+    const t = v.playing && v.updatedAt <= now ? v.time + (now - v.updatedAt) / 1000 * (v.rate ?? 1) : v.time;
     return Math.round(Math.max(0, t) * 10) / 10;
   };
   const canControl = () => state.mode === 'everyone' || state.hostId === state.userId;
@@ -368,8 +368,19 @@
   let startTimer = null;
   let autoplayBlocked = false; // 브라우저가 자동 재생을 막아 "클릭하세요" 버튼을 띄운 상태
 
+  // 싱크 미세 보정으로 생긴 ratechange 는 사용자 조작으로 재전송하지 않는다.
+  let appliedRate = null;
+  const roomRate = () => state?.video?.rate ?? 1;
   function setRate(r) {
-    if (video && video.playbackRate !== r) video.playbackRate = r;
+    appliedRate = r;
+    if (video && Math.abs(video.playbackRate - r) > 0.001) video.playbackRate = r;
+  }
+  function onRateChange() {
+    if (!video || !active() || inAd || normalizing || remeasuring) return;
+    if (appliedRate !== null && Math.abs(video.playbackRate - appliedRate) < 0.001) return;
+    if (!canControl()) return setRate(roomRate());
+    if (video.playbackRate < 0.1 || video.playbackRate > 4) return setRate(roomRate());
+    onLocal('rate');
   }
 
   // 서버가 저장한 마지막 영상 상태에 맞춘다 (재생 중이면 경과 시간 보정).
@@ -379,19 +390,20 @@
     if (!video || !active() || inAd || normalizing) return; // 광고 직후 위치를 맞추는 중이면 끝난 뒤 다시 맞춘다
     const v = state.video;
     const now = serverNow();
+    setRate(roomRate());
     if (v.playing && v.updatedAt > now) {
       seekTo(v.time);
       setPlaying(false);
-      setRate(1);
+      setRate(roomRate());
       startTimer = setTimeout(() => {
         if (!inAd) setPlaying(true);
       }, v.updatedAt - now);
       return;
     }
-    const elapsed = v.playing ? Math.max(0, (now - v.updatedAt) / 1000) : 0;
+    const elapsed = v.playing ? Math.max(0, (now - v.updatedAt) / 1000 * (v.rate ?? 1)) : 0;
     seekTo(v.time + elapsed);
     setPlaying(v.playing);
-    if (!v.playing) setRate(1);
+    if (!v.playing) setRate(roomRate());
   }
 
   function applyRemote(msg) {
@@ -401,7 +413,8 @@
       correctDrift(); // 방장 위치로 기준점이 갱신됨: 시크 없이 부드럽게 맞춘다
       return;
     }
-    setRate(1);
+    if (msg.action === 'rate') return applyRoomVideo();
+    setRate(roomRate());
     if (msg.action === 'play') {
       seekTo(msg.time);
       setPlaying(true);
@@ -421,19 +434,21 @@
   //  - 1.5초 초과: 시크
   // 방장은 기준점 자체이므로 보정하지 않는다.
   function correctDrift() {
-    if (!video || !active() || inAd || normalizing || remeasuring || video.paused || state.hostId === state.userId) return setRate(1);
+    if (!video || !active()) return;
+    if (inAd || normalizing || remeasuring) return;
+    if (video.paused || state.hostId === state.userId) return setRate(roomRate());
     const v = state.video;
     const now = serverNow();
-    if (!v.playing || v.updatedAt > now) return setRate(1);
-    const expected = v.time + (now - v.updatedAt) / 1000;
+    if (!v.playing || v.updatedAt > now) return setRate(roomRate());
+    const expected = v.time + (now - v.updatedAt) / 1000 * (v.rate ?? 1);
     const diff = pos() - expected; // 양수: 내가 앞서 있음
     const abs = Math.abs(diff);
-    if (abs < (video.playbackRate !== 1 ? 0.05 : 0.12)) setRate(1);
+    if (abs < (Math.abs(video.playbackRate - roomRate()) > 0.001 ? 0.05 : 0.12)) setRate(roomRate());
     else if (abs <= 1.5) {
       const d = Math.min(0.08, Math.max(0.03, abs / 6));
-      setRate(diff > 0 ? 1 - d : 1 + d);
+      setRate(roomRate() * (diff > 0 ? 1 - d : 1 + d));
     } else {
-      setRate(1);
+      setRate(roomRate());
       seekTo(expected);
     }
   }
@@ -526,11 +541,12 @@
     log('local', action, '전송', pos().toFixed(1), 'vct', video.currentTime.toFixed(1), 'dur', video.duration, 'inAd', inAd);
     // background 는 자기 쪽 미러만 갱신하므로, 내 조작도 여기 상태에 반영해 둔다(채팅의 재생 시각, 싱크 보정 기준)
     state.video = {
-      playing: action === 'seek' ? state.video.playing : action === 'play',
+      rate: action === 'rate' ? video.playbackRate : (state.video.rate ?? video.playbackRate),
+      playing: ['seek', 'rate'].includes(action) ? state.video.playing : action === 'play',
       time: pos(),
       updatedAt: serverNow(),
     };
-    send({ cmd: CMD.VIDEO_EVENT, action, time: pos(), sentAt: Date.now(), silent });
+    send({ cmd: CMD.VIDEO_EVENT, action, time: pos(), sentAt: Date.now(), silent, rate: state.video.rate });
   }
 
   const fromOurSeek = (type) => {
@@ -646,6 +662,8 @@
     detach();
     video = v;
     log('video 연결', v.clientWidth + 'x' + v.clientHeight, 'room:', state?.roomCode ?? '없음');
+    appliedRate = null;
+    v.addEventListener('ratechange', onRateChange);
     v.addEventListener('play', onPlay);
     v.addEventListener('pause', onPause);
     v.addEventListener('seeked', onSeeked);
@@ -659,6 +677,7 @@
 
   function detach() {
     if (!video) return;
+    video.removeEventListener('ratechange', onRateChange);
     video.removeEventListener('play', onPlay);
     video.removeEventListener('pause', onPause);
     video.removeEventListener('seeked', onSeeked);
@@ -738,7 +757,10 @@
         state = m.state;
         alignNoticeUntil = 0; // 방을 만든 사람은 맞출 위치가 없다
         // 방을 만든 사람: 내 영상이 이미 재생 중이어도 서버의 초기 상태(정지, 0초)로 되돌리지 않고, 내 상태를 방에 알린다
-        if (video) onLocal(video.paused ? 'pause' : 'play', true); // 방 시작 상태는 채팅 알림으로 띄우지 않는다
+        if (video) {
+          state.video.rate = video.playbackRate;
+          onLocal(video.paused ? 'pause' : 'play', true);
+        } // 방 시작 상태는 채팅 알림으로 띄우지 않는다
         break;
       case CMD.REMOTE_VIDEO:
         state = m.state;

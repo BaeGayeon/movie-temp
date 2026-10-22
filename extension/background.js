@@ -248,10 +248,11 @@ function nameOf(id) {
 }
 
 // 서버가 하는 것과 같은 방식으로 영상 상태를 미러링한다 (늦게 로드되는 content 가 맞출 수 있도록)
-function mirrorVideo(action, time, at) {
+function mirrorVideo(action, time, at, rate) {
   room.video = {
-    // seek 은 재생 여부 유지, sync(서버가 방장 위치로 기준점 갱신)는 재생 중일 때만 온다
-    playing: action === 'seek' ? room.video.playing : action === 'play' || action === 'sync',
+    // seek/rate 는 재생 여부 유지, sync(서버가 방장 위치로 기준점 갱신)는 재생 중일 때만 온다
+    rate: rate ?? room.video.rate ?? 1,
+    playing: ['seek', 'rate'].includes(action) ? room.video.playing : action === 'play' || action === 'sync',
     time,
     updatedAt: at,
   };
@@ -611,8 +612,8 @@ function handleServer(m) {
       break;
 
     case S2C.VIDEO:
-      if (m.action !== 'sync') pushVideoNotice(m.fromId, m.action, m.time);
-      mirrorVideo(m.action, m.time, m.serverAt);
+      if (['play', 'pause', 'seek'].includes(m.action)) pushVideoNotice(m.fromId, m.action, m.time);
+      mirrorVideo(m.action, m.time, m.serverAt, m.rate);
       persist();
       sendToTab({ cmd: CMD.REMOTE_VIDEO, msg: m, state: publicState() });
       break;
@@ -628,7 +629,7 @@ function handleServer(m) {
     }
 
     case S2C.COUNTDOWN:
-      room.video = { playing: true, time: m.time, updatedAt: m.startAt };
+      room.video = { playing: true, time: m.time, updatedAt: m.startAt, rate: m.rate ?? room.video.rate ?? 1 };
       room.waitingIds = [];
       room.adIds = [];
       persist();
@@ -997,9 +998,9 @@ async function onCommand(m, sender) {
     case CMD.VIDEO_EVENT: {
       if (!room.roomCode || fromTab !== room.tabId) return;
       if (room.mode === 'host_only' && room.hostId !== userId) return;
-      rawSend({ type: C2S.VIDEO, action: m.action, time: m.time, sentAt: m.sentAt });
-      mirrorVideo(m.action, m.time, Date.now() + room.serverOffset);
-      if (!m.silent) pushVideoNotice(userId, m.action, m.time);
+      rawSend({ type: C2S.VIDEO, action: m.action, time: m.time, sentAt: m.sentAt, rate: m.rate });
+      mirrorVideo(m.action, m.time, Date.now() + room.serverOffset, m.rate);
+      if (!m.silent && ['play', 'pause', 'seek'].includes(m.action)) pushVideoNotice(userId, m.action, m.time);
       persist();
       return;
     }
