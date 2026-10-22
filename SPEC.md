@@ -131,7 +131,7 @@ watchparty/                (이 저장소 루트)
 { type: "room_state", roomCode, hostId, mode, participants: [{ id, name }], video: { playing, time, updatedAt } }
 { type: "participant_joined", user }
 { type: "participant_left", user }
-{ type: "video", action, time, sentAt, fromId }
+{ type: "video", action, time, sentAt, fromId }   // action: play | pause | seek | sync(방장 위치로 기준점 갱신) | rate(배속 변경, rate 필드 포함)
 { type: "host_changed", hostId }
 { type: "error", code, message }
 { type: "pong" }
@@ -297,3 +297,4 @@ watchparty/                (이 저장소 루트)
 83. 채팅 입력줄의 이모지 선택 버튼(😊)을 없앴다. 이모지는 OS 이모지 입력기로 직접 넣고, 선택기는 프사와 리액션(＋)에서만 쓴다.
 84. 채팅 바탕색을 차콜(기본)/검정 중에서 고를 수 있다(채팅 설정 메뉴의 차콜|검정 버튼, `chatPrefs.theme` 'charcoal'|'black'). 검정은 차콜 테마의 배경·테두리·내 말풍선만 더 어둡게 덮어쓰고 글자색·포인트는 그대로다.
 85. 프로필 카드는 "닉네임"(이름 입력, 닉네임 색)과 "프사"(이모지/사진, 사진 버튼, 배경색) 두 구역으로 나누고, 저장 버튼은 카드 맨 아래에 둔다.
+86. 배속 동기화: 누가 영상 배속을 바꾸든 방 전체가 같은 배속으로 본다(방장 전용 방이면 방장만). 방 상태 `video.rate`(기본 1, 허용 0.25~4)를 서버가 들고, 확장은 `<video>` 의 `ratechange`(그리고 0.5초 폴링)로 변화를 감지해 `rate{rate,time,sentAt}` 를 보낸다. 서버는 속도가 바뀐 순간의 위치로 기준점을 다시 잡고 `video{action:'rate', rate}` 를 다른 참가자에게 전달한다(카운트다운/재개 예약 중이면 시작 시각은 그대로). 기준 위치 계산(`time + 경과 × rate`)과 싱크 보정(`방 배속 × 0.92~1.08`)은 모두 방 배속 기준이다. 방 밖에서는 사용자의 배속을 건드리지 않고, 광고 중에는 1배속으로 본다. 채팅에는 "님이 N배속으로 바꿨어요" 안내가 뜬다. 앱에서 고르는 UI: 채팅 헤더의 `⚡ N×` 칩(방이 1배속이 아닐 때만 보임)을 누르면 슬라이더(0.5~3, 0.05 단위, 손을 뗄 때 전송)와 빠른 선택(0.75·1·1.25·1.5·2)이 열리고, ⚙ 설정 메뉴에도 같은 조절이 있다. 사이트 자체 배속 메뉴의 체크 표시는 사이트 내부 상태라 상대가 바꾼 배속을 따라가지 않는다(영상 속도는 맞다).
