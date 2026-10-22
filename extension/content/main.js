@@ -556,9 +556,11 @@
   // 사용자가 영상의 배속을 바꿨다: 방 전체의 배속으로 보낸다(우리가 설정한 값이면 무시). 광고 중에는 보내지 않는다.
   let lastRateBlockedToast = 0;
   const onRateChange = () => {
-    if (!video || video.playbackRate === ourRate || inAd || normalizing || !active()) return;
+    if (!video || video.playbackRate === ourRate) return;
     const r = video.playbackRate;
-    if (!(r >= MIN_PLAYBACK_RATE && r <= MAX_PLAYBACK_RATE) || r === roomRate()) return;
+    if (r === roomRate()) return;
+    if (inAd || normalizing || !active()) return log('배속 변경 무시', r, { inAd, normalizing, active: active() });
+    if (!(r >= MIN_PLAYBACK_RATE && r <= MAX_PLAYBACK_RATE)) return log('배속 변경 무시: 범위 밖', r);
     if (!canControl()) {
       if (Date.now() - lastRateBlockedToast > 2000 && isTop) {
         ui.toast(tr('content.hostOnly'));
@@ -573,8 +575,19 @@
     } else {
       state.video = { ...state.video, time: pos(), updatedAt: serverNow(), rate: r };
     }
+    log('배속 변경 전송', r);
     send({ cmd: CMD.RATE_EVENT, rate: r, time: pos(), sentAt: Date.now() });
   };
+
+  // 사이트에 따라 ratechange 가 오지 않거나 늦을 수 있어, 우리가 건드리지 않은 배속 변화를 0.5초마다 한 번 더 살핀다
+  let seenRate = null;
+  setInterval(() => {
+    if (!video) return (seenRate = null);
+    if (video.playbackRate !== seenRate) {
+      seenRate = video.playbackRate;
+      onRateChange();
+    }
+  }, 500);
 
   const fromOurSeek = (type) => {
     if (Date.now() >= ourSeekUntil) return false;
