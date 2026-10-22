@@ -219,6 +219,48 @@ test('방장 전용 모드: 방장만 조작 가능, 모드 변경은 방장만'
   b.close();
 });
 
+test('배속: 누가 바꾸든 방 전체에 전달되고, 이후 재생/버퍼링에도 유지되며, 늦게 입장한 사람도 받는다', async () => {
+  const { a, code } = await makeRoom();
+  const { c: b } = await joinRoom(code);
+
+  a.send({ type: 'video', action: 'play', time: 10, sentAt: 1 });
+  await b.next('video');
+  b.send({ type: 'rate', rate: 2, time: 30, sentAt: 5 });
+  const v = await a.next('video');
+  assert.equal(v.action, 'rate');
+  assert.equal(v.rate, 2);
+  assert.equal(v.time, 30);
+  await b.none('video'); // 보낸 사람에게는 되돌려 보내지 않는다
+
+  a.send({ type: 'video', action: 'seek', time: 50, sentAt: 6 });
+  await b.next('video');
+  await sleep(300);
+  const { c, state } = await joinRoom(code);
+  assert.equal(state.video.rate, 2, 'play/seek 가 배속을 지우지 않는다');
+  assert.equal(state.video.time, 50);
+
+  // 잘못된 값은 무시
+  for (const rate of [0, 0.1, 9, -1, '2', null]) b.send({ type: 'rate', rate, time: 1, sentAt: 1 });
+  await a.none('video');
+  a.close();
+  b.close();
+  c.close();
+});
+
+test('배속: 방장 전용 모드에서는 방장만 바꿀 수 있다', async () => {
+  const { a, code } = await makeRoom();
+  const { c: b } = await joinRoom(code);
+  a.send({ type: 'set_permission', mode: 'host_only' });
+  await b.next('mode_changed');
+  b.send({ type: 'rate', rate: 1.5, time: 3, sentAt: 1 });
+  assert.equal((await b.next('error')).code, 'not_allowed');
+  await a.none('video');
+  a.send({ type: 'rate', rate: 1.5, time: 3, sentAt: 2 });
+  assert.equal((await b.next('video')).rate, 1.5);
+  a.close();
+  b.close();
+});
+
 test('늦게 입장: 마지막 영상 상태와 서버 시각 전달', async () => {
   const { a, code } = await makeRoom();
   a.send({ type: 'video', action: 'play', time: 10, sentAt: 1 });

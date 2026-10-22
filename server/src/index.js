@@ -174,6 +174,9 @@ export function createServer({
         case C2S.VIDEO:
           rooms.video(conn, msg);
           break;
+        case C2S.RATE:
+          rooms.rate(conn, msg);
+          break;
         case C2S.SET_PERMISSION:
           rooms.setPermission(conn, msg.mode);
           break;

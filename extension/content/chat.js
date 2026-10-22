@@ -844,6 +844,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     const color = isMembership ? known?.color : profileOf(m.userId).color;
     if (m.action === 'join') return { icon: '🎈', name, color, rest: t('chat.ev.join') };
     if (m.action === 'leave') return { icon: '👋', name, color, rest: t('chat.ev.leave') };
+    if (m.action === 'rate') return { icon: '⚡', name, color, rest: t('chat.ev.rate', { r: +Number(m.rate).toFixed(2) }) };
     const tm = fmtVideo(m.time);
     if (m.action === 'play') return { icon: '▶', svg: 'play', name, color, rest: t('chat.ev.play', { t: tm }) };
     if (m.action === 'pause') return { icon: '⏸', svg: 'pause', name, color, rest: t('chat.ev.pause', { t: tm }) };
@@ -890,8 +891,9 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
       if (n === 'seek') merged = a === 'pause' || a === 'seek' ? 'seek' : a === 'play' || a === 'seekplay' ? 'seekplay' : null;
       else if (n === 'play') merged = a === 'seek' || a === 'seekplay' ? 'seekplay' : a === 'play' ? 'play' : null;
       else if (n === 'pause' && a === 'pause') merged = 'pause';
+      else if (n === 'rate' && a === 'rate') merged = 'rate';
       if (merged) {
-        Object.assign(prev.entry, { action: merged, time: m.time, sentAt: m.sentAt });
+        Object.assign(prev.entry, { action: merged, time: m.time, sentAt: m.sentAt, rate: m.rate });
         fillEvent(prev.entry.el, prev.entry);
         prev.at = m.sentAt;
         return prev.entry.el;

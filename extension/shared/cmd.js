@@ -14,6 +14,7 @@ export const CMD = {
   SET_ROOM_OPTIONS: 'set_room_options', // popup (방장): { password?: string | null, maxMembers?: number | null }
   GET_ROOM_PW: 'get_room_pw', // popup (방장): 이 브라우저가 기억하는 방 비밀번호(모르면 null)
   VIDEO_EVENT: 'video_event',
+  RATE_EVENT: 'rate_event', // content: 재생 속도를 바꿈 { rate, time, sentAt }
   COUNTDOWN_START: 'countdown_start', // popup (방장)
   BUFFERING: 'buffering', // content
   SYNC_REPORT: 'sync_report', // content

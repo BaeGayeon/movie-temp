@@ -1,6 +1,6 @@
 // 서비스 워커: 서버 WebSocket 연결과 방 상태를 보관하고 탭(content)/popup 으로 중계한다.
 import { SERVER_URL } from './config.js';
-import { C2S, S2C, ERR, MODES, ROOM_CODE_RE, isValidNewPassword, isValidMaxMembers, MAX_PASSWORD_LENGTH } from './shared/protocol.js';
+import { C2S, S2C, ERR, MODES, ROOM_CODE_RE, isValidNewPassword, isValidMaxMembers, isPlaybackRate, MAX_PASSWORD_LENGTH } from './shared/protocol.js';
 import { CMD } from './shared/cmd.js';
 import { initI18n, t, getLang, serverErrorText } from './shared/i18n.js';
 
@@ -52,7 +52,7 @@ const freshRoom = () => ({
   restoreToken: null, // 서버가 재시작돼 방이 사라졌을 때 방을 다시 만들 자격을 보이는 서명 토큰(room_state 로 받는다). content/팝업에는 내보내지 않는다
   maxMembers: null,
   participants: [],
-  video: { playing: false, time: 0, updatedAt: 0 },
+  video: { playing: false, time: 0, updatedAt: 0, rate: 1 },
   waitingIds: [], // 버퍼링/광고 중이라 모두가 기다리는 참가자
   adIds: [], // 그중 광고를 보고 있는 참가자
   chat: [], // 최근 채팅(새로고침 후 복구용). content 에는 REGISTER 응답으로만 전달
@@ -248,8 +248,9 @@ function nameOf(id) {
 }
 
 // 서버가 하는 것과 같은 방식으로 영상 상태를 미러링한다 (늦게 로드되는 content 가 맞출 수 있도록)
-function mirrorVideo(action, time, at) {
+function mirrorVideo(action, time, at, rate) {
   room.video = {
+    rate: action === 'rate' ? rate : room.video.rate ?? 1,
     // seek 은 재생 여부 유지, sync(서버가 방장 위치로 기준점 갱신)는 재생 중일 때만 온다
     playing: action === 'seek' ? room.video.playing : action === 'play' || action === 'sync',
     time,
@@ -611,8 +612,9 @@ function handleServer(m) {
       break;
 
     case S2C.VIDEO:
-      if (m.action !== 'sync') pushVideoNotice(m.fromId, m.action, m.time);
-      mirrorVideo(m.action, m.time, m.serverAt);
+      if (m.action === 'rate') pushEvent({ kind: 'event', userId: m.fromId, action: 'rate', rate: m.rate, time: m.time, sentAt: Date.now() });
+      else if (m.action !== 'sync') pushVideoNotice(m.fromId, m.action, m.time);
+      mirrorVideo(m.action, m.time, m.serverAt, m.rate);
       persist();
       sendToTab({ cmd: CMD.REMOTE_VIDEO, msg: m, state: publicState() });
       break;
@@ -628,7 +630,7 @@ function handleServer(m) {
     }
 
     case S2C.COUNTDOWN:
-      room.video = { playing: true, time: m.time, updatedAt: m.startAt };
+      room.video = { playing: true, time: m.time, updatedAt: m.startAt, rate: room.video.rate ?? 1 };
       room.waitingIds = [];
       room.adIds = [];
       persist();
@@ -993,6 +995,19 @@ async function onCommand(m, sender) {
         rawSend({ type: C2S.SYNC_REPORT, time: m.time, playing: !!m.playing, sentAt: m.sentAt });
       }
       return;
+
+    case CMD.RATE_EVENT: {
+      if (!room.roomCode || fromTab !== room.tabId) return;
+      if (room.mode === 'host_only' && room.hostId !== userId) return;
+      if (!isPlaybackRate(m.rate)) return;
+      rawSend({ type: C2S.RATE, rate: m.rate, time: m.time, sentAt: m.sentAt });
+      const at = Date.now() + room.serverOffset;
+      if (room.video.playing && room.video.updatedAt > at) room.video = { ...room.video, rate: m.rate }; // 예약된 시작(카운트다운 등) 중이면 시작 시각은 그대로
+      else mirrorVideo('rate', m.time, at, m.rate);
+      pushEvent({ kind: 'event', userId, action: 'rate', rate: m.rate, time: m.time, sentAt: Date.now() });
+      persist();
+      return;
+    }
 
     case CMD.VIDEO_EVENT: {
       if (!room.roomCode || fromTab !== room.tabId) return;
