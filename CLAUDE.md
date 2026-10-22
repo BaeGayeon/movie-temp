@@ -7,6 +7,7 @@
 - 앱 이름은 `extension/config.js`의 `APP_NAME`과 `manifest.json`의 `name`으로만 관리한다.
 - `server/src/protocol.js`와 `extension/shared/protocol.js`는 동일해야 한다(서버 테스트가 비교). 수정 시 같이 수정.
 - 단계가 끝나면 아래 "현재 진행 단계"를 갱신한다.
+- 문서 구성: `README.md`(소개/실행), `SPEC.md`(요구사항·프로토콜), `docs/design-notes.md`(설계 메모), `docs/deploy.md`·`docs/deploy-checklist.md`(배포), `docs/release.md`·`CHANGELOG.md`(릴리스), `docs/store-listing.md`(스토어 문구). 지원 사이트 표기는 **확인한 곳(쿠팡플레이·넷플릭스·웨이브)** 만 쓴다(티빙은 확인 전).
 
 ## 현재 진행 단계
 

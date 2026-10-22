@@ -29,7 +29,7 @@
 • 닉네임, 이모지 또는 사진 프로필, 글자 색 설정
 
 지원 사이트
-쿠팡플레이, 넷플릭스, 웨이브, 티빙의 영상 페이지
+쿠팡플레이, 넷플릭스, 웨이브의 영상 페이지
 
 사용 방법
 1. 영상 페이지를 열고 확장 아이콘 → 방 만들기
@@ -98,7 +98,7 @@ Features
 • Korean and English, following your browser language (or pick one in the popup)
 
 Supported sites
-Video pages on Coupang Play, Netflix, Wavve and TVING
+Video pages on Coupang Play, Netflix and Wavve
 
 How to use
 1. Open a video page and click the extension icon → Create room
