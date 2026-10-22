@@ -53,6 +53,12 @@
   const chat = isTop
     ? createChat({
         getState: () => state,
+        // 설정 메뉴에서 배속을 고름: 영상의 배속을 바꾸면 ratechange 처리가 방에 전달한다(방장 전용 방이면 막고 되돌린다)
+        onSetRate: (r) => {
+          if (!video || !active()) return;
+          video.playbackRate = r;
+          onRateChange();
+        },
         onSend: (text, replyTo) => (noteDropped(), send({ cmd: CMD.CHAT_SEND, text, videoTime: currentVideoTime(), replyTo, ad: inAdNow() })),
         getInviteLink: () => {
           const u = new URL(location.href);
@@ -414,6 +420,7 @@
       return;
     }
     if (msg.action === 'rate') {
+      chat?.refreshRate();
       setRate(1); // 방의 새 속도로 바꾼다. 기준점도 새로 잡혔으니 위치 차이는 싱크 보정이 맞춘다
       const who = state.participants.find((p) => p.id === msg.fromId)?.name ?? tr('content.someone');
       if (isTop) ui.toast(tr('content.rate', { name: who, r: +msg.rate.toFixed(2) }));

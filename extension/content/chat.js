@@ -39,6 +39,8 @@ const CSS = `
   .seg { display: flex; gap: 2px; padding: 2px; background: var(--bg); border-radius: 10px; }
   .seg button { flex: 1; background: transparent; color: var(--ink-soft); border-radius: 8px; padding: 4px 0; font-size: 12px; }
   .seg button.on { background: var(--surface-3); color: var(--ink); }
+  .seg.rates { flex-wrap: wrap; }
+  .seg.rates button { flex: 1 0 22%; }
   .menu .sec { font-size: 11px; font-weight: 700; color: var(--ink-soft); margin-top: 4px; }
   .menu .sec:first-child { margin-top: 0; }
   .menu .act { background: var(--surface-2); color: var(--ink); font-weight: 500; border-radius: 10px; padding: 6px 12px; text-align: left; }
@@ -294,7 +296,9 @@ async function copyText(text) {
 
 // getState(): 최신 background 상태. getInviteLink(): 현재 페이지 + ?wp=코드
 // getReactionArea(): 리액션이 퍼질 영역(영상의 화면상 사각형, 없으면 null). onSend(text) / onTyping(bool) / onReaction(emoji) / onNotify(text)
-export function createChat({ getState, getInviteLink, getReactionArea, onSend, onTyping, onReaction, onNotify }) {
+const RATE_CHOICES = [0.5, 0.75, 1, 1.25, 1.5, 2, 3]; // 설정 메뉴의 배속 버튼
+
+export function createChat({ getState, getInviteLink, getReactionArea, onSend, onTyping, onReaction, onNotify, onSetRate }) {
   // 전체화면을 켜고 끌 때 레이어를 다른 부모로 옮기면 목록 스크롤이 맨 위로 돌아가므로, 옮기기 전에 위치를 기억했다가 되돌린다
   let moveScroll = null;
   const mount = createLayer(CSS, {
@@ -316,7 +320,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
   let unread = 0;
 
   // DOM 참조
-  let wrap, panel, head, list, typingLine, input, counter, replyBar, replyText, bubbleBox, badge, floats, menu, opacity, clockCb, videoCb, eventsCb, modeSeg, pop, picker, styleSeg, themeSeg, panelReacts, reactToggle;
+  let wrap, panel, head, list, typingLine, input, counter, replyBar, replyText, bubbleBox, badge, floats, menu, opacity, clockCb, videoCb, eventsCb, modeSeg, pop, picker, styleSeg, themeSeg, rateSeg, panelReacts, reactToggle;
 
   try {
     chrome.storage.local.get('chatPrefs').then((r) => {
@@ -491,6 +495,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     list.classList.toggle('plain', prefs.style === 'plain');
     list.classList.toggle('compact', prefs.style === 'compact');
     for (const b of styleSeg.children) b.classList.toggle('on', b.dataset.style === prefs.style);
+    refreshRate();
     panel.hidden = prefs.collapsed || prefs.hidden;
     bubbleBox.hidden = !prefs.collapsed || prefs.hidden;
     panel.classList.toggle('dock', isDock());
@@ -1125,9 +1130,23 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
       });
       modeSeg.append(b);
     }
+    // 재생 속도: 방 전체에 적용된다(사이트의 배속 메뉴와 같은 효과). 사이트 메뉴의 표시는 바뀌지 않을 수 있다.
+    rateSeg = el('div', 'seg rates');
+    for (const r of RATE_CHOICES) {
+      const b = el('button', null, String(r));
+      b.dataset.rate = String(r);
+      b.addEventListener('click', () => {
+        onSetRate?.(r);
+        refreshRate();
+      });
+      rateSeg.append(b);
+    }
     const sec = (key) => L(el('div', 'sec'), 'textContent', key);
-    menu.append(sec('chat.menu.window'), modeSeg, opLabel, sec('chat.menu.view'), styleSeg, sec('chat.menu.color'), themeSeg, sec('chat.menu.show'), clockLabel, videoLabel, eventsLabel, sec('chat.menu.invite'), copyLink, copyCode);
-    settingsBtn.addEventListener('click', () => (menu.hidden = !menu.hidden));
+    menu.append(sec('chat.menu.speed'), rateSeg, sec('chat.menu.window'), modeSeg, opLabel, sec('chat.menu.view'), styleSeg, sec('chat.menu.color'), themeSeg, sec('chat.menu.show'), clockLabel, videoLabel, eventsLabel, sec('chat.menu.invite'), copyLink, copyCode);
+    settingsBtn.addEventListener('click', () => {
+      menu.hidden = !menu.hidden;
+      refreshRate();
+    });
 
     list = el('div', 'list');
     list.addEventListener('scroll', updatePinned);
@@ -1289,6 +1308,13 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
   }
 
 
+  // 지금 방의 배속에 해당하는 버튼을 눌린 상태로 표시
+  function refreshRate() {
+    if (!rateSeg) return;
+    const cur = Number(getState()?.video?.rate ?? 1);
+    for (const b of rateSeg.children) b.classList.toggle('on', Math.abs(Number(b.dataset.rate) - cur) < 0.001);
+  }
+
   // 언어가 바뀌면 이미 그려진 문구를 다시 채운다
   onLangChange(() => {
     if (!built) return;
@@ -1382,6 +1408,10 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
 
     // 프로필이 바뀌면 기존 메시지의 이름/프사/색도 갱신
     // 연결 상태가 바뀔 때: 끊겼으면 아직 돌아오지 않은 내 메시지를 바로 "전달되지 않았을 수 있어요"로 바꾼다
+    refreshRate() {
+      if (built) refreshRate();
+    },
+
     onConnection(st) {
       if (!built) return;
       for (const p of [...pendingSends]) {
