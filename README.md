@@ -1,11 +1,38 @@
 # bae-movie-temp (임시 이름)
 
-티빙/웨이브/쿠팡플레이/넷플릭스 같은 OTT에서 각자 계정으로 같이 영상을 볼 수 있는 크롬 확장 프로그램.
-각자 자기 계정으로 재생하고, 재생/일시정지/시크/배속 **상태만** 동기화한다. 자세한 내용은 [SPEC.md](SPEC.md).
+각자 자기 계정으로 영상을 틀어 두고, 재생 상태만 맞춰서 같이 보는 크롬 확장 프로그램.
+영상이나 계정 정보는 주고받지 않는다. 같은 작품을 각자 재생하기만 하면 된다. 요구사항과 프로토콜은 [SPEC.md](SPEC.md).
 
 앱 이름은 `extension/config.js`의 `APP_NAME`과 `extension/manifest.json`의 `name` 두 곳에서만 관리한다.
 
-## 서버 실행
+## 소개
+
+**어떻게 쓰나요**: 한 명이 영상 페이지에서 방을 만들고 초대 링크를 보내면, 다른 사람이 같은 작품 페이지에서 링크로 참가한다. 그다음엔 각자 평소처럼 재생하면 된다.
+
+**주요 기능**
+- 같이 보기: 재생·일시정지·이동·배속을 방 전체에 맞춘다(방장만 조작 / 모두 조작 중에서 선택). 카운트다운으로 같이 시작할 수 있다.
+- 누가 버퍼링하거나 광고를 보면 다 같이 기다렸다가 이어서 재생하고, 재생 중에는 위치 차이를 자동으로 보정한다.
+- 영상 위에 뜨는 채팅, 이모지 리액션, 답장, 닉네임·글자 색·이모지/사진 프사.
+- 초대 링크, 방 비밀번호·인원 제한, 서버가 다시 켜져도 방 복구.
+- 한국어 / English (브라우저 언어를 따르거나 직접 선택).
+
+**지원 사이트**: 쿠팡플레이, 넷플릭스, 웨이브에서 동작을 확인했다. 티빙은 `manifest.json` 에는 들어 있지만 아직 확인하지 못했다.
+
+**구성**: `extension/`(크롬 확장, MV3), `server/`(WebSocket 방 서버, Node.js). 서버는 방과 재생 상태만 중계한다. 확장과 서버는 같이 배포한다.
+
+## 문서
+
+- [SPEC.md](SPEC.md): 요구사항, 메시지 프로토콜, 단계별 완료 기준
+- [docs/design-notes.md](docs/design-notes.md): 설계 메모(동작 방식, 광고 구간, 프로토콜 추가 사항)
+- [docs/deploy.md](docs/deploy.md): 배포 방법(Render 서버, 스토어용 확장), [docs/deploy-checklist.md](docs/deploy-checklist.md): 배포 전/후 확인할 것
+- [docs/release.md](docs/release.md): 릴리스 절차, [CHANGELOG.md](CHANGELOG.md): 변경 기록
+- [docs/store-listing.md](docs/store-listing.md): 스토어 등록 문구
+
+## 로컬에서 개발하기
+
+개발하고 테스트할 때 쓰는 방법이다(서버를 직접 돌리는 건 로컬 개발용이고, 실제 배포는 [docs/deploy.md](docs/deploy.md)).
+
+### 서버 실행
 
 ```bash
 cd server
@@ -17,21 +44,13 @@ npm test           # WebSocket 클라이언트로 방 생성/참가/중계 등�
 서버 주소는 `extension/config.js`의 `SERVER_URL`(개발용 `ws://localhost:8080`).
 서버가 `GET /privacy` 로 개인정보처리방침 페이지(`server/public/privacy.html`)도 제공한다.
 
-## 문서
-
-- [SPEC.md](SPEC.md): 요구사항, 메시지 프로토콜, 단계별 완료 기준
-- [docs/design-notes.md](docs/design-notes.md): 설계 메모(동작 방식, 광고 구간, 프로토콜 추가 사항)
-- [docs/deploy.md](docs/deploy.md): 배포 방법(Render 서버, 스토어용 확장), [docs/deploy-checklist.md](docs/deploy-checklist.md): 배포 전/후 확인할 것
-- [docs/release.md](docs/release.md): 릴리스 절차, [CHANGELOG.md](CHANGELOG.md): 변경 기록
-- [docs/store-listing.md](docs/store-listing.md): 스토어 등록 문구
-
-## 크롬에 확장 프로그램 로드
+### 크롬에 확장 프로그램 로드
 
 1. `chrome://extensions` → 우상단 **개발자 모드** 켜기
 2. **압축해제된 확장 프로그램을 로드합니다** → `extension/` 폴더 선택
 3. `file://` 로 로컬 mp4를 직접 열어 테스트하려면 확장 프로그램 상세에서 **파일 URL에 대한 액세스 허용**을 켠다.
 
-## 크롬 프로필 두 개로 테스트
+### 크롬 프로필 두 개로 테스트
 
 1. 서버 실행 후, 크롬 프로필 A·B 각각에서 위 방법으로 확장 프로그램을 로드한다.
 2. 프로필 A: `<video>`가 있는 페이지(예: mp4 URL을 직접 열기)에서 확장 아이콘 → **방 만들기**.
