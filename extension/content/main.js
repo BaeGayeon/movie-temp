@@ -4,8 +4,9 @@
   window.__bmtLoaded = true;
 
   const load = (path) => import(chrome.runtime.getURL(path));
-  const [{ CMD }, { initI18n, t: tr }, { ensureSuitFont }, { createDefaultAdapter }, { createNetflixAdapter }, { createUI }, { createChat }] = await Promise.all([
+  const [{ CMD }, { MIN_PLAYBACK_RATE, MAX_PLAYBACK_RATE }, { initI18n, t: tr }, { ensureSuitFont }, { createDefaultAdapter }, { createNetflixAdapter }, { createUI }, { createChat }] = await Promise.all([
     load('shared/cmd.js'),
+    load('shared/protocol.js'),
     load('shared/i18n.js'),
     load('shared/font.js'),
     load('content/adapters/default.js'),
@@ -52,6 +53,12 @@
   const chat = isTop
     ? createChat({
         getState: () => state,
+        // 설정 메뉴에서 배속을 고름: 영상의 배속을 바꾸면 ratechange 처리가 방에 전달한다(방장 전용 방이면 막고 되돌린다)
+        onSetRate: (r) => {
+          if (!video || !active()) return;
+          video.playbackRate = r;
+          onRateChange();
+        },
         onSend: (text, replyTo) => (noteDropped(), send({ cmd: CMD.CHAT_SEND, text, videoTime: currentVideoTime(), replyTo, ad: inAdNow() })),
         getInviteLink: () => {
           const u = new URL(location.href);
@@ -154,7 +161,10 @@
     clearTimeout(bufferTimer);
     setAdNotice(inAd);
     if (inAd) {
-      setRate(1);
+      if (video && video.playbackRate !== 1) {
+        ourRate = 1; // 광고는 방의 배속과 상관없이 보통 속도로 본다
+        video.playbackRate = 1;
+      }
       if (bufferingReported) {
         bufferingReported = false;
         send({ cmd: CMD.BUFFERING, isBuffering: false }); // 버퍼링 보고는 광고 보고로 대체
@@ -286,7 +296,7 @@
     if (!active()) return undefined;
     const v = state.video;
     const now = serverNow();
-    const t = v.playing && v.updatedAt <= now ? v.time + (now - v.updatedAt) / 1000 : v.time;
+    const t = v.playing && v.updatedAt <= now ? v.time + ((now - v.updatedAt) / 1000) * (v.rate || 1) : v.time;
     return Math.round(Math.max(0, t) * 10) / 10;
   };
   const canControl = () => state.mode === 'everyone' || state.hostId === state.userId;
@@ -368,8 +378,16 @@
   let startTimer = null;
   let autoplayBlocked = false; // 브라우저가 자동 재생을 막아 "클릭하세요" 버튼을 띄운 상태
 
-  function setRate(r) {
-    if (video && video.playbackRate !== r) video.playbackRate = r;
+  // 방의 재생 속도(배속). 드리프트 보정은 이 속도에 비율(0.92~1.08)을 곱해서 한다.
+  const roomRate = () => state?.video?.rate || 1;
+  let ourRate = null; // 우리가 마지막으로 설정한 playbackRate: 이 값으로 바뀐 ratechange 는 사용자가 한 것이 아니다
+  function setRate(factor = 1) {
+    if (!video) return;
+    const r = Math.round(roomRate() * factor * 1000) / 1000;
+    if (video.playbackRate !== r) {
+      ourRate = r;
+      video.playbackRate = r;
+    }
   }
 
   // 서버가 저장한 마지막 영상 상태에 맞춘다 (재생 중이면 경과 시간 보정).
@@ -388,10 +406,10 @@
       }, v.updatedAt - now);
       return;
     }
-    const elapsed = v.playing ? Math.max(0, (now - v.updatedAt) / 1000) : 0;
+    const elapsed = v.playing ? Math.max(0, ((now - v.updatedAt) / 1000) * (v.rate || 1)) : 0;
     seekTo(v.time + elapsed);
     setPlaying(v.playing);
-    if (!v.playing) setRate(1);
+    setRate(1); // 정지 중에도 방의 배속에 맞춰 둔다(재생을 시작할 때 이미 맞아 있도록)
   }
 
   function applyRemote(msg) {
@@ -399,6 +417,13 @@
     if (!video || inAd || normalizing) return;
     if (msg.action === 'sync') {
       correctDrift(); // 방장 위치로 기준점이 갱신됨: 시크 없이 부드럽게 맞춘다
+      return;
+    }
+    if (msg.action === 'rate') {
+      chat?.refreshRate();
+      setRate(1); // 방의 새 속도로 바꾼다. 기준점도 새로 잡혔으니 위치 차이는 싱크 보정이 맞춘다
+      const who = state.participants.find((p) => p.id === msg.fromId)?.name ?? tr('content.someone');
+      if (isTop) ui.toast(tr('content.rate', { name: who, r: +msg.rate.toFixed(2) }));
       return;
     }
     setRate(1);
@@ -421,14 +446,15 @@
   //  - 1.5초 초과: 시크
   // 방장은 기준점 자체이므로 보정하지 않는다.
   function correctDrift() {
-    if (!video || !active() || inAd || normalizing || remeasuring || video.paused || state.hostId === state.userId) return setRate(1);
+    if (!video || !active()) return; // 방에 없으면 사용자의 배속을 건드리지 않는다
+    if (inAd || normalizing || remeasuring || video.paused || state.hostId === state.userId) return setRate(1);
     const v = state.video;
     const now = serverNow();
     if (!v.playing || v.updatedAt > now) return setRate(1);
-    const expected = v.time + (now - v.updatedAt) / 1000;
+    const expected = v.time + ((now - v.updatedAt) / 1000) * (v.rate || 1);
     const diff = pos() - expected; // 양수: 내가 앞서 있음
     const abs = Math.abs(diff);
-    if (abs < (video.playbackRate !== 1 ? 0.05 : 0.12)) setRate(1);
+    if (abs < (video.playbackRate !== roomRate() ? 0.05 : 0.12)) setRate(1);
     else if (abs <= 1.5) {
       const d = Math.min(0.08, Math.max(0.03, abs / 6));
       setRate(diff > 0 ? 1 - d : 1 + d);
@@ -529,9 +555,47 @@
       playing: action === 'seek' ? state.video.playing : action === 'play',
       time: pos(),
       updatedAt: serverNow(),
+      rate: roomRate(),
     };
     send({ cmd: CMD.VIDEO_EVENT, action, time: pos(), sentAt: Date.now(), silent });
   }
+
+  // 사용자가 영상의 배속을 바꿨다: 방 전체의 배속으로 보낸다(우리가 설정한 값이면 무시). 광고 중에는 보내지 않는다.
+  let lastRateBlockedToast = 0;
+  const onRateChange = () => {
+    if (!video || video.playbackRate === ourRate) return;
+    const r = video.playbackRate;
+    if (r === roomRate()) return;
+    if (inAd || normalizing || !active()) return log('배속 변경 무시', r, { inAd, normalizing, active: active() });
+    if (!(r >= MIN_PLAYBACK_RATE && r <= MAX_PLAYBACK_RATE)) return log('배속 변경 무시: 범위 밖', r);
+    if (!canControl()) {
+      if (Date.now() - lastRateBlockedToast > 2000 && isTop) {
+        ui.toast(tr('content.hostOnly'));
+        lastRateBlockedToast = Date.now();
+      }
+      setRate(1); // 방장 전용 방: 방의 배속으로 되돌린다
+      return;
+    }
+    if (!state.video.playing || state.video.updatedAt > serverNow()) {
+      // 정지 중/예약 중에는 기준 시각을 건드리지 않고 속도만 바꾼다(서버도 같이 처리)
+      state.video = { ...state.video, rate: r };
+    } else {
+      state.video = { ...state.video, time: pos(), updatedAt: serverNow(), rate: r };
+    }
+    log('배속 변경 전송', r);
+    chat?.refreshRate();
+    send({ cmd: CMD.RATE_EVENT, rate: r, time: pos(), sentAt: Date.now() });
+  };
+
+  // 사이트에 따라 ratechange 가 오지 않거나 늦을 수 있어, 우리가 건드리지 않은 배속 변화를 0.5초마다 한 번 더 살핀다
+  let seenRate = null;
+  setInterval(() => {
+    if (!video) return (seenRate = null);
+    if (video.playbackRate !== seenRate) {
+      seenRate = video.playbackRate;
+      onRateChange();
+    }
+  }, 500);
 
   const fromOurSeek = (type) => {
     if (Date.now() >= ourSeekUntil) return false;
@@ -650,6 +714,7 @@
     v.addEventListener('pause', onPause);
     v.addEventListener('seeked', onSeeked);
     v.addEventListener('seeking', onSeeking);
+    v.addEventListener('ratechange', onRateChange);
     v.addEventListener('waiting', onWaiting);
     for (const t of ['playing', 'canplay']) v.addEventListener(t, onReady);
     for (const t of AD_EVENTS) v.addEventListener(t, evalAd);
@@ -663,6 +728,7 @@
     video.removeEventListener('pause', onPause);
     video.removeEventListener('seeked', onSeeked);
     video.removeEventListener('seeking', onSeeking);
+    video.removeEventListener('ratechange', onRateChange);
     video.removeEventListener('waiting', onWaiting);
     for (const t of ['playing', 'canplay']) video.removeEventListener(t, onReady);
     for (const t of AD_EVENTS) video.removeEventListener(t, evalAd);
@@ -699,6 +765,7 @@
 
   // ---------- background 메시지 ----------
   chrome.runtime.onMessage.addListener((m, _sender, sendResponse) => {
+    if (m.state) queueMicrotask(() => chat?.refreshRate()); // 방 상태가 바뀌면 헤더의 배속 칩/조절 UI 도 맞춘다
     switch (m.cmd) {
       case CMD.HAS_VIDEO:
         if (video) sendResponse(true); // 영상이 없는 프레임은 응답하지 않는다(응답한 프레임이 있으면 그걸 쓴다)

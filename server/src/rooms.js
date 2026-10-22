@@ -1,5 +1,5 @@
 import { createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
-import { S2C, ERR, VIDEO_ACTION_SYNC, DEFAULT_COLORS, DEFAULT_AVATAR_EMOJI } from './protocol.js';
+import { S2C, ERR, VIDEO_ACTION_SYNC, VIDEO_ACTION_RATE, DEFAULT_COLORS, DEFAULT_AVATAR_EMOJI } from './protocol.js';
 
 const AD_ROLLBACK_MS = 6000; // 광고 보고 직전 이 시간 안의 본인 이벤트는 광고 전환 중 생긴 것으로 보고 되돌린다
 
@@ -117,7 +117,7 @@ export class RoomManager {
       code: roomCode ?? this.#newCode(),
       hostId: null,
       mode: mode ?? 'everyone',
-      video: { playing: false, time: 0, updatedAt: this.now() },
+      video: { playing: false, time: 0, updatedAt: this.now(), rate: 1 },
       participants: new Map(),
       profiles: new Map(), // userId -> { name, avatar, color } (재입장 시 유지)
       secrets: new Map(), // userId -> 본인 확인 값의 해시. userId 는 방 안에 공개되므로 같은 userId 로 다시 들어올 때 이 값이 맞아야 한다
@@ -239,10 +239,36 @@ export class RoomManager {
       playing: msg.action === 'seek' ? room.video.playing : msg.action === 'play',
       time: msg.time,
       updatedAt: at,
+      rate: room.video.rate,
     };
     this.#broadcast(
       room,
       { type: S2C.VIDEO, action: msg.action, time: msg.time, sentAt: msg.sentAt, fromId: p.id, serverAt: at },
+      p.id,
+    );
+  }
+
+  // 재생 속도 변경: 속도가 바뀐 순간의 위치로 기준점을 다시 잡고(이후 경과 시간은 새 속도로 계산) 다른 참가자에게 알린다.
+  // 권한은 재생/일시정지와 같다(방장 전용 방이면 방장만).
+  rate(conn, msg) {
+    const found = this.#find(conn);
+    if (!found) return;
+    const { room, p } = found;
+    if (room.mode === 'host_only' && p.id !== room.hostId) {
+      conn.send({ type: S2C.ERROR, code: ERR.NOT_ALLOWED, message: '방장만 조작할 수 있어요.' });
+      return;
+    }
+    if (!this.#take(p, 'rate', 5, 1)) return;
+    if (msg.rate === room.video.rate) return;
+    const at = this.now();
+    // 카운트다운/버퍼링 재개 예약 중(updatedAt 이 미래)이면 시작 시각은 그대로 두고 속도만 바꾼다
+    const scheduled = room.video.playing && room.video.updatedAt > at;
+    room.video = scheduled
+      ? { ...room.video, rate: msg.rate }
+      : { playing: room.video.playing, time: msg.time, updatedAt: at, rate: msg.rate };
+    this.#broadcast(
+      room,
+      { type: S2C.VIDEO, action: VIDEO_ACTION_RATE, time: room.video.time, rate: msg.rate, sentAt: msg.sentAt, fromId: p.id, serverAt: room.video.updatedAt },
       p.id,
     );
   }
@@ -262,7 +288,7 @@ export class RoomManager {
     const startAt = now + seconds * 1000;
     const hadWaiting = room.waiting.size > 0;
     this.#clearWait(room);
-    room.video = { playing: true, time, updatedAt: startAt };
+    room.video = { playing: true, time, updatedAt: startAt, rate: room.video.rate };
     if (hadWaiting) this.#broadcast(room, this.#bufferMsg(room));
     this.#broadcast(room, { type: S2C.COUNTDOWN, startAt, time });
   }
@@ -288,7 +314,7 @@ export class RoomManager {
       if (!room.autoPaused) {
         if (!room.video.playing) return; // 재생 중이 아니면 기다릴 필요 없음
         const time = msg.time ?? this.#currentTime(room, now);
-        room.video = { playing: false, time, updatedAt: now };
+        room.video = { playing: false, time, updatedAt: now, rate: room.video.rate };
         room.autoPaused = true;
       }
       room.waiting.add(p.id);
@@ -317,7 +343,7 @@ export class RoomManager {
     if (now - room.lastSyncAt < 2000) return;
     room.lastSyncAt = now;
     keepSnapshot(room, p.id, now);
-    room.video = { playing: true, time: msg.time, updatedAt: now };
+    room.video = { playing: true, time: msg.time, updatedAt: now, rate: room.video.rate };
     this.#broadcast(
       room,
       { type: S2C.VIDEO, action: VIDEO_ACTION_SYNC, time: msg.time, sentAt: msg.sentAt, fromId: p.id, serverAt: now },
@@ -424,7 +450,7 @@ export class RoomManager {
 
   #currentTime(room, now) {
     const v = room.video;
-    return v.playing ? v.time + Math.max(0, now - v.updatedAt) / 1000 : v.time;
+    return v.playing ? v.time + (Math.max(0, now - v.updatedAt) / 1000) * v.rate : v.time;
   }
 
   #bufferMsg(room) {
@@ -467,6 +493,7 @@ export class RoomManager {
         playing: true,
         time: room.video.time,
         updatedAt: this.now() + this.resumeDelayMs,
+        rate: room.video.rate,
       };
     }
     this.#broadcast(room, this.#bufferMsg(room));

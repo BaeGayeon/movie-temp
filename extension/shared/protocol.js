@@ -18,6 +18,8 @@ export const C2S = {
   TYPING: 'typing',
   REACTION: 'reaction',
   // 4단계: 방 옵션(비밀번호/인원 제한)은 방을 만들 때 create_room 에 싣고, 만든 뒤에는 방장이 set_room_options 로 바꾼다.
+  // 재생 속도(배속): 누가 바꾸든 방 전체가 같은 속도로 본다(방장 전용 방이면 방장만)
+  RATE: 'rate', // { rate, time, sentAt } — time 은 속도를 바꾼 순간의 영상 위치(기준점을 다시 잡는다)
   SET_ROOM_OPTIONS: 'set_room_options', // { password?: string | null, maxMembers?: number | null } — null 은 해제
 };
 
@@ -66,6 +68,11 @@ export const ERR = {
 export const VIDEO_ACTIONS = ['play', 'pause', 'seek'];
 // 서버 -> 클라이언트 video 메시지에만 쓰는 action: 방장의 실제 위치로 기준점을 갱신(부드러운 보정용)
 export const VIDEO_ACTION_SYNC = 'sync';
+// 서버 -> 클라이언트 video 메시지에만 쓰는 action: 재생 속도가 바뀜(rate 를 함께 보낸다)
+export const VIDEO_ACTION_RATE = 'rate';
+export const MIN_PLAYBACK_RATE = 0.25;
+export const MAX_PLAYBACK_RATE = 4;
+export const isPlaybackRate = (v) => typeof v === 'number' && Number.isFinite(v) && v >= MIN_PLAYBACK_RATE && v <= MAX_PLAYBACK_RATE;
 export const MAX_COUNTDOWN_SECONDS = 10;
 
 // 3단계: 프로필/채팅/리액션 제한
@@ -209,6 +216,9 @@ const validators = {
     VIDEO_ACTIONS.includes(m.action) && isTime(m.time) && isNum(m.sentAt)
       ? { type: m.type, action: m.action, time: m.time, sentAt: m.sentAt }
       : null,
+
+  [C2S.RATE]: (m) =>
+    isPlaybackRate(m.rate) && isTime(m.time) && isNum(m.sentAt) ? { type: m.type, rate: m.rate, time: m.time, sentAt: m.sentAt } : null,
 
   [C2S.SET_PERMISSION]: (m) => (MODES.includes(m.mode) ? { type: m.type, mode: m.mode } : null),
 
