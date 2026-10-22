@@ -39,8 +39,11 @@ const CSS = `
   .seg { display: flex; gap: 2px; padding: 2px; background: var(--bg); border-radius: 10px; }
   .seg button { flex: 1; background: transparent; color: var(--ink-soft); border-radius: 8px; padding: 4px 0; font-size: 12px; }
   .seg button.on { background: var(--surface-3); color: var(--ink); }
-  .seg.rates { flex-wrap: wrap; }
-  .seg.rates button { flex: 1 0 22%; }
+  .raterow { display: flex; align-items: center; gap: 8px; }
+  .raterow input[type=range] { flex: 1; min-width: 0; accent-color: var(--accent); }
+  .raterow .rateval { min-width: 44px; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .ratechip { background: var(--head-chip); color: var(--ink); font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
+  .ratechip[hidden] { display: none; }
   .menu .sec { font-size: 11px; font-weight: 700; color: var(--ink-soft); margin-top: 4px; }
   .menu .sec:first-child { margin-top: 0; }
   .menu .act { background: var(--surface-2); color: var(--ink); font-weight: 500; border-radius: 10px; padding: 6px 12px; text-align: left; }
@@ -296,7 +299,10 @@ async function copyText(text) {
 
 // getState(): 최신 background 상태. getInviteLink(): 현재 페이지 + ?wp=코드
 // getReactionArea(): 리액션이 퍼질 영역(영상의 화면상 사각형, 없으면 null). onSend(text) / onTyping(bool) / onReaction(emoji) / onNotify(text)
-const RATE_CHOICES = [0.5, 0.75, 1, 1.25, 1.5, 2, 3]; // 설정 메뉴의 배속 버튼
+const RATE_PRESETS = [0.75, 1, 1.25, 1.5, 2]; // 배속 조절의 빠른 선택 버튼
+const RATE_MIN = 0.5; // 슬라이더 범위
+const RATE_MAX = 3;
+const fmtRate = (r) => `${+Number(r).toFixed(2)}×`;
 
 export function createChat({ getState, getInviteLink, getReactionArea, onSend, onTyping, onReaction, onNotify, onSetRate }) {
   // 전체화면을 켜고 끌 때 레이어를 다른 부모로 옮기면 목록 스크롤이 맨 위로 돌아가므로, 옮기기 전에 위치를 기억했다가 되돌린다
@@ -320,7 +326,8 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
   let unread = 0;
 
   // DOM 참조
-  let wrap, panel, head, list, typingLine, input, counter, replyBar, replyText, bubbleBox, badge, floats, menu, opacity, clockCb, videoCb, eventsCb, modeSeg, pop, picker, styleSeg, themeSeg, rateSeg, panelReacts, reactToggle;
+  let wrap, panel, head, list, typingLine, input, counter, replyBar, replyText, bubbleBox, badge, floats, menu, opacity, clockCb, videoCb, eventsCb, modeSeg, pop, picker, styleSeg, themeSeg, rateChip, ratePop, panelReacts, reactToggle;
+  const rateControls = []; // 배속 조절 UI(설정 메뉴용, 헤더 팝오버용)
 
   try {
     chrome.storage.local.get('chatPrefs').then((r) => {
@@ -1054,10 +1061,15 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
       prefs.collapsed = true;
       closePicker();
       menu.hidden = true;
+      ratePop.hidden = true;
       applyPrefs();
       savePrefs();
     });
-    head.append(L(el('span', 'title'), 'textContent', 'chat.title'), settingsBtn, collapseBtn);
+    // 배속 칩: 방이 1배속이 아닐 때만 보인다. 누르면 배속 조절 팝오버가 열린다
+    rateChip = el('button', 'ratechip');
+    rateChip.hidden = true;
+    L(rateChip, 'title', 'chat.menu.speed');
+    head.append(L(el('span', 'title'), 'textContent', 'chat.title'), rateChip, settingsBtn, collapseBtn);
 
     // 설정 메뉴: 투명도, 시간 표시, 링크/코드 복사
     menu = el('div', 'menu');
@@ -1131,20 +1143,50 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
       modeSeg.append(b);
     }
     // 재생 속도: 방 전체에 적용된다(사이트의 배속 메뉴와 같은 효과). 사이트 메뉴의 표시는 바뀌지 않을 수 있다.
-    rateSeg = el('div', 'seg rates');
-    for (const r of RATE_CHOICES) {
-      const b = el('button', null, String(r));
-      b.dataset.rate = String(r);
-      b.addEventListener('click', () => {
-        onSetRate?.(r);
+    const rateControl = () => {
+      const box = el('div', 'ratebox');
+      box.style.cssText = 'display:flex;flex-direction:column;gap:6px';
+      const row = el('div', 'raterow');
+      const slider = el('input');
+      slider.type = 'range';
+      slider.min = String(RATE_MIN);
+      slider.max = String(RATE_MAX);
+      slider.step = '0.05';
+      const val = el('span', 'rateval');
+      row.append(slider, val);
+      // 끄는 동안은 값만 보여 주고, 손을 뗄 때 한 번만 방에 보낸다
+      slider.addEventListener('input', () => (val.textContent = fmtRate(slider.value)));
+      slider.addEventListener('change', () => {
+        onSetRate?.(Math.round(Number(slider.value) * 100) / 100);
         refreshRate();
       });
-      rateSeg.append(b);
-    }
+      const presets = el('div', 'seg');
+      for (const r of RATE_PRESETS) {
+        const b = el('button', null, fmtRate(r));
+        b.dataset.rate = String(r);
+        b.addEventListener('click', () => {
+          onSetRate?.(r);
+          refreshRate();
+        });
+        presets.append(b);
+      }
+      box.append(row, presets);
+      rateControls.push({ slider, val, presets });
+      return box;
+    };
+    ratePop = el('div', 'menu');
+    ratePop.hidden = true;
+    ratePop.append(L(el('div', 'sec'), 'textContent', 'chat.menu.speed'), rateControl());
+    rateChip.addEventListener('click', () => {
+      ratePop.hidden = !ratePop.hidden;
+      menu.hidden = true;
+      refreshRate();
+    });
     const sec = (key) => L(el('div', 'sec'), 'textContent', key);
-    menu.append(sec('chat.menu.speed'), rateSeg, sec('chat.menu.window'), modeSeg, opLabel, sec('chat.menu.view'), styleSeg, sec('chat.menu.color'), themeSeg, sec('chat.menu.show'), clockLabel, videoLabel, eventsLabel, sec('chat.menu.invite'), copyLink, copyCode);
+    menu.append(sec('chat.menu.speed'), rateControl(), sec('chat.menu.window'), modeSeg, opLabel, sec('chat.menu.view'), styleSeg, sec('chat.menu.color'), themeSeg, sec('chat.menu.show'), clockLabel, videoLabel, eventsLabel, sec('chat.menu.invite'), copyLink, copyCode);
     settingsBtn.addEventListener('click', () => {
       menu.hidden = !menu.hidden;
+      ratePop.hidden = true;
       refreshRate();
     });
 
@@ -1254,7 +1296,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
       return h;
     });
     dragMove(head);
-    head.append(menu); // 메뉴는 헤더 기준으로 배치
+    head.append(menu, ratePop); // 메뉴는 헤더 기준으로 배치
     replyBar = el('div', 'replying');
     replyBar.hidden = true;
     replyText = el('span', 'rtext');
@@ -1291,11 +1333,13 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     wrap.addEventListener('pointerdown', (e) => {
       if (!pop.hidden && !e.composedPath().includes(pop) && e.target !== popAnchor) closePicker();
       if (!menu.hidden && !e.composedPath().includes(menu) && !e.composedPath().some((n) => n === settingsBtn)) menu.hidden = true;
+      if (!ratePop.hidden && !e.composedPath().includes(ratePop) && !e.composedPath().some((n) => n === rateChip)) ratePop.hidden = true;
     });
     window.addEventListener('pointerdown', (e) => {
       if (!e.composedPath().includes(mount.host)) {
         closePicker();
         menu.hidden = true;
+        ratePop.hidden = true;
       }
     });
     window.addEventListener('resize', () => built && applyPrefs());
@@ -1308,11 +1352,20 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
   }
 
 
-  // 지금 방의 배속에 해당하는 버튼을 눌린 상태로 표시
+  // 지금 방의 배속을 슬라이더/버튼/헤더 칩에 반영한다
   function refreshRate() {
-    if (!rateSeg) return;
-    const cur = Number(getState()?.video?.rate ?? 1);
-    for (const b of rateSeg.children) b.classList.toggle('on', Math.abs(Number(b.dataset.rate) - cur) < 0.001);
+    if (!rateChip) return;
+    const st = getState();
+    const cur = Number(st?.video?.rate ?? 1);
+    for (const c of rateControls) {
+      c.slider.value = String(Math.min(RATE_MAX, Math.max(RATE_MIN, cur)));
+      c.val.textContent = fmtRate(cur);
+      for (const b of c.presets.children) b.classList.toggle('on', Math.abs(Number(b.dataset.rate) - cur) < 0.001);
+    }
+    rateChip.textContent = `⚡ ${fmtRate(cur)}`;
+    const show = !!st?.roomCode && Math.abs(cur - 1) >= 0.001;
+    rateChip.hidden = !show;
+    if (!show) ratePop.hidden = true;
   }
 
   // 언어가 바뀌면 이미 그려진 문구를 다시 채운다
@@ -1354,6 +1407,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
       clearFsFit();
       closePicker();
       menu.hidden = true;
+      ratePop.hidden = true;
       mount.remove();
       stopTyping();
       for (const p of pendingSends) { clearTimeout(p.timer); clearTimeout(p.slowTimer); }

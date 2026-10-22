@@ -583,6 +583,7 @@
       state.video = { ...state.video, time: pos(), updatedAt: serverNow(), rate: r };
     }
     log('배속 변경 전송', r);
+    chat?.refreshRate();
     send({ cmd: CMD.RATE_EVENT, rate: r, time: pos(), sentAt: Date.now() });
   };
 
@@ -764,6 +765,7 @@
 
   // ---------- background 메시지 ----------
   chrome.runtime.onMessage.addListener((m, _sender, sendResponse) => {
+    if (m.state) queueMicrotask(() => chat?.refreshRate()); // 방 상태가 바뀌면 헤더의 배속 칩/조절 UI 도 맞춘다
     switch (m.cmd) {
       case CMD.HAS_VIDEO:
         if (video) sendResponse(true); // 영상이 없는 프레임은 응답하지 않는다(응답한 프레임이 있으면 그걸 쓴다)
