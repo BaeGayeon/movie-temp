@@ -57,7 +57,7 @@
         onSetRate: (r) => {
           if (!video || !active()) return;
           video.playbackRate = r;
-          onRateChange();
+          onRateChange('ui');
         },
         onSend: (text, replyTo) => (noteDropped(), send({ cmd: CMD.CHAT_SEND, text, videoTime: currentVideoTime(), replyTo, ad: inAdNow() })),
         getInviteLink: () => {
@@ -561,12 +561,30 @@
   }
 
   // 사용자가 영상의 배속을 바꿨다: 방 전체의 배속으로 보낸다(우리가 설정한 값이면 무시). 광고 중에는 보내지 않는다.
+  // 배속이 바뀌었을 때 그게 사용자가 한 것인지 사이트가 한 것인지 가려야 한다. 넷플릭스처럼 이동/광고/재생 전환 때 사이트가 스스로 배속을 1로 되돌리는 곳이 있고,
+  // 그걸 사용자의 변경으로 보내면 방 전체가 1배속이 된다. 사용자의 변경은 "방금 클릭/키 입력이 있었고, 영상이 이동/교체/재생 전환 중이 아닐 때"만 인정한다.
+  let lastInputAt = 0;
+  let lastDisruptAt = 0;
+  for (const t of ['pointerdown', 'keydown']) window.addEventListener(t, () => (lastInputAt = Date.now()), true);
+  const noteDisrupt = () => (lastDisruptAt = Date.now());
+  const DISRUPT_EVENTS = ['seeking', 'seeked', 'loadedmetadata', 'emptied', 'durationchange', 'play', 'pause'];
+  const USER_INPUT_MS = 1500;
   let lastRateBlockedToast = 0;
-  const onRateChange = () => {
+  // from === 'ui' 이면 우리 화면(슬라이더/버튼)에서 고른 것이라 사용자 입력으로 본다
+  const onRateChange = (from) => {
     if (!video || video.playbackRate === ourRate) return;
     const r = video.playbackRate;
     if (r === roomRate()) return;
     if (inAd || normalizing || !active()) return log('배속 변경 무시', r, { inAd, normalizing, active: active() });
+    if (from !== 'ui') {
+      const now = Date.now();
+      const byUser = now - lastInputAt < USER_INPUT_MS && now - lastDisruptAt > USER_INPUT_MS;
+      if (!byUser) {
+        log('사이트가 배속을 바꿈: 방 배속으로 되돌림', r, '->', roomRate(), { input: now - lastInputAt, disrupt: now - lastDisruptAt });
+        setRate(1);
+        return;
+      }
+    }
     if (!(r >= MIN_PLAYBACK_RATE && r <= MAX_PLAYBACK_RATE)) return log('배속 변경 무시: 범위 밖', r);
     if (!canControl()) {
       if (Date.now() - lastRateBlockedToast > 2000 && isTop) {
@@ -586,6 +604,8 @@
     chat?.refreshRate();
     send({ cmd: CMD.RATE_EVENT, rate: r, time: pos(), sentAt: Date.now() });
   };
+
+  const onRateEvent = () => onRateChange(); // 이벤트 객체가 from 으로 들어가지 않게 감싼다(떼어낼 수 있게 이름을 둔다)
 
   // 사이트에 따라 ratechange 가 오지 않거나 늦을 수 있어, 우리가 건드리지 않은 배속 변화를 0.5초마다 한 번 더 살핀다
   let seenRate = null;
@@ -714,7 +734,8 @@
     v.addEventListener('pause', onPause);
     v.addEventListener('seeked', onSeeked);
     v.addEventListener('seeking', onSeeking);
-    v.addEventListener('ratechange', onRateChange);
+    v.addEventListener('ratechange', onRateEvent);
+    for (const t of DISRUPT_EVENTS) v.addEventListener(t, noteDisrupt);
     v.addEventListener('waiting', onWaiting);
     for (const t of ['playing', 'canplay']) v.addEventListener(t, onReady);
     for (const t of AD_EVENTS) v.addEventListener(t, evalAd);
@@ -728,7 +749,8 @@
     video.removeEventListener('pause', onPause);
     video.removeEventListener('seeked', onSeeked);
     video.removeEventListener('seeking', onSeeking);
-    video.removeEventListener('ratechange', onRateChange);
+    video.removeEventListener('ratechange', onRateEvent);
+    for (const t of DISRUPT_EVENTS) video.removeEventListener(t, noteDisrupt);
     video.removeEventListener('waiting', onWaiting);
     for (const t of ['playing', 'canplay']) video.removeEventListener(t, onReady);
     for (const t of AD_EVENTS) video.removeEventListener(t, evalAd);
