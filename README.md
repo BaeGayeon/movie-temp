@@ -20,7 +20,19 @@
 
 **구성**: `extension/`(크롬 확장, MV3), `server/`(WebSocket 방 서버, Node.js). 서버는 방과 재생 상태만 중계한다. 확장과 서버는 같이 배포한다.
 
-## 서버 실행
+## 문서
+
+- [SPEC.md](SPEC.md): 요구사항, 메시지 프로토콜, 단계별 완료 기준
+- [docs/design-notes.md](docs/design-notes.md): 설계 메모(동작 방식, 광고 구간, 프로토콜 추가 사항)
+- [docs/deploy.md](docs/deploy.md): 배포 방법(Render 서버, 스토어용 확장), [docs/deploy-checklist.md](docs/deploy-checklist.md): 배포 전/후 확인할 것
+- [docs/release.md](docs/release.md): 릴리스 절차, [CHANGELOG.md](CHANGELOG.md): 변경 기록
+- [docs/store-listing.md](docs/store-listing.md): 스토어 등록 문구
+
+## 로컬에서 개발하기
+
+개발하고 테스트할 때 쓰는 방법이다(서버를 직접 돌리는 건 로컬 개발용이고, 실제 배포는 [docs/deploy.md](docs/deploy.md)).
+
+### 서버 실행
 
 ```bash
 cd server
@@ -32,21 +44,13 @@ npm test           # WebSocket 클라이언트로 방 생성/참가/중계 등�
 서버 주소는 `extension/config.js`의 `SERVER_URL`(개발용 `ws://localhost:8080`).
 서버가 `GET /privacy` 로 개인정보처리방침 페이지(`server/public/privacy.html`)도 제공한다.
 
-## 문서
-
-- [SPEC.md](SPEC.md): 요구사항, 메시지 프로토콜, 단계별 완료 기준
-- [docs/design-notes.md](docs/design-notes.md): 설계 메모(동작 방식, 광고 구간, 프로토콜 추가 사항)
-- [docs/deploy.md](docs/deploy.md): 배포 방법(Render 서버, 스토어용 확장), [docs/deploy-checklist.md](docs/deploy-checklist.md): 배포 전/후 확인할 것
-- [docs/release.md](docs/release.md): 릴리스 절차, [CHANGELOG.md](CHANGELOG.md): 변경 기록
-- [docs/store-listing.md](docs/store-listing.md): 스토어 등록 문구
-
-## 크롬에 확장 프로그램 로드
+### 크롬에 확장 프로그램 로드
 
 1. `chrome://extensions` → 우상단 **개발자 모드** 켜기
 2. **압축해제된 확장 프로그램을 로드합니다** → `extension/` 폴더 선택
 3. `file://` 로 로컬 mp4를 직접 열어 테스트하려면 확장 프로그램 상세에서 **파일 URL에 대한 액세스 허용**을 켠다.
 
-## 크롬 프로필 두 개로 테스트
+### 크롬 프로필 두 개로 테스트
 
 1. 서버 실행 후, 크롬 프로필 A·B 각각에서 위 방법으로 확장 프로그램을 로드한다.
 2. 프로필 A: `<video>`가 있는 페이지(예: mp4 URL을 직접 열기)에서 확장 아이콘 → **방 만들기**.

@@ -7,7 +7,13 @@
 - 앱 이름은 `extension/config.js`의 `APP_NAME`과 `manifest.json`의 `name`으로만 관리한다.
 - `server/src/protocol.js`와 `extension/shared/protocol.js`는 동일해야 한다(서버 테스트가 비교). 수정 시 같이 수정.
 - 단계가 끝나면 아래 "현재 진행 단계"를 갱신한다.
-- 문서 구성: `README.md`(소개/실행), `SPEC.md`(요구사항·프로토콜), `docs/design-notes.md`(설계 메모), `docs/deploy.md`·`docs/deploy-checklist.md`(배포), `docs/release.md`·`CHANGELOG.md`(릴리스), `docs/store-listing.md`(스토어 문구). 지원 사이트 표기는 **확인한 곳(쿠팡플레이·넷플릭스·웨이브)** 만 쓴다(티빙은 확인 전).
+- 문서 구성: `README.md`(소개, 로컬 개발 방법), `SPEC.md`(요구사항·프로토콜), `docs/design-notes.md`(설계 메모), `docs/deploy.md`·`docs/deploy-checklist.md`(배포), `docs/release.md`·`CHANGELOG.md`(릴리스), `docs/store-listing.md`(스토어 문구). 지원 사이트 표기는 **확인한 곳(쿠팡플레이·넷플릭스·웨이브)** 만 쓴다(티빙은 확인 전).
+
+## 로컬 개발 (개발할 때만)
+
+- 서버: `cd server && npm install && npm start`(기본 포트 8080, `GET /health`), 테스트는 `npm test`. 서버를 직접 돌리는 건 로컬 개발용이고 실제 배포는 Render(`docs/deploy.md`).
+- 확장: `chrome://extensions` 에서 개발자 모드를 켜고 `extension/` 폴더를 압축해제로 로드. 개발용은 `SERVER_URL` 이 `ws://localhost:8080`(`extension/config.js`).
+- 두 크롬 프로필(또는 두 창)에 로드해서 방을 만들고 참가해 본다. 자세한 방법은 `README.md`.
 
 ## 현재 진행 단계
 
