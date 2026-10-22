@@ -251,8 +251,8 @@ function nameOf(id) {
 function mirrorVideo(action, time, at, rate) {
   room.video = {
     rate: action === 'rate' ? rate : room.video.rate ?? 1,
-    // seek 은 재생 여부 유지, sync(서버가 방장 위치로 기준점 갱신)는 재생 중일 때만 온다
-    playing: action === 'seek' ? room.video.playing : action === 'play' || action === 'sync',
+    // seek/rate 는 재생 여부 유지, sync(서버가 방장 위치로 기준점 갱신)는 재생 중일 때만 온다
+    playing: action === 'seek' || action === 'rate' ? room.video.playing : action === 'play' || action === 'sync',
     time,
     updatedAt: at,
   };

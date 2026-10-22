@@ -439,7 +439,8 @@
   //  - 1.5초 초과: 시크
   // 방장은 기준점 자체이므로 보정하지 않는다.
   function correctDrift() {
-    if (!video || !active() || inAd || normalizing || remeasuring || video.paused || state.hostId === state.userId) return setRate(1);
+    if (!video || !active()) return; // 방에 없으면 사용자의 배속을 건드리지 않는다
+    if (inAd || normalizing || remeasuring || video.paused || state.hostId === state.userId) return setRate(1);
     const v = state.video;
     const now = serverNow();
     if (!v.playing || v.updatedAt > now) return setRate(1);
@@ -547,6 +548,7 @@
       playing: action === 'seek' ? state.video.playing : action === 'play',
       time: pos(),
       updatedAt: serverNow(),
+      rate: roomRate(),
     };
     send({ cmd: CMD.VIDEO_EVENT, action, time: pos(), sentAt: Date.now(), silent });
   }
