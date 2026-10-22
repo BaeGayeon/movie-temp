@@ -105,6 +105,7 @@ watchparty/                (이 저장소 루트)
 { type: "countdown_start", seconds }                 // 방장
 { type: "buffering", isBuffering }
 { type: "sync_report", time, playing, sentAt }
+{ type: "rate", rate, time, sentAt }                  // 배속 동기화(0.25~4). 방장 전용 방이면 방장만. 서버는 video{action:"rate", rate}로 전달
 
 // 3단계
 { type: "profile_update", profile: { name, avatar: { kind: "emoji", value, bg }, color } }
