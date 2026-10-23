@@ -28,7 +28,6 @@
         "*://*.coupangplay.com/*",
         "*://*.netflix.com/*",
         "*://*.wavve.com/*",
-        "*://*.tving.com/*",
         "http://localhost/*",
         "file:///*"
       ],
@@ -42,7 +41,6 @@
         "*://*.coupangplay.com/*",
         "*://*.netflix.com/*",
         "*://*.wavve.com/*",
-        "*://*.tving.com/*",
         "http://localhost/*",
         "file:///*"
       ],
@@ -74,7 +72,6 @@
         "*://*.coupangplay.com/*",
         "*://*.netflix.com/*",
         "*://*.wavve.com/*",
-        "*://*.tving.com/*",
         "http://localhost/*",
         "file:///*"
       ]

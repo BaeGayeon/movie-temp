@@ -277,7 +277,7 @@ watchparty/                (이 저장소 루트)
 63. 방에 막 들어와(10초 안) 방 위치로 3초 넘게 이동하면 "방 위치(1:03:26)로 맞췄어요"를 한 번 띄운다. 방을 만든 사람은 띄우지 않는다.
 64. 광고 안내("광고 시청 중이에요…")는 방에 있을 때만 띄운다. 넷플릭스는 영상 길이가 광고에서도 본편 길이 그대로라 화면의 광고 표시로만 광고를 판단한다(짧은 미리보기/예고편은 광고가 아님). 다른 사이트의 "90초 미만은 광고" 판단은 그대로.
 65. 배포(서버): 저장소 루트 `render.yaml`(Render Blueprint, `rootDir: server`, `/health`). 서버는 `GET /privacy` 로 개인정보처리방침(`server/public/privacy.html`)을 제공한다(스토어 등록 URL 용).
-66. 사이트 범위: manifest 의 `content_scripts[0].matches` 와 `web_accessible_resources.matches` 를 지원 사이트(쿠팡플레이, 넷플릭스, 웨이브, 티빙)로 줄였다. 개발/테스트용 `http://localhost/*`, `file:///*` 도 넣어 두되 스토어 빌드에서 뺀다.
+66. 사이트 범위: manifest 의 `content_scripts[0].matches` 와 `web_accessible_resources.matches` 를 지원 사이트(쿠팡플레이, 넷플릭스, 웨이브)로 줄였다. 개발/테스트용 `http://localhost/*`, `file:///*` 도 넣어 두되 스토어 빌드에서 뺀다.
 67. 스토어 빌드: `node tools/build-store.mjs --server wss://...` 가 `dist/store` 와 zip 을 만든다(SERVER_URL 교체 + 개발용 주소 제거). 앱 이름은 그대로 `config.js`/manifest `name` 에서만 관리한다.
 68. 영상이 없거나 지원하지 않는 사이트의 팝업/오류 문구에 지원 사이트 이름을 알려 준다.
 69. 스토어 문구(요약, 상세 설명, 단일 목적, 권한 사유, 데이터 사용 공개): `docs/store-listing.md`.

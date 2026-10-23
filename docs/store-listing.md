@@ -50,7 +50,7 @@
 | `storage` | 내 프로필(닉네임, 이모지/사진, 색), 채팅창과 팝업 설정, 방 다시 들어올 때의 최근 채팅을 기기에만 저장한다. |
 | `alarms` | 서비스 워커가 잠들어도 방 연결을 유지하고 다시 접속하기 위한 주기적인 확인에 쓴다. |
 | `activeTab` | 팝업을 연 탭에서 영상이 있는지 확인하고, 그 탭을 방에 연결한다. |
-| 사이트 접근 (`coupangplay.com`, `netflix.com`, `wavve.com`, `tving.com`) | 해당 사이트의 `<video>` 재생 상태를 읽고 재생·정지·이동을 적용하며, 영상 위에 채팅 창을 표시한다. |
+| 사이트 접근 (`coupangplay.com`, `netflix.com`, `wavve.com`) | 해당 사이트의 `<video>` 재생 상태를 읽고 재생·정지·이동을 적용하며, 영상 위에 채팅 창을 표시한다. |
 | 원격 코드 | 사용하지 않는다. 모든 코드는 확장 프로그램 안에 포함되어 있다. |
 
 ## 데이터 사용 공개 (Privacy practices)
@@ -119,7 +119,7 @@ Sync the playback state of videos (streaming services) that each person plays on
 | `storage` | Stores your profile (nickname, emoji/photo, color), chat window and popup settings, your language setting, and recent chat for when you rejoin a room, only on your device. |
 | `alarms` | Periodic checks used to keep the room connection alive and reconnect even when the service worker sleeps. |
 | `activeTab` | Checks whether the tab where you opened the popup has a video, and ties that tab to the room. |
-| Site access (`coupangplay.com`, `netflix.com`, `wavve.com`, `tving.com`) | Reads the `<video>` playback state on those sites, applies play, pause and seek, and shows the chat window over the video. |
+| Site access (`coupangplay.com`, `netflix.com`, `wavve.com`) | Reads the `<video>` playback state on those sites, applies play, pause and seek, and shows the chat window over the video. |
 | Remote code | Not used. All code is included in the extension. |
 
 ## Privacy practices
