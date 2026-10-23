@@ -26,7 +26,7 @@ export const MSG = {
     'popup.codePlaceholder': '방 코드 6자리',
     'popup.join': '참가',
     'popup.joinPwPlaceholder': '비밀번호',
-    'popup.noVideo': '이 페이지에서는 영상을 찾지 못했어요. 쿠팡플레이·넷플릭스·웨이브·티빙의 영상 페이지에서 시도해 주세요.',
+    'popup.noVideo': '이 페이지에서는 영상을 찾지 못했어요. 쿠팡플레이·넷플릭스·웨이브의 영상 페이지에서 시도해 주세요.',
 
     // 다른 탭에서 방에 있을 때
     'popup.otherTab': '다른 탭',
@@ -186,7 +186,7 @@ export const MSG = {
     'popup.codePlaceholder': 'Room code',
     'popup.join': 'Join',
     'popup.joinPwPlaceholder': 'Password',
-    'popup.noVideo': "Couldn't find a video on this page. Try a video page on Coupang Play, Netflix, Wavve or TVING.",
+    'popup.noVideo': "Couldn't find a video on this page. Try a video page on Coupang Play, Netflix or Wavve.",
 
     // In a room from another tab
     'popup.otherTab': 'another tab',
