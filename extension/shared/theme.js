@@ -3,15 +3,20 @@
 //  - 페이지 안 UI(채팅, 토스트 등 shadow DOM :host): 영상에서 시선을 뺏지 않도록 같은 다크를 더 차분하게(채도·대비·장식을 줄임)
 
 const POPUP = {
-  // 차콜 바탕 + 하늘색 포인트(채팅의 무채색과 같이 켜 둬도 튀지 않게)
-  bg: '#15171a', surface: '#1e2124', 'surface-2': '#272b30', 'surface-3': '#32373d',
-  border: '#2a2e33', 'border-2': '#363b42', 'border-3': '#474e57',
-  accent: '#4f9dff', 'accent-light': '#78b4ff', 'accent-dark': '#2a6fcc', 'accent-ink': '#8ec1ff', 'on-accent': '#ffffff',
-  ink: '#e6e9ed', 'ink-soft': '#9199a3', placeholder: '#6e7782',
-  'head-1': '#2d3844', 'head-2': '#1f252b', 'head-ink': '#eaf2ff', 'head-shadow': 'none', 'head-chip': 'rgba(255,255,255,.12)',
-  'warn-bg': '#363018', 'warn-ink': '#ffd97a', 'warn-border': '#6b5a1f', yellow: '#ffd36a',
-  pink: '#ff7d9d', danger: '#ff6b81',
-  shadow: '0 6px 18px rgba(0,0,0,.4)', 'shadow-lg': '0 10px 30px rgba(0,0,0,.55)', 'btn-shadow': 'rgba(79,157,255,.2)',
+  // 차콜 바탕 + 하늘색 포인트. 하늘색(sky)은 주요 버튼, 선택된 탭·세그먼트, 방 코드 글자에만 쓴다.
+  bg: '#12161B', head: '#1B232C',
+  surface: '#1A2027', 'surface-2': '#222A33', 'surface-3': '#2B3540', input: '#151A20',
+  border: '#27313B', 'border-2': '#313C47',
+  ink: '#E7EEF5', 'ink-soft': '#9AABBB', 'ink-mute': '#6E7F90', 'ink-chip': '#C9D6E2',
+  sky: '#B9DEFA', 'sky-edge': '#7FB3DB', 'on-sky': '#12304A', 'code-edge': '#3D5A75',
+  'ok-bg': '#17301F', 'ok-ink': '#8FD9AE', 'ok-dot': '#4CC27E', 'ok-border': '#24452F',
+  'err-ink': '#F08A95', 'err-border': '#D9606C', 'err-ring': 'rgba(217,96,108,.16)', 'err-chip-bg': '#3A1D22', 'err-chip-ink': '#F5A3AC',
+  'host-bg': '#262D45', 'host-ink': '#C9D3FF',
+  'focus-ring': '0 0 0 3px rgba(185,222,250,.14)', 'focus-btn': '0 0 0 2px #1A2027, 0 0 0 4px #E7EEF5',
+  shadow: '0 6px 18px rgba(0,0,0,.4)', 'shadow-lg': '0 10px 30px rgba(0,0,0,.55)',
+
+  // 이모지 선택기(shared/emoji-picker.js)가 채팅과 같이 쓰는 이름. 채팅(CALM)에는 같은 이름이 따로 있다
+  'border-3': 'var(--border-2)', placeholder: 'var(--ink-mute)', 'btn-shadow': 'rgba(0,0,0,.25)',
 };
 
 // 채팅/영상 위 안내: 장식 없이 차분하게. 테두리는 배경에 가깝게, 강조색은 채도를 낮춰서 쓴다.
@@ -25,7 +30,10 @@ const CALM = {
   'warn-bg': '#2a2b2d', 'warn-ink': '#d2d3d5', 'warn-border': '#444548', yellow: '#d2d3d5',
   pink: '#b85c68', danger: '#d46a76',
   shadow: '0 4px 14px rgba(0,0,0,.35)', 'shadow-lg': '0 10px 28px rgba(0,0,0,.5)', 'btn-shadow': 'rgba(0,0,0,.25)',
-  'bubble-me': '#3a3b3e', // 내 말풍선
+  'bubble-me': '#333438', // 내 말풍선
+  // 리디자인에서 쓰는 몇 가지(나머지는 위 값 그대로)
+  'panel-border': '#2C2D30', 'float-border': '#36373A', // 채팅 패널 / 토스트·배너 테두리
+  'err-ink': '#E0868F', 'ok-ink': '#A8D5B9', badge: '#C2525E', // 오류·성공 아이콘, 접힌 채팅 배지
 };
 
 // 채팅 색 "검정": 차콜(CALM) 위에 배경·테두리만 더 어둡게 덮어쓴다. 글자색·포인트는 그대로.
