@@ -8,6 +8,7 @@ import { renderAvatar } from '../shared/avatar.js';
 import { SHADOW_THEME_CSS, BLACK_THEME_CSS, pastelize } from '../shared/theme.js';
 import { createEmojiPicker, EMOJI_PICKER_CSS } from '../shared/emoji-picker.js';
 import { t, getLang, onLangChange } from '../shared/i18n.js';
+import { icon } from '../shared/icons.js';
 
 const CSS = `
   :host { all: initial; }
@@ -16,38 +17,49 @@ const CSS = `
   * { box-sizing: border-box; }
   .root { position: fixed; inset: 0; pointer-events: none; font: 14px/1.45 var(--font); color: var(--ink); }
   button { font: inherit; cursor: pointer; border: 0; color: inherit; }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .ico { display: inline-block; flex: none; vertical-align: middle; }
 
   /* ---- 패널: 장식 없이 차분하게 ---- */
   .panel { position: absolute; pointer-events: auto; display: flex; flex-direction: column;
-    background: var(--bg); border: 1px solid var(--border-2); border-radius: 16px; box-shadow: var(--shadow-lg); overflow: hidden; }
+    background: var(--bg); border: 1px solid var(--panel-border); border-radius: 18px; box-shadow: var(--shadow-lg); overflow: hidden; }
   .panel.dock { border-radius: 0; border-width: 0; box-shadow: none; }
   .panel.side { border-width: 0 0 0 1px; }
   .panel[hidden], .dock-bubble[hidden] { display: none; }
-  .head { position: relative; display: flex; align-items: center; gap: 4px; padding: 6px 8px 6px 12px; user-select: none; color: var(--head-ink);
+  .head { position: relative; display: flex; align-items: center; gap: 6px; padding: 8px 8px 8px 12px; user-select: none; color: var(--head-ink);
     background: var(--surface); border-bottom: 1px solid var(--border); }
   .panel.free .head { cursor: move; }
-  .head .title { font-weight: 700; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .iconbtn { display: inline-flex; align-items: center; background: transparent; font-size: 15px; padding: 2px 6px; border-radius: 8px; color: var(--ink-soft); }
+  .head .hicon { color: var(--ink-soft); }
+  .head .title { font-size: 13px; font-weight: 700; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .iconbtn { flex: none; width: 28px; height: 28px; display: grid; place-items: center; background: transparent; padding: 0; border-radius: 8px; color: var(--ink-soft); }
   .iconbtn:hover { background: var(--head-chip); color: var(--ink); }
 
-  .menu { position: absolute; top: calc(100% + 6px); left: 8px; right: 8px; margin-left: auto; max-width: 240px; max-height: calc(100vh - 80px); overflow-y: auto; z-index: 5; background: var(--surface); color: var(--ink); border: 1px solid var(--border-3);
+  .menu { position: absolute; top: calc(100% + 6px); left: 8px; right: 8px; margin-left: auto; width: 248px; max-width: calc(100% - 16px); max-height: calc(100vh - 80px); overflow-y: auto; z-index: 5; background: var(--surface); color: var(--ink); border: 1px solid var(--border-3);
     border-radius: 14px; padding: 10px; box-shadow: var(--shadow-lg); display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
   .menu[hidden] { display: none; }
   .menu label { display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 500; }
-  .menu input[type=range], .menu input[type=checkbox] { accent-color: var(--accent); }
   .menu input[type=range] { flex: 1; min-width: 0; width: 100%; } /* 메뉴가 좁아도 칸 안에서 줄어들게 */
+  /* 슬라이더: 하늘색 없이 중립색. 채워진 부분(--p)은 chat.js 가 값에 맞춘다 */
+  input[type=range] { -webkit-appearance: none; appearance: none; height: 16px; margin: 0; padding: 0; background: transparent; --p: 0%; }
+  input[type=range]::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: linear-gradient(to right, var(--ink-soft) var(--p), var(--surface-3) var(--p)); }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; margin-top: -5px; border: 0; border-radius: 50%; background: var(--ink); }
+  /* 체크박스: 켜짐 = 밝은 바탕 + 검정 체크 */
+  .menu input[type=checkbox] { -webkit-appearance: none; appearance: none; flex: none; width: 16px; height: 16px; margin: 0; border-radius: 5px; border: 1.5px solid var(--border-3); background: var(--bg); position: relative; cursor: pointer; }
+  .menu input[type=checkbox]:checked { background: var(--ink); border-color: var(--ink); }
+  .menu input[type=checkbox]:checked::after { content: ''; position: absolute; left: 4px; top: 1px; width: 4px; height: 8px; border: solid var(--bg); border-width: 0 2px 2px 0; transform: rotate(45deg); }
   .seg { display: flex; gap: 2px; padding: 2px; background: var(--bg); border-radius: 10px; }
   .seg button { flex: 1; background: transparent; color: var(--ink-soft); border-radius: 8px; padding: 4px 0; font-size: 12px; }
   .seg button.on { background: var(--surface-3); color: var(--ink); }
   .raterow { display: flex; align-items: center; gap: 8px; }
-  .raterow input[type=range] { flex: 1; min-width: 0; accent-color: var(--accent); }
+  .raterow input[type=range] { flex: 1; min-width: 0; }
   .raterow .rateval { min-width: 44px; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
-  .ratechip { background: var(--head-chip); color: var(--ink); font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
+  .ratechip { display: inline-flex; align-items: center; gap: 3px; background: var(--head-chip); color: var(--ink); font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 8px; white-space: nowrap; }
   .ratechip[hidden] { display: none; }
   .menu .sec { font-size: 11px; font-weight: 700; color: var(--ink-soft); margin-top: 4px; }
   .menu .sec:first-child { margin-top: 0; }
-  .menu .act { background: var(--surface-2); color: var(--ink); font-weight: 500; border-radius: 10px; padding: 6px 12px; text-align: left; }
+  .menu .act { display: flex; align-items: center; justify-content: center; gap: 6px; background: var(--surface-2); color: var(--ink); font-weight: 600; border-radius: 10px; padding: 7px 12px; }
   .menu .act:hover { background: var(--surface-3); }
+  .menu .invite { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 
   /* ---- 메시지: 말풍선은 무난하게, 닉네임은 글자색으로 ---- */
   .list, .ep-grid { scrollbar-width: thin; scrollbar-color: var(--surface-3) transparent; } /* 스크롤바가 하얗게 튀지 않게 */
@@ -61,8 +73,9 @@ const CSS = `
   .msg.me .name { flex-direction: row-reverse; }
   .name-text { font-weight: 700; white-space: nowrap; } /* 색은 사용자가 고른 색(파스텔로 보정) */
   .meta { font-weight: 400; color: var(--ink-soft); font-size: .92em; white-space: nowrap; }
-  .text { word-break: break-word; overflow-wrap: anywhere; white-space: pre-wrap; background: var(--surface-2); border-radius: 4px 12px 12px 12px; padding: 6px 11px; }
-  .msg.me .text { background: var(--bubble-me); border-radius: 12px 4px 12px 12px; }
+  .text { word-break: break-word; overflow-wrap: anywhere; white-space: pre-wrap; background: var(--surface-2); border-radius: 4px 14px 14px 14px; padding: 7px 12px; }
+  .msg.me .text { background: var(--bubble-me); border-radius: 14px 4px 14px 14px; }
+  .msg:hover { background: rgba(255,255,255,.03); box-shadow: 0 0 0 4px rgba(255,255,255,.03); border-radius: 12px; } /* 마우스를 올린 줄(레이아웃은 그대로) */
   /* 줄글/간단 모드: 말풍선 없이 왼쪽 정렬. 줄글 = 프사 | 이름·시각 / 내용, 간단 = 이름·시각 / 내용(프사 없음) */
   .list.plain .msg { margin-bottom: 6px; } /* 안내 문구와의 간격은 말풍선 모드와 같게(.list 의 gap) */
   .list.compact .msg { margin-bottom: 2px; }
@@ -73,12 +86,14 @@ const CSS = `
   .list.plain .text, .list.plain .msg.me .text, .list.compact .text, .list.compact .msg.me .text { background: none; padding: 0; border-radius: 0; }
   .sys { align-self: center; text-align: center; color: var(--ink-soft); font-size: .857em; padding: 0 8px; max-width: 100%; } /* 안내 문구: 어느 모드에서나 가운데, 말풍선 없이 글만 */
   .sys .ev-name { font-weight: 600; }
-  .sys .evi { display: inline-block; width: 1em; height: 1em; vertical-align: -.12em; margin-right: .3em; fill: currentColor; }
+  .sys .evi, .sys .ico { display: inline-block; width: 13px; height: 13px; vertical-align: -.15em; margin-right: .3em; }
+  .sys .evi { fill: currentColor; }
   .no-events .sys { display: none; }
   .listwrap { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
   .newmsg { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); z-index: 2; max-width: calc(100% - 20px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    padding: 5px 14px; border-radius: 999px; background: var(--accent); color: var(--on-accent); font-size: 12px; font-weight: 600; box-shadow: 0 2px 8px rgba(0,0,0,.4); }
-  .newmsg:hover { background: var(--accent-light); }
+    display: flex; align-items: center; gap: 5px; padding: 5px 12px; border-radius: 999px; background: #E4E5E7; color: #17181A; font-size: 12px; font-weight: 700; box-shadow: 0 2px 8px rgba(0,0,0,.4); }
+  .newmsg:hover { background: #F2F2F3; }
+  .newmsg .nt { overflow: hidden; text-overflow: ellipsis; }
   .newmsg[hidden] { display: none; }
   .empty { color: var(--ink-soft); text-align: center; padding: 18px 0; font-size: 13px; }
   /* 보내는 중/못 보낸 내 채팅: 서버가 받아 돌려주기 전에는 흐리게, 못 보냈으면 이유와 함께 */
@@ -86,7 +101,7 @@ const CSS = `
   .sendstat { font-size: .857em; color: var(--ink-soft); display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; margin-top: 2px; }
   .msg.me .sendstat { justify-content: flex-end; }
   .sendstat:empty { display: none; }
-  .sendstat.fail { color: #e5484d; }
+  .sendstat.fail { color: var(--err-ink); }
   .sendstat.fail.restart { color: var(--ink-soft); }
   .sendstat .link { background: none; padding: 0; color: var(--ink); text-decoration: underline; font-size: 1em; }
   .sendstat .link:hover { color: var(--accent-ink, var(--ink)); }
@@ -100,48 +115,50 @@ const CSS = `
   .reacts .tail[hidden] { display: none; }
   .reacts .grp[hidden] { display: none; }
   .reacts button { background: transparent; font-size: 17px; border-radius: 8px; padding: 2px 4px; transition: transform .08s; }
+  .reacts button.plus { display: grid; place-items: center; width: 24px; height: 24px; padding: 0; color: var(--ink-soft); }
+  .reacts button.plus:hover { transform: none; color: var(--ink); }
   .reacts button:hover { background: var(--surface-2); transform: scale(1.15); }
   ::selection { background: var(--accent); color: var(--on-accent); } /* 사이트 기본 선택색이 안 보이는 경우가 있어 직접 지정 */
   .form { display: flex; gap: 6px; padding: 6px 8px 10px; align-items: flex-end; }
-  .rtoggle { flex: none; width: 34px; height: 34px; padding: 0; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: transparent; font-size: 16px; line-height: 1; opacity: .55; } /* 한 줄일 때의 입력칸 높이(34px)와 같게 */
+  .rtoggle { flex: none; width: 36px; height: 36px; padding: 0; display: flex; align-items: center; justify-content: center; border-radius: 12px; background: transparent; color: var(--ink-soft); opacity: .8; } /* 한 줄일 때의 입력칸 높이(36px)와 같게 */
   .rtoggle:hover { background: var(--surface-2); opacity: 1; }
-  .rtoggle.on { opacity: 1; background: var(--surface-2); }
+  .rtoggle.on { opacity: 1; background: var(--surface-2); color: var(--ink); }
   .reacts[hidden] { display: none; }
   .compose { flex: 1; min-width: 0; position: relative; display: flex; }
-  .form textarea { flex: 1; box-sizing: border-box; min-width: 0; display: block; resize: none; overflow-y: auto; font: inherit; line-height: 1.4; height: calc(1.4em + 14px); max-height: calc(7em + 14px); color: var(--ink); background: var(--surface); border: 1px solid var(--border-2); border-radius: 14px; padding: 6px 12px; outline: none;
+  .form textarea { flex: 1; box-sizing: border-box; min-width: 0; display: block; resize: none; overflow-y: auto; font: inherit; line-height: 1.4; height: calc(1.4em + 16px); max-height: calc(7em + 16px); color: var(--ink); background: var(--surface); border: 1px solid var(--border-2); border-radius: 12px; padding: 7px 12px; outline: none;
     scrollbar-width: thin; scrollbar-color: var(--surface-3) transparent; }
   .form textarea::placeholder { color: var(--placeholder); }
-  .form textarea:focus { border-color: var(--border-3); }
+  .form textarea:focus { border-color: #5A5B60; }
   .counter { position: absolute; right: 10px; bottom: 3px; font-size: 11px; color: var(--ink-soft); background: var(--surface); padding: 0 4px; border-radius: 6px; pointer-events: none; }
   .counter[hidden] { display: none; }
-  .counter.warn { color: #e5484d; }
+  .counter.warn { color: var(--err-ink); }
   .fold { background: none; padding: 0; margin-left: 6px; color: var(--ink-soft); text-decoration: underline; font-size: .9em; }
   .fold:hover { color: var(--ink); }
   .text a { color: inherit; text-decoration: underline; }
   /* 답장 버튼: 레이아웃에서 빼서(absolute) 말풍선 아래쪽 모서리에 띄운다. 창이 좁아도 줄바꿈/여백이 생기지 않는다. 마우스를 올렸을 때만 보인다 */
   .bwrap { position: relative; max-width: 100%; min-width: 0; }
-  .rbtn { position: absolute; bottom: -9px; right: 4px; z-index: 1; width: 22px; height: 22px; padding: 0; display: flex; align-items: center; justify-content: center;
-    border-radius: 50%; background: var(--surface-3); color: var(--ink); font-size: 12px; line-height: 1; box-shadow: 0 1px 4px rgba(0,0,0,.35); opacity: 0; pointer-events: none; transition: opacity .1s; }
+  .rbtn { position: absolute; bottom: -10px; right: 4px; z-index: 1; width: 24px; height: 24px; padding: 0; display: flex; align-items: center; justify-content: center;
+    border-radius: 50%; background: #3A3B3F; color: var(--ink); box-shadow: 0 1px 4px rgba(0,0,0,.35); opacity: 0; pointer-events: none; transition: opacity .1s; }
   .msg:hover .rbtn, .rbtn:focus-visible { opacity: 1; pointer-events: auto; }
-  .rbtn:hover { background: var(--accent); color: var(--on-accent); }
+  .rbtn:hover { background: #4A4B50; }
   .msg.me .rbtn { right: auto; left: 4px; transform: scaleX(-1); } /* 오른쪽 정렬(내 말풍선)에서는 반대쪽 모서리, 화살표도 반대로 */
   .list.plain .msg.me .rbtn, .list.compact .msg.me .rbtn { right: 4px; left: auto; transform: none; }
   .list.plain .bwrap, .list.compact .bwrap { align-self: stretch; } /* 말풍선이 없는 모드는 글자 끝이 아니라 줄(칸) 오른쪽 끝에 띄운다 */
-  .quote { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; font-size: .857em; color: var(--ink-soft);
+  /* 인용: 앞에 ↩ 아이콘(내 말풍선은 글자 뒤에 좌우 반전), 2px 세로선 */
+  .quote { display: flex; align-items: center; gap: 4px; max-width: 100%; text-align: left; font-size: .857em; color: var(--ink-soft);
     background: transparent; border-left: 2px solid var(--border-3); padding: 0 0 0 6px; cursor: pointer; }
-  .quote::before { content: '↩ '; }
+  .quote .qt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .quote .ico { width: 12px; height: 12px; }
   .quote:hover { color: var(--ink); }
-  .msg.me .quote { text-align: right; border-left: 0; border-right: 2px solid var(--border-3); padding: 0 6px 0 0; } /* 오른쪽 정렬(내 말풍선)에서는 선과 화살표도 오른쪽 기준 */
-  .msg.me .quote::before { content: ''; }
-  .msg.me .quote::after { content: ' ↪'; }
-  .list.plain .msg.me .quote, .list.compact .msg.me .quote { text-align: left; border-right: 0; border-left: 2px solid var(--border-3); padding: 0 0 0 6px; } /* 줄글/간단은 모두 왼쪽 정렬 */
-  .list.plain .msg.me .quote::before, .list.compact .msg.me .quote::before { content: '↩ '; }
-  .list.plain .msg.me .quote::after, .list.compact .msg.me .quote::after { content: ''; }
+  .msg.me .quote { flex-direction: row-reverse; justify-content: flex-start; text-align: right; border-left: 0; border-right: 2px solid var(--border-3); padding: 0 6px 0 0; }
+  .msg.me .quote .ico { transform: scaleX(-1); }
+  .list.plain .msg.me .quote, .list.compact .msg.me .quote { flex-direction: row; text-align: left; border-right: 0; border-left: 2px solid var(--border-3); padding: 0 0 0 6px; } /* 줄글/간단은 모두 왼쪽 정렬 */
+  .list.plain .msg.me .quote .ico, .list.compact .msg.me .quote .ico { transform: none; }
   .quote.gone { cursor: default; font-style: italic; }
-  .replying { display: flex; align-items: center; gap: 6px; margin: 0 8px; padding: 4px 8px; font-size: 12px; color: var(--ink-soft); background: var(--surface-2); border-radius: 10px; }
+  .replying { display: flex; align-items: center; gap: 6px; margin: 0 8px; padding: 5px 6px 5px 10px; font-size: 12px; color: var(--ink-soft); background: #222326; border-radius: 10px; }
   .replying[hidden] { display: none; }
   .replying .rtext { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .replying button { background: transparent; color: var(--ink-soft); padding: 0 4px; border-radius: 6px; }
+  .replying button { display: grid; place-items: center; width: 22px; height: 22px; background: transparent; color: var(--ink-soft); padding: 0; border-radius: 6px; }
   .replying button:hover { color: var(--ink); background: var(--surface-3); }
   @keyframes hl { 0%, 60% { box-shadow: 0 0 0 2px var(--accent); } 100% { box-shadow: 0 0 0 2px transparent; } }
   .msg.hl .text { animation: hl 1.4s ease-out; }
@@ -161,10 +178,10 @@ const CSS = `
 
   /* ---- 접힌 상태 ---- */
   .dock-bubble { position: absolute; right: 16px; bottom: 90px; pointer-events: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
-  .bubble { position: relative; width: 46px; height: 46px; border-radius: 50%; background: var(--surface); border: 1px solid var(--border-3);
-    font-size: 22px; box-shadow: var(--shadow-lg); transition: transform .1s; }
+  .bubble { position: relative; width: 48px; height: 48px; border-radius: 50%; background: var(--surface); border: 1px solid var(--border-3);
+    display: grid; place-items: center; box-shadow: var(--shadow-lg); transition: transform .1s; }
   .bubble:hover { transform: scale(1.06); }
-  .badge { position: absolute; top: -5px; right: -5px; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; background: var(--pink); color: #fff;
+  .badge { position: absolute; top: -5px; right: -5px; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; background: var(--badge); color: #fff;
     font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
   .badge[hidden] { display: none; }
   .dock-bubble .reacts { display: none; background: var(--surface); border: 1px solid var(--border-2); border-radius: 14px; padding: 4px 8px; box-shadow: var(--shadow); max-width: 260px; justify-content: center; }
@@ -183,6 +200,14 @@ const CSS = `
     4% { transform: translate(0, 0) scale(1); opacity: .8; }
     70% { opacity: .8; }
     100% { transform: translate(var(--dx, 0px), calc(var(--rise, 300px) * -1)) scale(1); opacity: 0; } }
+  /* 움직임을 줄이는 설정: 전환/확대 효과를 빼고, 리액션은 떠오르지 않고 제자리에서 흐려지기만 한다 */
+  @keyframes fadeonly { 0% { opacity: 0; } 8% { opacity: .8; } 70% { opacity: .8; } 100% { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) {
+    .rbtn, .reacts button, .bubble { transition: none; }
+    .reacts button:hover, .bubble:hover { transform: none; }
+    .msg.hl .text, .list.plain .msg.hl, .list.compact .msg.hl { animation: none; }
+    .float { animation: fadeonly 4.6s linear forwards; }
+  }
 ` + EMOJI_PICKER_CSS;
 
 const DEFAULT_PREFS = {
@@ -270,6 +295,13 @@ function el(tag, cls, text) {
   if (cls) e.className = cls;
   if (text !== undefined) e.textContent = text;
   return e;
+}
+
+// 슬라이더의 채워진 부분(--p)을 값에 맞춘다
+function paintRange(input) {
+  const min = Number(input.min) || 0;
+  const max = Number(input.max) || 100;
+  input.style.setProperty('--p', `${((Number(input.value) - min) / (max - min)) * 100}%`);
 }
 
 const fmtClock = (ms) => new Date(ms).toLocaleTimeString(getLang() === 'ko' ? 'ko-KR' : 'en-US', { hour: 'numeric', minute: '2-digit' });
@@ -490,6 +522,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     list.style.setProperty('--fs', String(prefs.fontScale));
     list.style.setProperty('--av', `${prefs.avatarSize}px`);
     opacity.value = String(+(1 - op).toFixed(2)); // 슬라이더는 투명도(오른쪽일수록 투명)
+    paintRange(opacity);
     clockCb.checked = prefs.showClock;
     videoCb.checked = prefs.showVideoTime;
     eventsCb.checked = prefs.showEvents;
@@ -562,7 +595,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
   let newMsgBtn;
   function renderNewMsgs() {
     newMsgBtn.hidden = newMsgs === 0;
-    newMsgBtn.textContent = t('chat.newMsgs', { n: newMsgs > 99 ? '99+' : newMsgs });
+    newMsgBtn.querySelector('.nt').textContent = t('chat.newMsgs', { n: newMsgs > 99 ? '99+' : newMsgs });
   }
   function clearNewMsgs() {
     if (!newMsgs) return;
@@ -646,7 +679,8 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     reactionRows.push(renderRecent);
     renderRecent();
     tail.append(rlabel, recent);
-    const more = el('button', '', '＋');
+    const more = el('button', 'plus');
+    more.append(icon('plus', 15));
     more.title = t('chat.allEmoji');
     more.addEventListener('click', () => openPicker(more, (emoji) => sendReaction(emoji), false));
     row.append(more, tail); // ＋ 는 기본 이모지 바로 뒤에 붙여 혼자 떨어지지 않게
@@ -848,15 +882,15 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     // 입장/퇴장: 알고 있는(방에 있거나 있었던) 사람의 현재 닉네임을 우선 쓰고, 모르면 알림이 만들어질 때 저장한 닉네임(m.name)을 쓴다
     const st = getState();
     const known = st?.participants?.find((x) => x.id === m.userId) ?? st?.known?.[m.userId];
-    if (m.action === 'down') return { icon: '🔌', name: '', color: null, rest: t(m.secs ? 'chat.ev.downFor' : 'chat.ev.down', { time: fmtClock(m.at ?? m.sentAt).replace(/ /g, '\u00a0'), s: m.secs }) }; // 시각 중간에서 줄이 바뀌지 않게
-    if (m.action === 'allback') return { icon: '🙌', name: '', color: null, rest: t('chat.ev.allback') };
-    if (m.action === 'missing') return { icon: '⏳', name: '', color: null, rest: t('chat.ev.missing', { names: (m.names ?? []).join(', ') }) };
+    if (m.action === 'down') return { icon: '', lucide: 'wifi-off', name: '', color: null, rest: t(m.secs ? 'chat.ev.downFor' : 'chat.ev.down', { time: fmtClock(m.at ?? m.sentAt).replace(/ /g, '\u00a0'), s: m.secs }) }; // 시각 중간에서 줄이 바뀌지 않게
+    if (m.action === 'allback') return { icon: '', lucide: 'users', name: '', color: null, rest: t('chat.ev.allback') };
+    if (m.action === 'missing') return { icon: '', lucide: 'hourglass', name: '', color: null, rest: t('chat.ev.missing', { names: (m.names ?? []).join(', ') }) };
     const isMembership = m.action === 'join' || m.action === 'leave';
     const name = isMembership ? (known?.name ?? m.name ?? t('chat.unknown')) : profileOf(m.userId).name; // 내 동작도 "내가" 가 아니라 닉네임으로
     const color = isMembership ? known?.color : profileOf(m.userId).color;
-    if (m.action === 'join') return { icon: '🎈', name, color, rest: t('chat.ev.join') };
-    if (m.action === 'leave') return { icon: '👋', name, color, rest: t('chat.ev.leave') };
-    if (m.action === 'rate') return { icon: '⚡', name, color, rest: t('chat.ev.rate', { r: +Number(m.rate).toFixed(2) }) };
+    if (m.action === 'join') return { icon: '', lucide: 'log-in', name, color, rest: t('chat.ev.join') };
+    if (m.action === 'leave') return { icon: '', lucide: 'log-out', name, color, rest: t('chat.ev.leave') };
+    if (m.action === 'rate') return { icon: '', lucide: 'gauge', name, color, rest: t('chat.ev.rate', { r: +Number(m.rate).toFixed(2) }) };
     const tm = fmtVideo(m.time);
     if (m.action === 'play') return { icon: '▶', svg: 'play', name, color, rest: t('chat.ev.play', { t: tm }) };
     if (m.action === 'pause') return { icon: '⏸', svg: 'pause', name, color, rest: t('chat.ev.pause', { t: tm }) };
@@ -878,14 +912,14 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
   // 토스트 등 글자만 필요한 곳
   const eventText = (m) => {
     const e = eventParts(m);
-    return `${e.icon} ${e.name}${e.rest}`;
+    return `${e.name}${e.rest}`; // 토스트에는 아이콘을 따로 붙이므로 글자만
   };
   // 안내 줄: 닉네임 부분만 그 사람의 글자색(채팅과 같은 파스텔 보정)
   function fillEvent(row, m) {
     const e = eventParts(m);
     const nm = el('span', 'ev-name', e.name);
     if (e.color) nm.style.color = pastelize(e.color);
-    row.replaceChildren(e.svg ? evIcon(e.svg) : `${e.icon} `, nm, e.rest);
+    row.replaceChildren(e.svg ? evIcon(e.svg) : icon(e.lucide, 13), nm, e.rest); // 재생·정지·이동은 기존 단색 도형, 나머지는 Lucide
   }
 
   function renderEvent(m) {
@@ -939,7 +973,8 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     const bwrap = el('div', 'bwrap');
     bwrap.append(messageText(m.text));
     if (m.id) {
-      const rbtn = el('button', 'rbtn', '↩');
+      const rbtn = el('button', 'rbtn');
+      rbtn.append(icon('corner-down-left', 13));
       rbtn.title = t('chat.reply');
       rbtn.setAttribute('aria-label', t('chat.reply'));
       rbtn.addEventListener('click', () => startReply(m.id));
@@ -986,7 +1021,8 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
   function fillQuote(m) {
     const orig = findById(m.replyTo);
     m.quoteEl.classList.toggle('gone', !orig);
-    m.quoteEl.textContent = orig ? `${profileOf(orig.userId).name}: ${snippet(orig.text)}` : t('chat.replyGone'); // 화살표는 CSS(::before/::after)
+    const text = el('span', 'qt', orig ? `${profileOf(orig.userId).name}: ${snippet(orig.text)}` : t('chat.replyGone'));
+    m.quoteEl.replaceChildren(icon('corner-down-left', 12), text); // 내 말풍선에서는 CSS 가 글자 뒤로 보내고 좌우를 뒤집는다
   }
   function jumpTo(id) {
     const orig = findById(id);
@@ -1038,12 +1074,6 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     relabels.push(f);
     return node;
   };
-  function flash(btn, text) {
-    const old = btn.textContent;
-    btn.textContent = text;
-    setTimeout(() => (btn.textContent = old), 1200);
-  }
-
   function build() {
     const root = mount.ensure();
     if (built) return;
@@ -1053,9 +1083,11 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     // 헤더: 제목, 방 코드(클릭하면 복사), 설정, 배치 전환, 접기
     panel = el('div', 'panel');
     head = el('div', 'head');
-    const settingsBtn = el('button', 'iconbtn', '⚙');
+    const settingsBtn = el('button', 'iconbtn');
+    settingsBtn.append(icon('settings-2', 16));
     L(settingsBtn, 'title', 'chat.settings');
-    const collapseBtn = el('button', 'iconbtn', '—');
+    const collapseBtn = el('button', 'iconbtn');
+    collapseBtn.append(icon('minus', 16));
     L(collapseBtn, 'title', 'chat.collapse');
     collapseBtn.addEventListener('click', () => {
       prefs.collapsed = true;
@@ -1067,9 +1099,12 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     });
     // 배속 칩: 방이 1배속이 아닐 때만 보인다. 누르면 배속 조절 팝오버가 열린다
     rateChip = el('button', 'ratechip');
+    rateChip.append(icon('gauge', 12), el('span', 'rt'));
     rateChip.hidden = true;
     L(rateChip, 'title', 'chat.menu.speed');
-    head.append(L(el('span', 'title'), 'textContent', 'chat.title'), rateChip, settingsBtn, collapseBtn);
+    const titleIcon = icon('message-circle', 15);
+    titleIcon.classList.add('hicon');
+    head.append(titleIcon, L(el('span', 'title'), 'textContent', 'chat.title'), rateChip, settingsBtn, collapseBtn);
 
     // 설정 메뉴: 투명도, 시간 표시, 링크/코드 복사
     menu = el('div', 'menu');
@@ -1080,6 +1115,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     opacity.max = '0.7';
     opacity.step = '0.05';
     opacity.addEventListener('input', () => {
+      paintRange(opacity);
       prefs.opacities[modeState()] = +(1 - Number(opacity.value)).toFixed(2); // 지금 창 모드에만 적용
       panel.style.opacity = String(prefs.opacities[modeState()]);
     });
@@ -1126,10 +1162,28 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
       });
       themeSeg.append(b);
     }
-    const copyLink = L(el('button', 'act'), 'textContent', 'chat.copyLink');
-    copyLink.addEventListener('click', async () => (await copyText(getInviteLink())) && flash(copyLink, t('chat.copied')));
-    const copyCode = L(el('button', 'act'), 'textContent', 'chat.copyCode');
-    copyCode.addEventListener('click', async () => (await copyText(getState()?.roomCode ?? '')) && flash(copyCode, t('chat.copied')));
+    // 초대: 링크 / 코드 두 칸. 복사하면 잠깐 "복사했어요"
+    const inviteBtn = (iconName, labelKey, tipKey, getText) => {
+      const b = el('button', 'act');
+      const label = L(el('span'), 'textContent', labelKey);
+      b.append(icon(iconName, 14), label);
+      L(b, 'title', tipKey);
+      b.addEventListener('click', async () => {
+        if (!(await copyText(getText()))) return;
+        b.querySelector('.ico').replaceWith(icon('check', 14));
+        label.textContent = t('chat.copied');
+        setTimeout(() => {
+          b.querySelector('.ico').replaceWith(icon(iconName, 14));
+          label.textContent = t(labelKey);
+        }, 1200);
+      });
+      return b;
+    };
+    const invite = el('div', 'invite');
+    invite.append(
+      inviteBtn('link', 'chat.copyLink', 'chat.copyLinkTip', () => getInviteLink()),
+      inviteBtn('copy', 'chat.copyCode', 'chat.copyCodeTip', () => getState()?.roomCode ?? ''),
+    );
     modeSeg = el('div', 'seg');
     for (const k of ['float', 'side', 'dock']) {
       const b = L(el('button'), 'textContent', `chat.modeShort.${k}`);
@@ -1155,7 +1209,10 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
       const val = el('span', 'rateval');
       row.append(slider, val);
       // 끄는 동안은 값만 보여 주고, 손을 뗄 때 한 번만 방에 보낸다
-      slider.addEventListener('input', () => (val.textContent = fmtRate(slider.value)));
+      slider.addEventListener('input', () => {
+        val.textContent = fmtRate(slider.value);
+        paintRange(slider);
+      });
       slider.addEventListener('change', () => {
         onSetRate?.(Math.round(Number(slider.value) * 100) / 100);
         refreshRate();
@@ -1183,7 +1240,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
       refreshRate();
     });
     const sec = (key) => L(el('div', 'sec'), 'textContent', key);
-    menu.append(sec('chat.menu.speed'), rateControl(), sec('chat.menu.window'), modeSeg, opLabel, sec('chat.menu.view'), styleSeg, sec('chat.menu.color'), themeSeg, sec('chat.menu.show'), clockLabel, videoLabel, eventsLabel, sec('chat.menu.invite'), copyLink, copyCode);
+    menu.append(sec('chat.menu.speed'), rateControl(), sec('chat.menu.window'), modeSeg, opLabel, sec('chat.menu.view'), styleSeg, sec('chat.menu.color'), themeSeg, sec('chat.menu.show'), clockLabel, videoLabel, eventsLabel, sec('chat.menu.invite'), invite);
     settingsBtn.addEventListener('click', () => {
       menu.hidden = !menu.hidden;
       ratePop.hidden = true;
@@ -1193,6 +1250,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     list = el('div', 'list');
     list.addEventListener('scroll', updatePinned);
     newMsgBtn = el('button', 'newmsg');
+    newMsgBtn.append(icon('arrow-down', 13), el('span', 'nt'));
     newMsgBtn.hidden = true;
     newMsgBtn.addEventListener('click', () => scrollToBottom(true));
     relabels.push(renderNewMsgs); // 언어가 바뀌면 문구를 다시 만든다
@@ -1273,7 +1331,8 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     const form = el('div', 'form');
     const compose = el('div', 'compose');
     compose.append(input, counter);
-    reactToggle = el('button', 'rtoggle', '😊');
+    reactToggle = el('button', 'rtoggle');
+    reactToggle.append(icon('smile', 18));
     L(reactToggle, 'title', 'chat.reactToggle');
     reactToggle.addEventListener('click', () => {
       prefs.reactsOpen = !prefs.reactsOpen;
@@ -1300,16 +1359,18 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     replyBar = el('div', 'replying');
     replyBar.hidden = true;
     replyText = el('span', 'rtext');
-    const replyX = el('button', null, '✕');
+    const replyX = el('button');
+    replyX.append(icon('x', 14));
     L(replyX, 'title', 'chat.replyCancel');
     replyX.addEventListener('click', cancelReply);
-    replyBar.append(replyText, replyX);
+    replyBar.append(icon('corner-down-left', 14), replyText, replyX);
     panelReacts = reactionRow();
     panel.append(head, listWrap, typingLine, panelReacts, replyBar, form, ...handles);
 
     // 접힌 상태: 말풍선 + 배지, 마우스를 올리면 리액션 버튼
     bubbleBox = el('div', 'dock-bubble');
-    const bubble = el('button', 'bubble', '💬');
+    const bubble = el('button', 'bubble');
+    bubble.append(icon('message-circle', 22));
     L(bubble, 'title', 'chat.open');
     badge = el('span', 'badge');
     bubble.append(badge);
@@ -1360,9 +1421,10 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     for (const c of rateControls) {
       c.slider.value = String(Math.min(RATE_MAX, Math.max(RATE_MIN, cur)));
       c.val.textContent = fmtRate(cur);
+      paintRange(c.slider);
       for (const b of c.presets.children) b.classList.toggle('on', Math.abs(Number(b.dataset.rate) - cur) < 0.001);
     }
-    rateChip.textContent = `⚡ ${fmtRate(cur)}`;
+    rateChip.querySelector('.rt').textContent = fmtRate(cur);
     const show = !!st?.roomCode && Math.abs(cur - 1) >= 0.001;
     rateChip.hidden = !show;
     if (!show) ratePop.hidden = true;
