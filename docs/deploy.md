@@ -13,7 +13,7 @@
 ```bash
 node tools/build-store.mjs --server wss://내서버.onrender.com
 ```
-`dist/store/`(폴더)와 `dist/bae-movie-temp-<버전>.zip` 이 만들어진다. 이 묶음은 `SERVER_URL` 이 `--server` 값으로 바뀌고, 개발용 주소(`localhost`, `file://`)가 manifest 에서 빠진다.
+`dist/store/`(폴더)와 `dist/movoni-<버전>.zip` 이 만들어진다. 이 묶음은 `SERVER_URL` 이 `--server` 값으로 바뀌고, 개발용 주소(`localhost`, `file://`)가 manifest 에서 빠진다.
 허용 사이트는 `extension/manifest.json` 의 `content_scripts[0].matches`(와 `web_accessible_resources` 의 `matches`) 한 곳에서 관리한다. 사이트를 추가하면 두 곳에 같이 넣는다.
 개발 중에는 `extension/` 폴더를 그대로 로드하면 된다(`localhost` 페이지와 `file://` 에서도 동작).
 

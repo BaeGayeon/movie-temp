@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "bae-movie-temp (배무템) [개발용]",
+  "name": "movoni (모보니) [개발용]",
   "version": "0.1.1",
   "default_locale": "ko",
   "description": "__MSG_appDescription__",
