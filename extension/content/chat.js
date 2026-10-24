@@ -439,6 +439,8 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
         if (v) html.style.setProperty(p, v, prio);
       }
       savedStyles = null;
+      // 사이트(플레이어)가 줄어든 크기를 그대로 들고 있지 않도록 레이아웃을 다시 계산하게 한다
+      requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
       return;
     }
     if (!savedStyles) {
@@ -485,6 +487,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     clearInterval(fsTimer);
     fsTimer = null;
     if (!fsFit) return;
+    requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
     const { el, pad, touched } = fsFit;
     fsFit = null;
     if (pad[0]) el.style.setProperty('padding-right', pad[0], pad[1]);
