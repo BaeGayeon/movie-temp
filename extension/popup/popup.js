@@ -83,12 +83,15 @@ const CONN = {
 
 let curTabId = null; // 지금 보고 있는 탭
 let inRoomHere = false;
+let wasHere = null; // 직전 렌더에서 이 탭의 방 안이었는지(처음 그리기 전에는 null)
 function render() {
   const inRoom = !!state?.roomCode;
   // 방은 한 탭에만 묶인다: 다른 탭에서 연 팝업에서는 방 UI 대신 "어디서 하는 중인지"만 보여준다
   const here = inRoom && state.tabId === curTabId;
   const elsewhere = inRoom && !here;
   inRoomHere = here;
+  if (wasHere === false && here) showWelcome(); // 방 만들기/참가에 성공해 방 화면으로 바뀐 직후(팝업을 처음 열었을 때 이미 방 안이면 띄우지 않는다)
+  wasHere = here;
   document.body.classList.toggle('in-room', here); // 방에 있을 땐 헤더에 연결 상태 칩
   $('conn').hidden = !here;
   $('lobby').hidden = inRoom;
@@ -168,16 +171,59 @@ function render() {
   $('waitText').textContent = t('popup.waiting', { names: waiting.join(', ') });
 }
 
-// 맨 위 안내 상자(연결 중/깨우는 중/오류)와, 참가 화면에서는 오류를 입력칸 아래에 보여 준다. 서버 오류 문구는 그대로(번역된 것)
+// 상태 카드(마스코트). 어떤 상태인지 가리는 조건은 예전 안내 상자와 같다(깨우는 중, 연결 중, 영상 없음, 방 안 연결 끊김).
+// 재배포(서버 재시작)와 진짜 오류는 state.restarting 으로 가른다(기존 판단 그대로): 재배포 = 꾸벅, 오류 = 시무룩.
+function statusModel() {
+  const inRoom = !!state?.roomCode;
+  if (!inRoom && hasVideo === false) return { img: 'sad', title: 'popup.noVideoTitle', desc: 'popup.noVideoDesc' };
+  if (state?.waking) return { img: 'sleepy', title: 'popup.wakingTitle', desc: 'popup.wakingDesc', dots: true };
+  if (!inRoom && busy) return { img: 'default', title: 'popup.connectingServer', dots: true };
+  if (inRoomHere && state.connection !== 'connected') {
+    return state.restarting
+      ? { img: 'sleepy', title: 'popup.restartTitle', desc: 'popup.restartDesc' }
+      : { img: 'sad', title: 'popup.reconnectingTitle', desc: 'popup.reconnectingDesc', retry: true };
+  }
+  return null;
+}
+function paintStatus() {
+  const m = statusModel();
+  $('statusCard').hidden = !m;
+  $('lobby').classList.toggle('dim', !!(state?.waking || busy)); // 연결을 기다리는 동안 로비 카드는 흐리게(버튼은 원래도 막혀 있다)
+  $('room').classList.toggle('offline', inRoomHere && state.connection !== 'connected');
+  if (!m) return;
+  $('statusImg').src = `../icons/mascot/mascot-${m.img}.svg`;
+  $('statusTitle').textContent = t(m.title);
+  $('statusDesc').textContent = m.desc ? t(m.desc) : '';
+  $('statusDesc').hidden = !m.desc;
+  $('statusDots').hidden = !m.dots;
+  $('statusRetry').hidden = !m.retry;
+}
+
+// 방에 들어온 직후 3초 동안 띠를 보여 준다(0.2초 페이드, 움직임을 줄이는 설정이면 바로 나타났다 사라진다)
+let welcomeTimer = null;
+function showWelcome() {
+  const el = $('welcome');
+  clearTimeout(welcomeTimer);
+  el.hidden = false;
+  requestAnimationFrame(() => el.classList.add('on'));
+  const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  welcomeTimer = setTimeout(() => {
+    el.classList.remove('on');
+    welcomeTimer = setTimeout(() => (el.hidden = true), still ? 0 : 200);
+  }, 3000);
+}
+
+// 맨 위 안내 상자(오류)와, 참가 화면에서는 오류를 입력칸 아래에 보여 준다. 서버 오류 문구는 그대로(번역된 것)
 function paintNotices() {
   const inRoom = !!state?.roomCode;
-  const wait = state?.waking ? t('popup.waking') : busy ? t('popup.connectingServer') : '';
+  paintStatus();
   // 비밀번호를 처음 요구받은 것(틀린 게 아님)은 오류가 아니다: 입력칸 위 라벨("비밀번호가 필요한 방이에요")이 이미 알려 주므로 오류 표시를 하지 않는다
   const asking = !inRoom && !!state?.needPassword && !state.needPassword.wrong;
-  const err = asking ? null : state?.error;
+  const noVideo = !inRoom && hasVideo === false; // 영상이 없다는 안내는 상태 카드가 한다
+  const err = asking || noVideo ? null : state?.error;
   const joinErr = !inRoom && lobbyMode === 'join' && !!err;
-  $('error').textContent = joinErr ? wait : (err ?? wait);
-  $('error').classList.toggle('info', !!wait && (joinErr || !err));
+  $('error').textContent = joinErr ? '' : (err ?? '');
+  $('error').classList.remove('info');
   $('joinError').hidden = !joinErr;
   $('joinErrorText').textContent = joinErr ? err : '';
   const pwWrong = joinErr && !$('joinPwWrap').hidden;
@@ -324,7 +370,8 @@ $('lobbySeg').addEventListener('click', (e) => {
 showLobby('create');
 function applyLobbyDisabled() {
   for (const id of ['create', 'join', 'code', 'joinPw', 'createPw', 'createMax']) $(id).disabled = hasVideo === false || busy;
-  $('noVideo').hidden = hasVideo !== false;
+  $('lobby').hidden = !!state?.roomCode || hasVideo === false; // 영상이 없으면 로비 카드는 숨기고 상태 카드만 보인다
+  paintStatus();
 }
 async function checkVideo() {
   if (state?.roomCode) return;

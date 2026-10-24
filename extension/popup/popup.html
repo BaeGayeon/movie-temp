@@ -33,6 +33,19 @@
     </nav>
 
     <div id="tabRoom" class="tabpane" role="tabpanel" aria-labelledby="tabBtnRoom">
+    <!-- 방에 들어온 직후 3초 동안만 보이는 띠 -->
+    <section id="welcome" class="welcome" role="status" hidden>
+      <img class="mascot" src="../icons/mascot/mascot-happy.svg" width="44" height="44" alt="" aria-hidden="true">
+      <div class="wtxt"><b data-i18n="popup.joinedTitle">방에 들어왔어요</b><span data-i18n="popup.joinedSub">이제 같이 보고 있어요</span></div>
+    </section>
+    <!-- 상태 카드(마스코트): 서버 깨우는 중 / 연결하는 중 / 영상 없음 / 방 안 연결 끊김. 팝업 안에서만 쓴다 -->
+    <section id="statusCard" class="mcard" role="status" hidden>
+      <img id="statusImg" class="mascot" width="64" height="64" alt="" aria-hidden="true">
+      <div class="m-title" id="statusTitle"></div>
+      <div class="m-desc" id="statusDesc"></div>
+      <div class="dots" id="statusDots" aria-hidden="true"><span></span><span></span><span></span></div>
+      <div class="m-retry" id="statusRetry"><span class="spin" aria-hidden="true"></span><span data-i18n="popup.reconnecting">재연결 중…</span></div>
+    </section>
     <!-- 방이 없을 때 -->
     <section id="lobby" class="card pad" hidden>
       <div class="seg" id="lobbySeg" role="tablist">
@@ -73,7 +86,6 @@
         <div class="fielderr" id="joinError" role="alert" hidden><span class="i" data-icon="circle-alert" data-size="14"></span><span id="joinErrorText"></span></div>
         <button id="join" class="btn primary big"><span class="i" data-icon="door-open" data-size="18"></span><span data-i18n="popup.join">참가하기</span></button>
       </div>
-      <p class="hint" id="noVideo" data-i18n="popup.noVideo" hidden>이 페이지에서는 영상을 찾지 못했어요. 쿠팡플레이·넷플릭스·웨이브의 영상 페이지에서 시도해 주세요.</p>
     </section>
 
     <!-- 다른 탭/창에서 이미 방에 있을 때 -->
