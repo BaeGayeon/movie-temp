@@ -1,4 +1,4 @@
-import { APP_NAME, APP_NAME_KO } from '../config.js';
+import { APP_NAME } from '../config.js';
 import { CMD } from '../shared/cmd.js';
 import { COLOR_PALETTE, MAX_NAME_LENGTH, MIN_PASSWORD_LENGTH, MAX_PASSWORD_LENGTH, MIN_ROOM_MEMBERS, MAX_ROOM_MEMBERS, isValidNewPassword, isValidMaxMembers } from '../shared/protocol.js';
 import { renderAvatar, bitmapToAvatarDataUrl, bitmapToSourceDataUrl, decode } from '../shared/avatar.js';
@@ -7,6 +7,7 @@ import { ROOT_THEME_CSS, pastelize } from '../shared/theme.js';
 import { createColorPicker, isHex } from '../shared/color-picker.js';
 import { cleanFont } from '../shared/fontname.js';
 import { initI18n, applyI18n, onLangChange, getLangPref, setLangPref, t } from '../shared/i18n.js';
+import { icon } from '../shared/icons.js';
 
 // 디자인 토큰(다크)과 이모지 선택기 스타일 주입
 const themeStyle = document.createElement('style');
@@ -16,8 +17,26 @@ document.head.append(themeStyle);
 const $ = (id) => document.getElementById(id);
 await initI18n();
 applyI18n();
-$('title').textContent = APP_NAME;
-$('titleKo').textContent = `(${APP_NAME_KO})`;
+// 헤더에는 워드마크만 둔다(한글 이름은 표시하지 않는다). 이름 뒤 [개발용] 같은 꼬리표는 작은 표시로 뺀다.
+const nameParts = /^(.*?)\s*\[(.+)\]$/.exec(APP_NAME);
+$('title').textContent = nameParts ? nameParts[1] : APP_NAME;
+$('devTag').textContent = nameParts?.[2] ?? '';
+$('devTag').hidden = !nameParts;
+
+// 아이콘 자리(<span class="i" data-icon="이름" data-size="16">)를 Lucide 아이콘으로 채운다
+const paintIcon = (slot, name, size = Number(slot.dataset.size) || 16) => {
+  slot.dataset.icon = name;
+  slot.replaceChildren(icon(name, size));
+};
+for (const slot of document.querySelectorAll('[data-icon]')) paintIcon(slot, slot.dataset.icon);
+
+// 슬라이더의 채워진 부분(--p)을 값에 맞춘다
+function paintRange(el) {
+  const min = Number(el.min) || 0;
+  const max = Number(el.max) || 100;
+  el.style.setProperty('--p', `${((Number(el.value) - min) / (max - min)) * 100}%`);
+}
+for (const r of document.querySelectorAll('input[type=range]')) r.addEventListener('input', () => paintRange(r));
 
 // 접이식 카드: 펼침 상태를 기억한다
 const folds = (await chrome.storage.local.get('popupFold')).popupFold ?? {};
@@ -49,27 +68,6 @@ $('tabBtnRoom').parentElement.addEventListener('click', (e) => {
   chrome.storage.local.set({ popupTab: b.dataset.tab });
 });
 
-// 글자 앞 이모지를 따로 감싸서 글자와 세로 가운데를 맞추고 간격을 둔다(동적으로 바뀌는 문구도 포함)
-const LEAD_EMOJI = /^(\p{Extended_Pictographic}\uFE0F?(?:\u200d\p{Extended_Pictographic}\uFE0F?)*)(\s+)(?=\S)/u;
-function decorate(root) {
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-  const hits = [];
-  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
-    if (n.parentElement.closest('option,style,script,.pav,.av,#pnamePreview') || n.parentElement.classList.contains('ic')) continue;
-    if (LEAD_EMOJI.test(n.data)) hits.push(n);
-  }
-  for (const n of hits) {
-    const m = LEAD_EMOJI.exec(n.data);
-    const ic = document.createElement('span');
-    ic.className = 'ic';
-    ic.textContent = m[1];
-    n.data = n.data.slice(m[0].length);
-    n.before(ic);
-  }
-}
-new MutationObserver(() => decorate(document.body)).observe(document.body, { childList: true, subtree: true, characterData: true });
-decorate(document.body);
-
 let state = null;
 
 async function activeTab() {
@@ -78,18 +76,20 @@ async function activeTab() {
 }
 
 const CONN = {
-  connected: ['popup.connConnected', ''],
-  connecting: ['popup.connConnecting', 'warn'],
+  connected: ['popup.connConnected', 'ok'],
+  connecting: ['popup.connConnecting', 'wait'],
   disconnected: ['popup.connDisconnected', 'bad'],
 };
 
 let curTabId = null; // 지금 보고 있는 탭
+let inRoomHere = false;
 function render() {
   const inRoom = !!state?.roomCode;
   // 방은 한 탭에만 묶인다: 다른 탭에서 연 팝업에서는 방 UI 대신 "어디서 하는 중인지"만 보여준다
   const here = inRoom && state.tabId === curTabId;
   const elsewhere = inRoom && !here;
-  document.body.classList.toggle('in-room', here); // 방에 있을 땐 헤더를 얇게
+  inRoomHere = here;
+  document.body.classList.toggle('in-room', here); // 방에 있을 땐 헤더에 연결 상태 칩
   $('conn').hidden = !here;
   $('lobby').hidden = inRoom;
   $('room').hidden = !here;
@@ -97,9 +97,6 @@ function render() {
   $('elsewhereTitle').textContent = t('popup.elsewhere', { site: state?.site || t('popup.otherTab') });
   // 서버 연결을 기다리는 동안(바로 연결되면 안내 없이 지나감): 처음엔 "연결 중", 오래 걸리면(서버가 잠든 경우) "깨우는 중"
   busy = !!state?.busy && !inRoom;
-  const wait = state?.waking ? t('popup.waking') : busy ? t('popup.connectingServer') : '';
-  $('error').textContent = state?.error ?? wait;
-  $('error').classList.toggle('info', !state?.error && !!wait);
   applyLobbyDisabled();
   // 비밀번호가 필요한 방에 참가하려다 거절됨: 코드를 채워 두고 비밀번호 칸으로 안내
   $('joinPwWrap').hidden = !state?.needPassword || inRoom;
@@ -107,11 +104,13 @@ function render() {
     $('joinPw').dataset.askedFor = state.needPassword.roomCode;
     showLobby('join');
     $('code').value = state.needPassword.roomCode;
+    paintCode();
     $('joinPw').focus();
   }
+  paintNotices();
   if (!here) return;
 
-  // 방 코드: 글자마다 칩으로
+  // 방 코드: 글자마다 칸으로
   $('roomCode').replaceChildren(
     ...[...state.roomCode].map((ch) => {
       const c = document.createElement('span');
@@ -120,41 +119,67 @@ function render() {
     }),
   );
   const [connKey, connCls] = CONN[state.connection] ?? CONN.disconnected;
-  $('conn').textContent = t(connKey);
+  $('connText').textContent = t(connKey);
   $('conn').className = `status ${connCls}`;
   $('conn').hidden = false;
   const n = state.participants.length;
-  $('count').textContent = `${state.hasPassword ? '🔒 ' : ''}${n === 1 && !state.maxMembers ? t('popup.countOne') : t('popup.count', { n: state.maxMembers ? `${n}/${state.maxMembers}` : n })}`;
+  const countText = n === 1 && !state.maxMembers ? t('popup.countOne') : t('popup.count', { n: state.maxMembers ? `${n}/${state.maxMembers}` : n });
+  $('count').replaceChildren(...(state.hasPassword ? [icon('lock', 11)] : []), countText);
 
-  // 참가자: 프사 + 닉네임 + 방장/나 표시
+  // 참가자: 프사 + 닉네임 + 방장/나 표시(버퍼링 중이면 오른쪽에 표시만 한다)
   $('people').replaceChildren(
     ...state.participants.map((p) => {
       const li = document.createElement('li');
+      if (p.id === state.userId) li.className = 'me';
       const av = document.createElement('span');
       av.className = 'pav';
-      renderAvatar(av, p.avatar, 26);
+      renderAvatar(av, p.avatar, 32);
       const name = document.createElement('span');
       name.className = 'pname';
       name.textContent = p.name; // textContent
       li.append(av, name);
-      if (p.id === state.hostId) li.append(badge(t('popup.badgeHost'), ''));
+      if (p.id === state.hostId) li.append(badge(t('popup.badgeHost'), 'host', 'crown'));
       if (p.id === state.userId) li.append(badge(t('popup.badgeMe'), 'me'));
+      if (state.waitingIds.includes(p.id)) {
+        const buf = document.createElement('span');
+        buf.className = 'buf';
+        buf.textContent = t('popup.buffering');
+        li.append(buf);
+      }
       return li;
     }),
   );
 
-  // 조작 권한 카드는 모두에게 같은 모양: 방장은 바꿀 수 있고, 나머지는 현재 값만 보인다(눌러도 바뀌지 않음)
+  // 방장은 조작 권한/방 옵션 카드를, 참가자는 현재 조작 방식만 한 줄로 본다(방장만 바꿀 수 있는 규칙은 그대로)
   const isHost = state.hostId === state.userId;
+  $('hostBox').hidden = !isHost;
+  $('guestBox').hidden = isHost;
   for (const b of $('modeSeg').querySelectorAll('button')) {
     b.classList.toggle('on', b.dataset.mode === state.mode);
     b.disabled = !isHost;
   }
+  paintIcon($('guestIcon'), state.mode === 'host_only' ? 'crown' : 'users');
+  $('guestText').textContent = t(state.mode === 'host_only' ? 'popup.guestHostOnly' : 'popup.guestEveryone');
   $('countdownRow').hidden = !isHost;
   $('optBox').hidden = !isHost;
   if (isHost) renderOptions();
   const waiting = state.waitingIds.map((id) => state.participants.find((p) => p.id === id)?.name ?? t('popup.someone'));
   $('waitInfo').hidden = waiting.length === 0;
-  $('waitInfo').textContent = t('popup.waiting', { names: waiting.join(', ') });
+  $('waitText').textContent = t('popup.waiting', { names: waiting.join(', ') });
+}
+
+// 맨 위 안내 상자(연결 중/깨우는 중/오류)와, 참가 화면에서는 오류를 입력칸 아래에 보여 준다. 서버 오류 문구는 그대로(번역된 것)
+function paintNotices() {
+  const inRoom = !!state?.roomCode;
+  const wait = state?.waking ? t('popup.waking') : busy ? t('popup.connectingServer') : '';
+  const joinErr = !inRoom && lobbyMode === 'join' && !!state?.error;
+  $('error').textContent = joinErr ? wait : (state?.error ?? wait);
+  $('error').classList.toggle('info', !!wait && (joinErr || !state?.error));
+  $('joinError').hidden = !joinErr;
+  $('joinErrorText').textContent = joinErr ? state.error : '';
+  const pwWrong = joinErr && !$('joinPwWrap').hidden;
+  $('codeBox').classList.toggle('err', joinErr && !pwWrong);
+  $('joinPwWrap').querySelector('.pwwrap').classList.toggle('err', pwWrong);
 }
 
 // ---------- 방장용 방 옵션(비밀번호 확인/변경/삭제, 최대 인원) ----------
@@ -176,7 +201,8 @@ function paintPw() {
   value.textContent = !has ? t('popup.pwNone') : known ? (pwShown ? knownPw : '•'.repeat(knownPw.length)) : t('popup.pwUnknown');
   $('pwEye').hidden = !known;
   $('pwCopy').hidden = !known;
-  $('pwEye').innerHTML = pwShown ? EYE_OFF : EYE; // 정적 SVG 문자열만 넣는다
+  $('pwEye').replaceChildren(icon(pwShown ? 'eye-off' : 'eye', 18));
+  $('pwLine').classList.toggle('long', has); // 비밀번호가 있으면 값 줄 아래에 변경/삭제 버튼 줄
   $('pwEye').setAttribute('aria-label', pwShown ? t('popup.pwHide') : t('popup.pwShow'));
   $('pwEdit').textContent = has ? t('popup.pwChange') : t('popup.pwSet');
   $('pwRemove').hidden = !has;
@@ -233,11 +259,28 @@ $('maxSave').addEventListener('click', async () => {
   await setOptions({ maxMembers: n });
 });
 
-function badge(text, cls) {
+function badge(text, cls, iconName) {
   const b = document.createElement('span');
   b.className = `badge ${cls}`;
-  b.textContent = text;
+  if (iconName) b.append(icon(iconName, 12));
+  b.append(text); // 글자는 textContent 처럼 문자열로만 넣는다
   return b;
+}
+
+// 버튼의 아이콘과 글자를 잠깐 바꿨다가 되돌린다(복사했어요). label 은 버튼 안의 글자 칸
+function flash(btn, labelKey, doneKey, ms = 1200) {
+  const slot = btn.querySelector('.i');
+  const label = btn.querySelector('span:not(.i)');
+  const name = slot.dataset.icon;
+  paintIcon(slot, 'check');
+  label.textContent = t(doneKey);
+  btn.classList.add('ok');
+  clearTimeout(btn.flashTimer);
+  btn.flashTimer = setTimeout(() => {
+    btn.classList.remove('ok');
+    paintIcon(slot, name);
+    label.textContent = t(labelKey);
+  }, ms);
 }
 
 // 영상이 있는 탭에서만 방 만들기/참가 가능(영상은 나중에 뜰 수 있으니 열려 있는 동안 계속 확인)
@@ -247,6 +290,7 @@ let busy = false; // 방 만들기/참가 요청이 서버 연결을 기다리�
 let lobbyMode = 'create';
 function showLobby(mode) {
   lobbyMode = mode;
+  if (state) paintNotices();
   $('lobbyCreate').hidden = mode !== 'create';
   $('lobbyJoin').hidden = mode !== 'join';
   for (const b of $('lobbySeg').children) {
@@ -254,6 +298,22 @@ function showLobby(mode) {
     b.setAttribute('aria-selected', String(b.dataset.lobby === mode));
   }
 }
+// 방 코드 칸(6개): 입력한 글자를 칸에 나눠 보여 주고, 입력 중인 칸을 표시한다
+const codeCells = [...Array(6)].map(() => document.createElement('span'));
+$('codeBox').querySelector('.cells').append(...codeCells);
+function paintCode() {
+  const v = $('code').value.toUpperCase();
+  codeCells.forEach((c, i) => {
+    c.textContent = v[i] ?? '';
+    c.classList.toggle('cur', i === Math.min(v.length, 5));
+  });
+}
+$('code').addEventListener('input', paintCode);
+$('code').addEventListener('compositionend', paintCode);
+const caretToEnd = () => $('code').setSelectionRange($('code').value.length, $('code').value.length);
+$('code').addEventListener('focus', caretToEnd);
+$('code').addEventListener('click', caretToEnd);
+paintCode();
 $('lobbySeg').addEventListener('click', (e) => {
   const b = e.target.closest('button[data-lobby]');
   if (b) showLobby(b.dataset.lobby);
@@ -285,8 +345,6 @@ for (const [id, max] of [['code', 6], ['createPw', MAX_PASSWORD_LENGTH], ['joinP
 }
 
 // 비밀번호 칸의 보기/숨기기(눈) 버튼
-const EYE = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>';
-const EYE_OFF = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.9 10.9 0 0 1 12 19C5 19 1 12 1 12a19.8 19.8 0 0 1 5.06-5.94M9.9 4.24A10.9 10.9 0 0 1 12 5c7 0 11 7 11 7a19.9 19.9 0 0 1-3.16 4.19M14.12 14.12A3 3 0 1 1 9.88 9.88"/><path d="M1 1l22 22"/></svg>';
 for (const wrap of document.querySelectorAll('.pwwrap')) {
   const input = wrap.querySelector('input');
   const btn = document.createElement('button');
@@ -294,7 +352,7 @@ for (const wrap of document.querySelectorAll('.pwwrap')) {
   btn.className = 'pweye';
   const sync = () => {
     const shown = input.type === 'text';
-    btn.innerHTML = shown ? EYE_OFF : EYE; // 정적 SVG 문자열만 넣는다
+    btn.replaceChildren(icon(shown ? 'eye-off' : 'eye', 18));
     btn.setAttribute('aria-label', shown ? t('popup.pwHide') : t('popup.pwShow'));
   };
   btn.syncLabel = sync;
@@ -329,14 +387,29 @@ $('join').addEventListener('click', async () => {
   $('joinPw').parentElement.hidePassword();
 });
 
-$('countdown').addEventListener('click', () =>
-  chrome.runtime.sendMessage({ cmd: CMD.COUNTDOWN_START, seconds: Number($('seconds').value) }),
-);
+// 카운트다운 초: 3칸 세그먼트(예전의 선택칸과 같은 3·5·10초, 기본 3초)
+let seconds = 3;
+const paintSeconds = () => {
+  for (const b of $('seconds').children) {
+    const on = Number(b.dataset.sec) === seconds;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-checked', String(on));
+  }
+};
+paintSeconds();
+$('seconds').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-sec]');
+  if (!b) return;
+  seconds = Number(b.dataset.sec);
+  paintSeconds();
+});
+$('countdown').addEventListener('click', () => chrome.runtime.sendMessage({ cmd: CMD.COUNTDOWN_START, seconds }));
 // 채팅 숨기기/보이기: 채팅 설정(chatPrefs.hidden)을 바꾸면 방 화면의 채팅이 따라간다
 let chatHidden = false;
 const paintChatToggle = (hidden) => {
   chatHidden = hidden;
-  $('chatToggle').textContent = hidden ? t('popup.chatShow') : t('popup.chatHide');
+  paintIcon($('chatToggleIcon'), hidden ? 'message-circle' : 'message-circle-off');
+  $('chatToggleText').textContent = hidden ? t('popup.chatShow') : t('popup.chatHide');
 };
 chrome.storage.local.get('chatPrefs').then((r) => paintChatToggle(!!r.chatPrefs?.hidden));
 $('chatToggle').addEventListener('click', async () => {
@@ -380,8 +453,7 @@ $('modeSeg').addEventListener('click', (e) => {
 
 $('copyCode').addEventListener('click', async () => {
   await navigator.clipboard.writeText(state.roomCode);
-  $('copyCode').textContent = t('popup.copiedBang');
-  setTimeout(() => ($('copyCode').textContent = t('popup.copyCode')), 1500);
+  flash($('copyCode'), 'popup.copyCode', 'popup.copiedBang');
 });
 
 $('copy').addEventListener('click', async () => {
@@ -390,12 +462,10 @@ $('copy').addEventListener('click', async () => {
     const url = new URL(tab.url);
     url.searchParams.set('wp', state.roomCode);
     await navigator.clipboard.writeText(url.toString());
-    $('copy').textContent = t('popup.copiedBang');
+    flash($('copy'), 'popup.copyLink', 'popup.copiedBang');
   } catch {
     $('error').textContent = t('popup.noInviteLink');
-    return;
   }
-  setTimeout(() => ($('copy').textContent = t('popup.copyLink')), 1500);
 });
 
 // ---------- 동기화 설정: 광고 구간 제외 ----------
@@ -457,14 +527,23 @@ function swatches(container, pickerBox, key, colors, current, onPick) {
 }
 
 function renderProfile() {
-  renderAvatar($('pav'), profile.avatar, 38);
+  renderAvatar($('pav'), profile.avatar, 46);
   const isImage = profile.avatar.kind === 'image';
-  $('clearPhoto').hidden = !isImage && !alt.image;
-  $('swapAvatar').hidden = isImage ? !alt.emoji : !alt.image;
-  $('swapAvatar').textContent = isImage ? t('popup.swapToEmoji', { emoji: alt.emoji }) : t('popup.swapToPhoto');
-  $('editPhoto').hidden = profile.avatar.kind !== 'image' || !(draftSource === undefined ? hasPhotoSource : draftSource);
+  $('nameCount').textContent = `${[...$('pname').value].length}/${MAX_NAME_LENGTH}`;
   $('pnamePreview').textContent = profile.name || t('popup.namePreview');
   $('pnamePreview').style.color = pastelize(profile.color); // 채팅에서 보이는 대로(닉네임은 글자색)
+  // 프사 세그먼트(이모지 | 사진): 사진을 올리는 중(크롭)이거나 사진을 쓰는 중이면 사진 쪽
+  const photoSide = isImage || !!crop;
+  for (const b of $('avSeg').children) {
+    const on = (b.dataset.av === 'photo') === photoSide;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-selected', String(on));
+  }
+  $('avEmoji').hidden = photoSide; // 배경색은 사진이 없을 때 쓰는 색이라 이모지 쪽에만 보인다
+  $('avPhoto').hidden = !photoSide;
+  $('clearPhoto').hidden = !isImage;
+  $('editPhoto').hidden = !isImage || !(draftSource === undefined ? hasPhotoSource : draftSource);
+  $('editPhoto').classList.toggle('on', !!crop);
   $('emojiGrid').replaceChildren(
     ...AVATARS.map((e) => {
       const b = document.createElement('button');
@@ -478,6 +557,29 @@ function renderProfile() {
   swatches($('bgGrid'), $('bgPicker'), 'bg', COLOR_PALETTE, profile.avatar.bg, (c) => update({ avatar: { ...profile.avatar, bg: c } }));
   swatches($('colorGrid'), $('colorPicker'), 'color', COLOR_PALETTE, profile.color, (c) => update({ color: c }));
 }
+
+// 세그먼트로 이모지/사진을 오간다. 반대쪽 프사는 기기에 보관해 두었다가 되돌린다(기존 동작 그대로)
+function setAvatarKind(kind) {
+  const isImage = profile.avatar.kind === 'image';
+  if (kind === 'emoji') {
+    if (crop) closeCropper(); // 사진 올리거나 위치를 맞추던 중이었다면 닫는다(적용하지 않음)
+    if (!isImage) return;
+    const image = profile.avatar.value;
+    update({ avatar: { ...profile.avatar, kind: 'emoji', value: alt.emoji ?? AVATARS[0] } });
+    alt.image = image;
+  } else if (!isImage) {
+    if (alt.image) {
+      const emoji = profile.avatar.value;
+      update({ avatar: { ...profile.avatar, kind: 'image', value: alt.image } });
+      alt.emoji = emoji;
+      alt.image = null;
+    } else $('file').click(); // 보관 중인 사진이 없으면 새로 고른다
+  }
+}
+$('avSeg').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-av]');
+  if (b) setAvatarKind(b.dataset.av);
+});
 
 // 편집은 미리보기에만 반영하고, [저장]을 눌러야 chrome.storage.local 에 보관되며(background 담당) 방에 있으면 방 전체에 전파된다
 let dirty = false;
@@ -521,7 +623,7 @@ $('pname').addEventListener('input', (e) => update({ name: e.target.value }));
 let picker = null;
 function moreEmojiButton() {
   const b = document.createElement('button');
-  b.textContent = '＋';
+  b.append(icon('plus', 16));
   b.title = t('popup.allEmoji');
   b.setAttribute('aria-label', t('popup.allEmoji'));
   b.addEventListener('click', toggleEmojiPicker);
@@ -792,6 +894,8 @@ function paintSizes(prefs) {
   $('fontScale').value = String(prefs?.fontScale ?? SIZE_DEFAULTS.fontScale);
   $('avatarSize').value = String(prefs?.avatarSize ?? SIZE_DEFAULTS.avatarSize);
   $('fontSample').style.fontSize = `${15 * Number($('fontScale').value) / 1.1}px`;
+  paintRange($('fontScale'));
+  paintRange($('avatarSize'));
 }
 chrome.storage.local.get('chatPrefs').then((r) => paintSizes(r.chatPrefs));
 $('fontScale').addEventListener('input', () => { paintSizes({ fontScale: $('fontScale').value, avatarSize: $('avatarSize').value }); saveSizes(); });
@@ -854,6 +958,7 @@ function setZoom(z) {
   crop.oy = VIEW / 2 - cy * s;
   clampCrop();
   $('cropZoom').value = Math.round(crop.zoom * 100);
+  paintRange($('cropZoom'));
   drawCrop();
 }
 
@@ -861,13 +966,16 @@ function openCropper(bmp) {
   const base = VIEW / Math.min(bmp.width, bmp.height); // 짧은 변이 원을 꽉 채우는 크기(이보다 작아지지 않는다)
   crop = { bmp, base, zoom: 1, ox: (VIEW - bmp.width * base) / 2, oy: (VIEW - bmp.height * base) / 2 };
   $('cropZoom').value = 100;
+  paintRange($('cropZoom'));
   $('cropBox').hidden = false;
   drawCrop();
+  renderProfile();
 }
 
 function closeCropper() {
   crop = null;
   $('cropBox').hidden = true;
+  renderProfile();
 }
 
 let dragFrom = null;
@@ -935,20 +1043,6 @@ $('clearPhoto').addEventListener('click', () => {
   const emoji = profile.avatar.kind === 'emoji' ? profile.avatar.value : (alt.emoji ?? AVATARS[0]);
   update({ avatar: { kind: 'emoji', value: emoji, bg: profile.avatar.bg } });
 });
-$('swapAvatar').addEventListener('click', () => {
-  if (profile.avatar.kind === 'image') {
-    const image = profile.avatar.value;
-    update({ avatar: { ...profile.avatar, kind: 'emoji', value: alt.emoji } });
-    alt.image = image;
-  } else {
-    const emoji = profile.avatar.value;
-    update({ avatar: { ...profile.avatar, kind: 'image', value: alt.image } });
-    alt.emoji = emoji;
-    alt.image = null;
-  }
-  renderProfile();
-});
-
 pickers.push($('bgPicker'), $('colorPicker'));
 
 async function loadProfile() {
@@ -975,12 +1069,16 @@ chrome.runtime.onMessage.addListener((m) => {
 });
 
 // ---------- 언어 선택 ----------
-$('langSel').value = getLangPref();
+const paintLang = () => {
+  $('langSel').value = getLangPref();
+  $('langText').textContent = $('langSel').selectedOptions[0]?.textContent ?? '';
+};
+paintLang();
 $('langSel').addEventListener('change', (e) => setLangPref(e.target.value));
 // 언어가 바뀌면(이 팝업에서 고르거나 다른 곳에서 바뀌면) 열려 있는 채로 다시 그린다
 onLangChange(() => {
   applyI18n();
-  $('langSel').value = getLangPref();
+  paintLang();
   render();
   renderProfile();
   paintPw();

@@ -15,12 +15,8 @@ const POPUP = {
   'focus-ring': '0 0 0 3px rgba(185,222,250,.14)', 'focus-btn': '0 0 0 2px #1A2027, 0 0 0 4px #E7EEF5',
   shadow: '0 6px 18px rgba(0,0,0,.4)', 'shadow-lg': '0 10px 30px rgba(0,0,0,.55)',
 
-  // 예전 이름(popup.css 를 새 토큰으로 다시 쓰는 동안만 둔다). 브라운/노랑 계열은 없앴고 대기·안내는 중립색이다.
-  accent: 'var(--sky)', 'accent-light': 'var(--sky)', 'accent-dark': 'var(--sky-edge)', 'accent-ink': 'var(--sky)', 'on-accent': 'var(--on-sky)',
-  'btn-shadow': 'rgba(185,222,250,.2)', 'border-3': 'var(--border-2)', placeholder: 'var(--ink-mute)',
-  'head-1': 'var(--head)', 'head-2': 'var(--head)', 'head-ink': 'var(--ink)', 'head-shadow': 'none', 'head-chip': 'rgba(255,255,255,.07)',
-  'warn-bg': 'var(--surface)', 'warn-ink': 'var(--ink-soft)', 'warn-border': 'var(--border-2)', yellow: 'var(--ink-soft)',
-  pink: 'var(--err-ink)', danger: 'var(--err-ink)',
+  // 이모지 선택기(shared/emoji-picker.js)가 채팅과 같이 쓰는 이름. 채팅(CALM)에는 같은 이름이 따로 있다
+  'border-3': 'var(--border-2)', placeholder: 'var(--ink-mute)', 'btn-shadow': 'rgba(0,0,0,.25)',
 };
 
 // 채팅/영상 위 안내: 장식 없이 차분하게. 테두리는 배경에 가깝게, 강조색은 채도를 낮춰서 쓴다.
