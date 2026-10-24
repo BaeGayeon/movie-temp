@@ -26,7 +26,7 @@ const CSS = `
   .panel.dock { border-radius: 0; border-width: 0; box-shadow: none; }
   .panel.side { border-width: 0 0 0 1px; }
   .panel[hidden], .dock-bubble[hidden] { display: none; }
-  .head { position: relative; display: flex; align-items: center; gap: 6px; padding: 8px 8px 8px 12px; user-select: none; color: var(--head-ink);
+  .head { position: relative; display: flex; align-items: center; gap: 6px; padding: 9px 8px 7px 12px; user-select: none; color: var(--head-ink);
     background: var(--surface); border-bottom: 1px solid var(--border); }
   .panel.free .head { cursor: move; }
   .head .hicon { color: var(--ink-soft); }

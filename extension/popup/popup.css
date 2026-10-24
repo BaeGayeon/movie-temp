@@ -22,7 +22,7 @@ button, input, select { font: inherit; }
 /* ---- 상단 ---- */
 .top {
   position: relative; overflow: hidden; display: flex; align-items: center; gap: 8px;
-  padding: 12px 14px 12px 16px; background: var(--head); border-radius: 0 0 20px 20px;
+  padding: 14px 14px 10px 16px; background: var(--head); border-radius: 0 0 20px 20px;
 }
 .logo { flex: none; }
 h1 { margin: 0; display: flex; align-items: center; gap: 6px; font-size: 20px; font-weight: 700; letter-spacing: -.3px; line-height: 1; white-space: nowrap; }
