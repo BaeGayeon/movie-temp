@@ -34,7 +34,8 @@ const CSS = `
   .iconbtn { flex: none; width: 28px; height: 28px; display: grid; place-items: center; background: transparent; padding: 0; border-radius: 8px; color: var(--ink-soft); }
   .iconbtn:hover { background: var(--head-chip); color: var(--ink); }
 
-  .menu { position: absolute; top: calc(100% + 6px); left: 8px; right: 8px; margin-left: auto; width: 248px; max-width: calc(100% - 16px); max-height: calc(100vh - 80px); overflow-y: auto; z-index: 5; background: var(--surface); color: var(--ink); border: 1px solid var(--border-3);
+  /* 메뉴는 패널 밖(wrap)에 두고 위치를 chat.js(placeMenus)가 정한다: 패널이 낮아도 잘리지 않고, 아래에 자리가 없으면 위로 올려서 보여 준다 */
+  .menu { position: absolute; pointer-events: auto; width: 248px; max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); overflow-y: auto; z-index: 5; background: var(--surface); color: var(--ink); border: 1px solid var(--border-3);
     border-radius: 14px; padding: 10px; box-shadow: var(--shadow-lg); display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
   .menu[hidden] { display: none; }
   .menu label { display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 500; }
@@ -564,11 +565,27 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
         height: `${prefs.height}px`,
       });
     }
+    placeMenus(); // 패널을 옮기거나 크기를 바꿔도 열린 메뉴가 따라간다
     setPageInset(built && mount.host?.isConnected ? inset : 0);
     fitFullscreen(isShrink() && !prefs.collapsed && !prefs.hidden && built && mount.host?.isConnected ? prefs.dockWidth : 0);
     if (!prefs.collapsed && !prefs.hidden) {
       unread = 0;
       renderBadge();
+    }
+  }
+
+  // 열려 있는 설정 메뉴/배속 팝오버를 헤더 아래(패널 오른쪽 끝에 맞춤)에 놓는다. 화면 아래에 자리가 모자라면 위로 올려서 전부 보이게 한다.
+  function placeMenus() {
+    for (const m of [menu, ratePop]) {
+      if (!m || m.hidden || !panel) continue;
+      const pr = panel.getBoundingClientRect();
+      const hr = head.getBoundingClientRect();
+      const w = m.offsetWidth;
+      const h = m.offsetHeight;
+      let top = hr.bottom + 6;
+      if (top + h > window.innerHeight - 8) top = Math.max(8, window.innerHeight - h - 8);
+      m.style.left = `${clamp(pr.right - 8 - w, 8, Math.max(8, window.innerWidth - w - 8))}px`;
+      m.style.top = `${top}px`;
     }
   }
 
@@ -745,6 +762,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
       if (p.failed || !pendingSends.includes(p)) return;
       entry.el.classList.add('pending');
       entry.statusEl.textContent = t('chat.sending');
+      scrollToBottom(false); // 줄이 늘어나도 맨 아래에 붙어 있었다면 계속 따라간다
     }, SENDING_SHOW_MS);
     p.timer = setTimeout(() => failPending(p), PENDING_FAIL_MS);
     pendingSends.push(p);
@@ -773,6 +791,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     p.entry.el.classList.add('pending');
     st.className = `sendstat fail${restart ? ' restart' : ''}`; // 재배포는 차분하게, 진짜 오류는 빨갛게
     st.replaceChildren(t(restart ? 'chat.sendFailedRestart' : 'chat.sendFailedError'), ...p.buttons);
+    scrollToBottom(false); // 못 보냄 줄이 생겨 높이가 늘어도 맨 아래에 붙어 있었다면 보이게 따라 내려간다
   }
   function dropPending(p) {
     clearTimeout(p.timer); clearTimeout(p.slowTimer);
@@ -1238,6 +1257,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
       ratePop.hidden = !ratePop.hidden;
       menu.hidden = true;
       refreshRate();
+      placeMenus();
     });
     const sec = (key) => L(el('div', 'sec'), 'textContent', key);
     menu.append(sec('chat.menu.speed'), rateControl(), sec('chat.menu.window'), modeSeg, opLabel, sec('chat.menu.view'), styleSeg, sec('chat.menu.color'), themeSeg, sec('chat.menu.show'), clockLabel, videoLabel, eventsLabel, sec('chat.menu.invite'), invite);
@@ -1245,6 +1265,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
       menu.hidden = !menu.hidden;
       ratePop.hidden = true;
       refreshRate();
+      placeMenus();
     });
 
     list = el('div', 'list');
@@ -1355,7 +1376,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
       return h;
     });
     dragMove(head);
-    head.append(menu, ratePop); // 메뉴는 헤더 기준으로 배치
+    // 메뉴는 패널 안에 넣지 않는다(패널이 넘치는 부분을 숨겨서 잘리므로). 아래 wrap 에 붙인다
     replyBar = el('div', 'replying');
     replyBar.hidden = true;
     replyText = el('span', 'rtext');
@@ -1406,7 +1427,7 @@ export function createChat({ getState, getInviteLink, getReactionArea, onSend, o
     window.addEventListener('resize', () => built && applyPrefs());
     document.addEventListener('fullscreenchange', () => built && applyPrefs());
 
-    wrap.append(panel, bubbleBox, floats, pop); // 리액션/선택기가 패널 위에 그려지도록 뒤에
+    wrap.append(panel, bubbleBox, floats, pop, menu, ratePop); // 리액션/선택기/메뉴가 패널 위에 그려지도록 뒤에
     root.append(wrap);
     applyPrefs();
     renderEmpty();
