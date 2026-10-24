@@ -86,20 +86,33 @@ const CSS = `
 `;
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
-// movoni 심볼(브랜드 로고): 배너에서 어디서 온 초대인지 알려 준다
+// movoni 로고 아이콘(icons/icon.svg 와 같은 그림): 초대 배너에서 어디서 온 초대인지 알려 준다.
+// 사이트의 CSP(img-src)와 Trusted Types 에 걸리지 않도록 <img>/innerHTML 대신 createElementNS 로 그린다.
 function logoSymbol(px = 26) {
   const svg = document.createElementNS(SVG_NS, 'svg');
-  for (const [k, v] of Object.entries({ width: px, height: px, viewBox: '0 0 40 40', 'aria-hidden': 'true' })) svg.setAttribute(k, v);
+  for (const [k, v] of Object.entries({ width: px, height: px, viewBox: '0 0 128 128', 'aria-hidden': 'true' })) svg.setAttribute(k, v);
   svg.style.flex = 'none';
-  const add = (tag, attrs) => {
+  const add = (parent, tag, attrs) => {
     const e = document.createElementNS(SVG_NS, tag);
     for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
-    svg.append(e);
+    parent.append(e);
+    return e;
   };
-  add('rect', { width: 40, height: 40, rx: 12, fill: '#B9DEFA' });
-  add('rect', { x: 8, y: 9, width: 24, height: 18, rx: 8, fill: '#12304A' });
-  add('path', { d: 'M13.5 25 L12.5 31.5 L19.5 26.5 Z', fill: '#12304A' });
-  add('path', { d: 'M17.5 14.2 L17.5 21.8 L23.8 18 Z', fill: '#B9DEFA', stroke: '#B9DEFA', 'stroke-width': 1.6, 'stroke-linejoin': 'round' });
+  const tilt = { transform: 'rotate(-6 64 110)' }; // 갸웃하는 -6°
+  const defs = add(svg, 'defs', {});
+  add(add(defs, 'clipPath', { id: 'bmt-logo-tile' }), 'rect', { width: 128, height: 128, rx: 30 });
+  add(svg, 'rect', { width: 128, height: 128, rx: 30, fill: '#B9DEFA' });
+  const body = add(add(svg, 'g', { 'clip-path': 'url(#bmt-logo-tile)' }), 'g', tilt); // 아래에서 올라오는 몸은 타일 밖을 잘라낸다
+  const ear = { fill: '#fff', stroke: '#fff', 'stroke-width': 4.5, 'stroke-linejoin': 'round' };
+  add(body, 'path', { d: 'M26 74 L32 39.6 L52 58 Z', ...ear });
+  add(body, 'path', { d: 'M102 74 L96 39.6 L76 58 Z', ...ear });
+  add(body, 'path', { d: 'M8 140V98C8 68 33 52 64 52C95 52 120 68 120 98V140Z', fill: '#fff' });
+  const eyes = add(svg, 'g', tilt);
+  for (const [cx, hx, hy, lx, ly] of [[49, 51.2, 77.14, 47.68, 82.53], [79, 81.2, 77.14, 77.68, 82.53]]) {
+    add(eyes, 'ellipse', { cx, cy: 80, rx: 7.15, ry: 8.25, fill: '#12304A' });
+    add(eyes, 'circle', { cx: hx, cy: hy, r: 2.86, fill: '#fff' });
+    add(eyes, 'circle', { cx: lx, cy: ly, r: 1.32, fill: '#fff' });
+  }
   return svg;
 }
 
