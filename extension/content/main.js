@@ -72,7 +72,7 @@
         },
         onTyping: (isTyping) => send({ cmd: CMD.TYPING_SEND, isTyping }),
         onReaction: (emoji) => send({ cmd: CMD.REACTION_SEND, emoji }),
-        onNotify: (text) => ui.toast(text, 4000),
+        onNotify: (text) => ui.toast(text, 4000, 'message-circle'),
       })
     : null;
 
@@ -113,8 +113,13 @@
     if (!isTop || !connLost()) return;
     connShown = true;
     const restart = !!state.restarting; // 재배포/서버 재시작(예정된 일)인지, 진짜 오류인지
+    // 제목 + 설명 두 줄. 재배포와 진짜 오류는 문구와 모양(스피너 / 붉은 아이콘)을 다르게 보여 준다
     ui.showConnection(
-      tr(droppedAction ? (restart ? 'content.droppedActionRestart' : 'content.droppedAction') : restart ? 'content.serverRestarting' : 'content.reconnecting'),
+      droppedAction
+        ? { title: tr('content.droppedTitle'), desc: tr(restart ? 'content.droppedActionRestart' : 'content.droppedAction') }
+        : restart
+          ? { title: tr('content.restartTitle'), desc: tr('content.restartDesc') }
+          : { title: tr('content.reconnectingTitle'), desc: tr('content.reconnectingDesc') },
       undefined,
       false,
       restart ? 'restart' : 'error',
@@ -330,7 +335,7 @@
   function seekTo(t) {
     if (!video || Math.abs(pos() - t) < SEEK_THRESHOLD) return;
     expect('seeked');
-    if (Date.now() < alignNoticeUntil && Math.abs(pos() - t) >= 3) ui.toast(tr('content.aligned', { t: clock(t) }));
+    if (Date.now() < alignNoticeUntil && Math.abs(pos() - t) >= 3) ui.toast(tr('content.aligned', { t: clock(t) }), undefined, 'check');
     alignNoticeUntil = 0;
     if (adapter.contentSeek) pendingSeek = { target: t, at: Date.now() };
     if (adapter.seekPauses) ourSeekUntil = Date.now() + SEEK_TOKEN_TTL;
@@ -423,7 +428,7 @@
       chat?.refreshRate();
       setRate(1); // 방의 새 속도로 바꾼다. 기준점도 새로 잡혔으니 위치 차이는 싱크 보정이 맞춘다
       const who = state.participants.find((p) => p.id === msg.fromId)?.name ?? tr('content.someone');
-      if (isTop) ui.toast(tr('content.rate', { name: who, r: +msg.rate.toFixed(2) }));
+      if (isTop) ui.toast(tr('content.rate', { name: who, r: +msg.rate.toFixed(2) }), undefined, 'gauge');
       return;
     }
     setRate(1);
@@ -542,7 +547,7 @@
     if (!canControl()) {
       // 방장 전용 모드: 보내지 않고 방 상태로 되돌린다
       if (Date.now() - lastBlockedToast > 2000 && isTop) {
-        ui.toast(tr('content.hostOnly'));
+        ui.toast(tr('content.hostOnly'), undefined, 'crown');
         lastBlockedToast = Date.now();
       }
       applyRoomVideo();
@@ -588,7 +593,7 @@
     if (!(r >= MIN_PLAYBACK_RATE && r <= MAX_PLAYBACK_RATE)) return log('배속 변경 무시: 범위 밖', r);
     if (!canControl()) {
       if (Date.now() - lastRateBlockedToast > 2000 && isTop) {
-        ui.toast(tr('content.hostOnly'));
+        ui.toast(tr('content.hostOnly'), undefined, 'crown');
         lastRateBlockedToast = Date.now();
       }
       setRate(1); // 방장 전용 방: 방의 배속으로 되돌린다
@@ -854,7 +859,7 @@
             ads.length ? tr('content.adOthers', { names: ads.join(', ') }) : bufs.length ? tr('content.bufOthers', { names: bufs.join(', ') }) : null,
           );
           if (!names.length && state.video.playing && state.video.updatedAt > serverNow()) {
-            ui.toast(tr('content.allReady'));
+            ui.toast(tr('content.allReady'), undefined, 'check');
           }
         }
         break;
