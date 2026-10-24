@@ -4,7 +4,7 @@
 
 const POPUP = {
   // 차콜 바탕 + 하늘색 포인트. 하늘색(sky)은 주요 버튼, 선택된 탭·세그먼트, 방 코드 글자에만 쓴다.
-  bg: '#12161B', head: '#1B232C', 'head-deco': '#212D3A',
+  bg: '#12161B', head: '#1B232C',
   surface: '#1A2027', 'surface-2': '#222A33', 'surface-3': '#2B3540', input: '#151A20',
   border: '#27313B', 'border-2': '#313C47',
   ink: '#E7EEF5', 'ink-soft': '#9AABBB', 'ink-mute': '#6E7F90', 'ink-chip': '#C9D6E2',
