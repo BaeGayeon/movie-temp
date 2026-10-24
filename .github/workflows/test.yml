@@ -1,0 +1,25 @@
+# PR 과 main 푸시마다 서버 테스트를 돌린다(protocol.js 동일성, i18n 키 검사 포함).
+# 브랜치 보호에서 이 체크("test")를 필수로 지정하면 테스트가 깨진 PR 은 머지되지 않는다.
+name: test
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: 서버 테스트
+        working-directory: server
+        run: |
+          npm ci
+          npm test
