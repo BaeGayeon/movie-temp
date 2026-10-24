@@ -313,3 +313,7 @@ input[type=range]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px rg
 #editPhoto.on { background: var(--surface-3); border-color: var(--border-2); }
 .btn.quiet { padding: 0 8px; }
 .row.wrap { gap: 6px; }
+/* 사진 버튼 줄(영어 문구 포함)이 한 줄에 들어가도록 조금 촘촘하게 */
+#avPhoto .row.wrap { gap: 4px; }
+#avPhoto .row.wrap > .btn { padding: 0 9px; gap: 5px; }
+#avPhoto .row.wrap > .btn.quiet { padding: 0 6px; }

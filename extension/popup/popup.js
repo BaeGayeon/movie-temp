@@ -172,11 +172,14 @@ function render() {
 function paintNotices() {
   const inRoom = !!state?.roomCode;
   const wait = state?.waking ? t('popup.waking') : busy ? t('popup.connectingServer') : '';
-  const joinErr = !inRoom && lobbyMode === 'join' && !!state?.error;
-  $('error').textContent = joinErr ? wait : (state?.error ?? wait);
-  $('error').classList.toggle('info', !!wait && (joinErr || !state?.error));
+  // 비밀번호를 처음 요구받은 것(틀린 게 아님)은 오류가 아니다: 입력칸 위 라벨("비밀번호가 필요한 방이에요")이 이미 알려 주므로 오류 표시를 하지 않는다
+  const asking = !inRoom && !!state?.needPassword && !state.needPassword.wrong;
+  const err = asking ? null : state?.error;
+  const joinErr = !inRoom && lobbyMode === 'join' && !!err;
+  $('error').textContent = joinErr ? wait : (err ?? wait);
+  $('error').classList.toggle('info', !!wait && (joinErr || !err));
   $('joinError').hidden = !joinErr;
-  $('joinErrorText').textContent = joinErr ? state.error : '';
+  $('joinErrorText').textContent = joinErr ? err : '';
   const pwWrong = joinErr && !$('joinPwWrap').hidden;
   $('codeBox').classList.toggle('err', joinErr && !pwWrong);
   $('joinPwWrap').querySelector('.pwwrap').classList.toggle('err', pwWrong);
