@@ -4,7 +4,7 @@
 
 ## 기본 정보
 
-- 이름: bae-movie-temp (배무템)
+- 이름: movoni (모보니)
 - 카테고리: 소셜 및 커뮤니케이션 (또는 엔터테인먼트)
 - 언어: 한국어(기본) + 영어 (아래 "English listing" 섹션을 스토어 대시보드의 영어 항목에 붙여 넣는다. 확장 프로그램의 설명은 `_locales/` 로 브라우저 언어에 따라 나뉜다)
 - 개인정보처리방침 URL: `https://<서버주소>/privacy` (서버가 제공한다. 문의 이메일은 `server/public/privacy.html` 맨 아래)
@@ -72,7 +72,7 @@ Copy for the English entry in the store dashboard.
 
 ## Basic info
 
-- Name: bae-movie-temp (배무템)
+- Name: movoni (모보니)
 - Category: Social & Communication (or Entertainment)
 - Language: English
 - Privacy policy URL: `https://<server address>/privacy?lang=en` (served by the server; the page also follows the browser language when `lang` is omitted)

@@ -47,7 +47,7 @@ for (const war of manifest.web_accessible_resources ?? []) war.matches = war.mat
 manifest.content_scripts = manifest.content_scripts.filter((cs) => cs.matches.length > 0);
 fs.writeFileSync(mPath, JSON.stringify(manifest, null, 2) + '\n');
 
-const zipName = `bae-movie-temp-${manifest.version}.zip`;
+const zipName = `movoni-${manifest.version}.zip`;
 const zipPath = path.join(root, 'dist', zipName);
 fs.rmSync(zipPath, { force: true });
 try {
